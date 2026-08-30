@@ -2526,9 +2526,11 @@ test_meta_helpers_refuse_a_symlinked_task_record() {
   printf 'FMX_PAIRING_TOKEN=tok-sym\n' > "$home/.env"
   FM_HOME="$home" FMX_DRY_RUN=1 FMX_NOW_OVERRIDE=1700003600 PATH="$fakebin:$BASE_PATH" \
     "$ROOT/bin/fm-x-followup.sh" sym-task - <<<"milestone update" >/dev/null 2>&1; rc=$?
-  [ "$rc" -ne 0 ] || fail "a follow-up post must not rewrite a symlink record after posting"
-  assert_grep "x_followups=0" "$target" "a follow-up post incremented the counter through the symlink"
-  assert_symlink_untouched "follow-up post"
+  [ "$rc" -ne 0 ] || fail "a follow-up through a symlink record should refuse"
+  assert_absent "$home/state/x-outbox/req-sym.json" \
+    "a refused symlink record still published a follow-up"
+  assert_grep "x_followups=0" "$target" "a refused follow-up incremented the counter through the symlink"
+  assert_symlink_untouched "follow-up"
   pass "x-lib meta helpers refuse a symlinked task record and leave its target untouched"
 }
 

@@ -283,6 +283,8 @@ test_promote_refuses_a_symlinked_task_record() {
   [ -L "$meta" ] || fail "promotion replaced or removed the symlink record"
   cmp -s "$target" "$original" \
     || fail "promotion rewrote the symlink target in place"
+  assert_absent "$home/data/promote-sym/ship-instructions.md" \
+    "refused promotion published ship instructions"
   leftover=$(find "$home/state" -maxdepth 1 -name '.*.meta.promote.*' -print 2>/dev/null || true)
   [ -z "$leftover" ] || fail "promotion left a staging file after a refused publish: $leftover"
   pass "fm-promote: a symlinked task record is refused and its target is left untouched"

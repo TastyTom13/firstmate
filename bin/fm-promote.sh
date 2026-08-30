@@ -122,7 +122,10 @@ META="$STATE/$ID.meta"
 META_LOCK=$(fm_meta_lock_path "$META") || exit 1
 fm_lock_acquire_wait "$META_LOCK"
 META_LOCK_HELD=1
-[ -f "$META" ] || { echo "error: no meta for task $ID at $META" >&2; exit 1; }
+if ! fm_backlog_record_present "$META" "task record" "$STATE"; then
+  echo "error: task record for $ID is unsafe or missing ($FM_BACKLOG_TRANSITION_ERROR)" >&2
+  exit 1
+fi
 grep -qx 'kind=scout' "$META" || { echo "error: task $ID is not a scout task (kind=scout not in meta)" >&2; exit 1; }
 
 # The promoted worker must receive the same delivery contract an ordinary ship
