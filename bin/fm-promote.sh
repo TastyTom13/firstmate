@@ -31,6 +31,10 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
+# shellcheck source=bin/fm-tasks-axi-lib.sh
+. "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
+# shellcheck source=bin/fm-backlog-transition-lib.sh
+. "$SCRIPT_DIR/fm-backlog-transition-lib.sh"
 # shellcheck source=bin/fm-public-followup-lib.sh
 . "$SCRIPT_DIR/fm-public-followup-lib.sh"
 # shellcheck source=bin/fm-secondmate-parent-lib.sh
@@ -156,7 +160,12 @@ grep -v -e '^kind=' -e '^mode=' -e '^yolo=' "$META" > "$TMP"
   echo "mode=$MODE"
   echo "yolo=$YOLO"
 } >> "$TMP"
-mv "$TMP" "$META"
+if ! fm_backlog_atomic_transition publish "$TMP" "$META" "task record" "$STATE"; then
+  rm -f -- "$TMP"
+  TMP=
+  echo "error: task record for $ID could not be published ($FM_BACKLOG_TRANSITION_ERROR)" >&2
+  exit 1
+fi
 TMP=
 fm_lock_release "$META_LOCK"
 META_LOCK_HELD=0
