@@ -2511,12 +2511,16 @@ test_meta_helpers_refuse_a_symlinked_task_record() {
 
   rm -f "$meta" "$target"
   ln -s "$target" "$meta"
-  FM_HOME="$home" "$ROOT/bin/fm-x-followup.sh" --clear sym-task >/dev/null 2>&1; rc=$?
-  [ "$rc" -ne 0 ] || fail "clear through a dangling symlink record should refuse"
-  [ -L "$meta" ] || fail "clear replaced or removed the dangling symlink record"
-  [ ! -e "$target" ] || fail "clear created the dangling symlink target"
+  FM_HOME="$home" STATE="$home/state" ROOT="$ROOT" META="$meta" bash -c '
+    . "$ROOT/bin/fm-x-lib.sh"
+    . "$ROOT/bin/fm-wake-lib.sh"
+    fmx_meta_link_clear "$META"
+  ' >/dev/null 2>&1; rc=$?
+  [ "$rc" -ne 0 ] || fail "the clear helper should refuse a dangling symlink record"
+  [ -L "$meta" ] || fail "the clear helper replaced or removed the dangling symlink record"
+  [ ! -e "$target" ] || fail "the clear helper created the dangling symlink target"
   leftover=$(find "$home/state" -maxdepth 1 -name '.*.fm-x.*' -print 2>/dev/null || true)
-  [ -z "$leftover" ] || fail "clear left a staging file after refusing a dangling symlink: $leftover"
+  [ -z "$leftover" ] || fail "the clear helper left a staging file after refusing a dangling symlink: $leftover"
 
   printf '%s\n' 'window=w' 'kind=ship' 'mode=no-mistakes' 'yolo=off' \
     'x_request=req-sym' 'x_request_ts=1700000000' 'x_followups=0' \
