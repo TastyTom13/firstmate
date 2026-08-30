@@ -2509,6 +2509,19 @@ test_meta_helpers_refuse_a_symlinked_task_record() {
   assert_grep "x_request=req-sym" "$target" "clear removed the X request through the symlink"
   assert_symlink_untouched "clear"
 
+  rm -f "$meta" "$target"
+  ln -s "$target" "$meta"
+  FM_HOME="$home" "$ROOT/bin/fm-x-followup.sh" --clear sym-task >/dev/null 2>&1; rc=$?
+  [ "$rc" -ne 0 ] || fail "clear through a dangling symlink record should refuse"
+  [ -L "$meta" ] || fail "clear replaced or removed the dangling symlink record"
+  [ ! -e "$target" ] || fail "clear created the dangling symlink target"
+  leftover=$(find "$home/state" -maxdepth 1 -name '.*.fm-x.*' -print 2>/dev/null || true)
+  [ -z "$leftover" ] || fail "clear left a staging file after refusing a dangling symlink: $leftover"
+
+  printf '%s\n' 'window=w' 'kind=ship' 'mode=no-mistakes' 'yolo=off' \
+    'x_request=req-sym' 'x_request_ts=1700000000' 'x_followups=0' \
+    'x_platform=x' 'x_reply_max_chars=280' > "$target"
+  cp "$target" "$original"
   fakebin=$(make_fake_curl "$home")
   printf 'FMX_PAIRING_TOKEN=tok-sym\n' > "$home/.env"
   FM_HOME="$home" FMX_DRY_RUN=1 FMX_NOW_OVERRIDE=1700003600 PATH="$fakebin:$BASE_PATH" \
