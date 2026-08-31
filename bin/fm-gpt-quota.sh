@@ -90,9 +90,9 @@ window_label() {  # <minutes>
 
 is_window_minutes() {  # <value>
   case "$1" in
-    ''|0|*[!0-9]*) return 1 ;;
+    ''|*[!0-9]*) return 1 ;;
   esac
-  return 0
+  [ "$((10#$1))" -gt 0 ]
 }
 
 is_percent() {  # <value>
@@ -125,6 +125,10 @@ append_window() {  # <windows-json> <id> <minutes> <used> <resets-at> <resets-in
     }]'
 }
 
+http_status() {  # <headers-file>
+  tr -d '\r' < "$1" | awk '/^HTTP\// { code = $2 } END { print code }'
+}
+
 header_value() {  # <headers-file> <name>
   tr -d '\r' < "$1" | awk -v want="$2" '
     BEGIN { IGNORECASE = 1 }
@@ -137,7 +141,7 @@ header_value() {  # <headers-file> <name>
 }
 
 read_quota() {
-  local access account expires headers status minutes used reset_at reset_in
+  local access account expires headers status http_code minutes used reset_at reset_in
   local plan active_limit secondary_minutes secondary_used
   local secondary_reset_at secondary_reset_in windows
 
@@ -197,6 +201,7 @@ read_quota() {
     return
   fi
 
+  http_code=$(http_status "$headers")
   minutes=$(header_value "$headers" 'x-codex-primary-window-minutes')
   used=$(header_value "$headers" 'x-codex-primary-used-percent')
   reset_at=$(header_value "$headers" 'x-codex-primary-reset-at')
@@ -214,6 +219,13 @@ read_quota() {
   windows=$(append_window "$windows" secondary "$secondary_minutes" "$secondary_used" \
     "$secondary_reset_at" "$secondary_reset_in")
   if [ "$windows" = '[]' ]; then
+    case "$http_code" in
+      401|403)
+        unavailable auth_required \
+          "the Codex backend refused the stored credential (HTTP $http_code)" \
+          "sign in to the ChatGPT account again with the agent that owns $AUTH_FILE"
+        return ;;
+    esac
     unavailable no_headers "the Codex backend answered without usable rate-limit headers" \
       "check that $MODEL is still accepted for this account"
     return

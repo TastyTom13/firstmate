@@ -259,6 +259,36 @@ x-codex-primary-used-percent: 06
   pass "a zero-padded window length is labelled instead of erroring"
 }
 
+test_a_refused_credential_is_named_as_an_auth_problem() {
+  local home out
+  home=$(make_home refused 'HTTP/2 401
+content-type: text/html
+
+')
+  out=$(run_reader "$home" --json) || fail "a refused credential should not be fatal"
+  printf '%s' "$out" | jq -e '
+    .status == "unavailable" and .kind == "auth_required"
+    and (.detail | test("401")) and (.remedy | test("sign in"))
+  ' >/dev/null || fail "a refused credential was not named as an auth problem: $out"
+  pass "a backend that refuses the credential says to sign in, not to check the model"
+}
+
+test_a_zero_padded_zero_window_is_dropped() {
+  local home out
+  home=$(make_home zero-padded-zero 'HTTP/2 400
+content-type: application/json
+x-codex-primary-window-minutes: 00
+x-codex-primary-used-percent: 0
+x-codex-secondary-window-minutes: 10080
+x-codex-secondary-used-percent: 55
+')
+  out=$(run_reader "$home" --json) || fail "a zero-padded zero window should not be fatal"
+  printf '%s' "$out" | jq -e '
+    (.windows | length) == 1 and .windows[0].id == "secondary"
+  ' >/dev/null || fail "a zero-padded zero window was not dropped: $out"
+  pass "a zero-padded zero-length window is dropped like a plain zero"
+}
+
 test_it_reports_remaining_allowance_per_window
 test_the_headline_is_the_tightest_window
 test_a_window_the_account_does_not_have_is_not_reported_as_free
@@ -273,3 +303,5 @@ test_a_partial_header_set_is_unavailable_not_a_crash
 test_a_fractional_percent_is_read_not_rejected
 test_a_zero_length_primary_window_is_dropped
 test_a_zero_padded_window_length_is_still_labelled
+test_a_refused_credential_is_named_as_an_auth_problem
+test_a_zero_padded_zero_window_is_dropped
