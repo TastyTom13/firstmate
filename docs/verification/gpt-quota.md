@@ -57,7 +57,8 @@ Two earlier failure modes bound the technique and are why the reader names the m
 
 - `x-codex-primary-window-minutes` / `x-codex-secondary-window-minutes` - the window length. `43200` is 30 days, `10080` is 7 days.
   A window the account does not have is reported as `0` minutes with an empty `reset-at`; the reader drops it rather than rendering a fully free window that does not exist.
-- `x-codex-primary-used-percent` - percent of that window consumed, an integer. Remaining is `100 - used`.
+- `x-codex-primary-used-percent` - percent of that window consumed, an integer in every observed response. Remaining is `100 - used`.
+  The reader also accepts a decimal percent, so a vendor change to a fractional figure reports a real reading rather than `no_headers`.
 - `x-codex-primary-reset-at` - reset instant as epoch seconds.
 - `x-codex-plan-type` and `x-codex-active-limit` - recorded as evidence, never used to compute the figure.
 

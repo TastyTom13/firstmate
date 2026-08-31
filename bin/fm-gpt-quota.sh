@@ -30,9 +30,10 @@
 # and say so in `detail`, because those two numbers answer different questions.
 #
 # Failure is reported, never guessed: a missing credential, an expired token,
-# an unreachable backend, or a response without the headers each produce
-# status=unavailable with the concrete reason, and exit 0 so a board build or
-# digest keeps working with the pool marked unreadable.
+# a credential the backend refuses (HTTP 401/403), an unreachable backend, or
+# a response without the headers each produce status=unavailable with the
+# concrete reason, and exit 0 so a board build or digest keeps working with
+# the pool marked unreadable.
 #
 # FM_GPT_QUOTA_AUTH     credential file (default ~/.pi/agent/auth.json), read
 #                       for its `openai-codex` oauth entry. Token material is
