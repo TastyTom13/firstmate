@@ -105,7 +105,7 @@ bin/fm-free-tier-guard.sh --repo <name> --brief-file <path>
 
 Exit 0 prints `eligible: <repo>` and is the only state in which the free-tier profile may be selected.
 Exit 1 prints the refusal reason; fall through to the existing paid cheap-model rule and dispatch there instead.
-Exit 2 is a usage error and means the check did not run at all, which is also not permission to dispatch.
+Exit 2 means the check did not run at all, which covers a usage error and `--help`, and is never permission to dispatch.
 
 The guard refuses brief text matching any of `credential`, `secret`, `token`, `candidate`, `pii`, `bull`, `strategy`, `env` (which also covers `.env`), `key`, `database`, `db`, `email`, `user data`, or `article 9`.
 It over-refuses on purpose: a false refusal costs one fallback to the paid tier, while a miss publishes content to a vendor.

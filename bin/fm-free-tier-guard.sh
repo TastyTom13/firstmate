@@ -2,8 +2,11 @@
 # Decide whether one brief may be dispatched to a free-tier provider.
 # Usage: fm-free-tier-guard.sh --repo <name> (--brief-file <path> | --brief-stdin)
 # Exit 0 prints "eligible: <repo>" only when the repo is listed in the
-# allowlist AND the brief text matches no deny term; exit 1 prints
-# "refused: <reason>" on stderr; exit 2 is a usage error.
+# allowlist AND the brief text matches no deny term, and is the only state
+# in which the free-tier profile may be selected. Exit 1 prints
+# "refused: <reason>" on stderr. Exit 2 means the check did not run at all,
+# which covers a usage error and --help, and is never permission to
+# dispatch.
 # The allowlist is FM_CONFIG_OVERRIDE (else FM_HOME/config)/free-tier-repos,
 # one repo name per line, blank lines and #-comments ignored. An absent,
 # empty, or unreadable allowlist refuses every repo, so free-tier routing is
@@ -31,7 +34,7 @@ DENY_WORDS='credential|secret|token|candidate|pii|bull|strategy|strategies|env|k
 DENY_PHRASE='article[^a-z0-9]*9|user[^a-z0-9]+data'
 
 usage() {
-  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 REPO=''
@@ -56,7 +59,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     -h|--help)
       usage
-      exit 0
+      exit 2
       ;;
     *)
       echo "error: unknown argument '$1'" >&2

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Behavior tests for fm-free-tier-guard.sh: refuse without an allowlist, refuse
 # an unlisted repo, refuse a multi-line repo value carrying a listed name,
-# refuse deny-term brief text without over-refusing an innocent word, and allow
-# only a listed repo with clean brief text.
+# refuse deny-term brief text without over-refusing an innocent word, allow
+# only a listed repo with clean brief text, and keep every non-checking
+# invocation out of the eligible exit class.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -130,7 +131,13 @@ test_usage_errors_are_distinct_from_refusals() {
   assert_contains "$(cat "$err")" "unreadable" \
     "unreadable brief refusal used the wrong reason"
 
-  pass "usage errors exit 2 and an unreadable brief refuses"
+  status=0
+  FM_CONFIG_OVERRIDE="$home/config" "$GUARD" --help >"$out" 2>"$err" || status=$?
+  expect_code 2 "$status" "--help did not exit in the non-eligible class"
+  ! grep -q '^eligible: ' "$out" \
+    || fail "--help printed an eligible verdict"
+
+  pass "usage errors exit 2, --help exits 2, and an unreadable brief refuses"
 }
 
 test_missing_allowlist_refuses
