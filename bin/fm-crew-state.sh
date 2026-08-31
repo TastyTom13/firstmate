@@ -138,7 +138,42 @@ map_log_state() {  # <line>
   esac
 }
 
-LOG_LINE=$(log_last_line || true)
+# Last non-empty line that is not a declared external wait.
+log_last_unpaused_line() {
+  [ -f "$LOG" ] || return 1
+  local line last=
+  while IFS= read -r line; do
+    status_is_paused "$line" && continue
+    last=$line
+  done < <(grep -v '^[[:space:]]*$' "$LOG" 2>/dev/null)
+  [ -n "$last" ] || return 1
+  printf '%s\n' "$last"
+}
+
+# The SINGLE owner of "which status line carries this crew's current state", used
+# by every read below. A ship worker is instructed (bin/fm-dod-lib.sh) to follow
+# its terminal done line with a declared external wait (`<paused verb>: awaiting
+# merge of PR {url}`), so a finished PR task's literal tail is that wait rather
+# than its outcome, and reading the tail alone would hide the finished crew from
+# every terminal-outcome consumer (bin/fm-inactive-reconcile.sh reads this
+# script's verdict). A trailing run of declared waits is therefore skipped, but
+# ONLY when the line beneath it is a `done` line: a mid-task pause with no done
+# line before it still reports paused, a declared wait after any other verb
+# (including `failed`) still reports the wait, and any other verb appended after
+# a done line still wins, all exactly as before.
+log_effective_line() {
+  local last prev
+  last=$(log_last_line) || return 1
+  [ -n "$last" ] || return 1
+  status_is_paused "$last" || { printf '%s\n' "$last"; return 0; }
+  prev=$(log_last_unpaused_line) || { printf '%s\n' "$last"; return 0; }
+  case "$(status_line_verb "$prev")" in
+    done) printf '%s\n' "$prev" ;;
+    *)    printf '%s\n' "$last" ;;
+  esac
+}
+
+LOG_LINE=$(log_effective_line || true)
 LOG_VERB=$(status_line_verb "$LOG_LINE")
 
 # --- remote secondmate: the true source is the remote endpoint ---------------

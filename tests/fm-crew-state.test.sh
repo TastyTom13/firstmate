@@ -457,6 +457,31 @@ test_ci_ready_done_log_beats_monitoring_run() {
   pass "ci-ready status log beats monitoring run"
 }
 
+# A ship worker is told to follow its CI-ready done line with a declared
+# external wait ("paused: awaiting merge of PR ..."), so that wait is the LAST
+# line of a finished task's log. The declared wait must not hide the done line
+# from the CI-ready fallback, while any other verb appended after it still wins.
+test_ci_ready_done_survives_trailing_declared_wait() {
+  reset_fakes
+  local d out; d=$(new_case ci-ready-paused)
+  make_repo_on_branch "$d/wt" fm/feat-cipaused
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-cipaused.meta" "window=fm:fm-feat-cipaused" "worktree=$d/wt" "kind=ship"
+  printf 'done: PR https://github.com/o/r/pull/2 checks green\npaused: awaiting merge of PR https://github.com/o/r/pull/2\n' \
+    > "$d/state/feat-cipaused.status"
+  FM_FAKE_AXI_STATUS="$(run_ci_monitoring fm/feat-cipaused)"
+  out=$(run_crew_state "$d" feat-cipaused)
+  assert_contains "$out" "state: done" "trailing declared wait hid the ci-ready done line"
+  assert_contains "$out" "checks green" "ci-ready detail lost the done line's report"
+
+  # A non-wait verb after the done line is the crew's state, exactly as before.
+  printf 'done: PR https://github.com/o/r/pull/2 checks green\nblocked: merge conflict on main\n' \
+    > "$d/state/feat-cipaused.status"
+  out=$(run_crew_state "$d" feat-cipaused)
+  assert_not_contains "$out" "state: done" "a blocked line after done must not report done"
+  pass "ci-ready done line survives a trailing declared wait only"
+}
+
 # Regression for the PR #252 incident: the crew's own status log never got a
 # "done: ... checks green" line (log_reports_ci_ready above does not apply),
 # but the ci step's log tail shows CI is actually green and only waiting on
@@ -974,6 +999,44 @@ test_no_run_idle_pane_paused() {
   assert_contains "$out" "source: status-log" "idle pause -> status-log source"
   assert_contains "$out" "holding for the upstream tool release" "the pause reason is carried in the detail"
   pass "no run + idle pane on a paused: status reports state: paused with its reason"
+}
+
+# A direct-PR ship task raises no no-mistakes run, so its finished state comes
+# from the status log alone. The worker is instructed to follow its done line
+# with a declared merge wait, and that trailing wait must not hide the terminal
+# outcome from the reconciler, which reads this script's verdict.
+test_no_run_done_then_declared_wait_reports_done() {
+  reset_fakes
+  local d out; d=$(new_case done-then-pause)
+  make_repo_on_branch "$d/wt" fm/feat-donepause
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-donepause.meta" "window=fm:fm-feat-donepause" "worktree=$d/wt" "kind=ship" "harness=claude"
+  printf 'done: PR https://github.com/o/r/pull/7\npaused: awaiting merge of PR https://github.com/o/r/pull/7\n' \
+    > "$d/state/feat-donepause.status"
+  FM_FAKE_AXI_STATUS=""
+  FM_FAKE_BUSY=0
+  arm_idle_record "$d/state" feat-donepause
+  out=$(run_crew_state "$d" feat-donepause)
+  assert_contains "$out" "state: done" "a declared merge wait after done hid the terminal outcome"
+  assert_contains "$out" "source: status-log" "done-then-wait state comes from the status log"
+  assert_contains "$out" "https://github.com/o/r/pull/7" "the done line's PR is carried in the detail"
+
+  # A declared wait that follows ordinary progress is still a pause, not a state
+  # to look past: only a terminal line under the trailing wait run is promoted.
+  printf 'working: rebasing onto main\npaused: waiting on the vendor sandbox\n' \
+    > "$d/state/feat-donepause.status"
+  out=$(run_crew_state "$d" feat-donepause)
+  assert_contains "$out" "state: paused" "a mid-task declared wait must still report paused"
+  assert_contains "$out" "waiting on the vendor sandbox" "the mid-task pause reason is preserved"
+
+  # Only a done line is revealed: a declared wait after a failure is still the
+  # crew's state, so the wait keeps absorbing it as it did before.
+  printf 'failed: could not reach the vendor API\npaused: waiting for the vendor status page to clear\n' \
+    > "$d/state/feat-donepause.status"
+  out=$(run_crew_state "$d" feat-donepause)
+  assert_contains "$out" "state: paused" "a declared wait after a failure must still report paused"
+  assert_contains "$out" "vendor status page" "the post-failure pause reason is preserved"
+  pass "a trailing declared wait reveals a done line but never another state"
 }
 
 test_no_run_idle_pane_custom_paused_verb() {
@@ -1555,6 +1618,7 @@ test_genuine_parked_not_superseded
 test_scalar_gate_parked_not_superseded
 test_gate_block_parked_not_superseded
 test_ci_ready_done_log_beats_monitoring_run
+test_ci_ready_done_survives_trailing_declared_wait
 test_ci_monitoring_checks_green_surfaces_done
 test_top_level_ci_checks_green_surfaces_done
 test_ci_monitoring_no_checks_terminal_surfaces_done
@@ -1581,6 +1645,7 @@ test_no_run_herdr_idle_agent_status_and_idle_record_stays_idle
 test_no_run_idle_pane_uses_log
 test_no_run_idle_pane_uses_keyed_log
 test_no_run_idle_pane_paused
+test_no_run_done_then_declared_wait_reports_done
 test_no_run_idle_pane_custom_paused_verb
 test_no_run_idle_secondmate_resolved_event_not_state
 test_dead_window_ignores_stale_status_log
