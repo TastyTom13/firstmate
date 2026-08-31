@@ -6,8 +6,8 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab] [--env-file <path>]
-#        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab] [--env-file <path>]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab] [--env-file <path>[:<dest>]]
+#        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab] [--env-file <path>[:<dest>]]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -22,9 +22,13 @@
 #   omitting both still fails loudly so an accidental omission is never silent.
 #   Set FM_SECONDMATE_CHARTER='<charter>' to fill the charter text.
 #   Set FM_SECONDMATE_SCOPE='<scope>' to write a routing scope distinct from the charter text.
-#   --env-file <path> takes the ABSOLUTE path of the gitignored environment file in
-#   the project's PRIMARY checkout and adds a setup block that links it into the
-#   worktree. Pass it only for a task that must run the project; a docs-only or
+#   --env-file <path>[:<dest>] takes the ABSOLUTE path of the gitignored environment
+#   file in the project's PRIMARY checkout and adds a setup block that links it into
+#   the worktree. Without a ':<dest>' the link is made at the worktree root under the
+#   source file's basename; with one, at that worktree-RELATIVE destination, whose
+#   missing parent directories the rendered block creates first. A destination that is
+#   absolute or escapes the worktree with '..' is refused.
+#   Pass it only for a task that must run the project; a docs-only or
 #   read-only task carries no env step. The block names the primary checkout and
 #   explains in the same breath why that foreign path is legitimate, so the
 #   instruction cannot read as an injected credential grab. It is refused on
@@ -125,6 +129,7 @@ NO_PROJECTS=0
 MODE=
 MODE_SET=0
 ENV_FILE=
+ENV_FILE_SET=0
 POS=()
 want_value=
 for a in "$@"; do
@@ -134,7 +139,7 @@ for a in "$@"; do
     esac
     case "$want_value" in
       mode) MODE=$a; MODE_SET=1 ;;
-      env-file) ENV_FILE=$a ;;
+      env-file) ENV_FILE=$a; ENV_FILE_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
     want_value=
@@ -148,7 +153,7 @@ for a in "$@"; do
     --mode) want_value=mode ;;
     --mode=*) MODE=${a#--mode=}; MODE_SET=1 ;;
     --env-file) want_value=env-file ;;
-    --env-file=*) ENV_FILE=${a#--env-file=} ;;
+    --env-file=*) ENV_FILE=${a#--env-file=}; ENV_FILE_SET=1 ;;
     # yolo never reaches the worker: it is firstmate's merge authority, not a
     # brief input. Refuse it loudly so it is never silently dropped here and then
     # believed to have been recorded.
@@ -185,15 +190,40 @@ fi
 
 # The env link points at a path OUTSIDE the worktree, so a relative or ambiguous
 # value cannot be resolved later by the reading agent: require an absolute path.
-if [ -n "$ENV_FILE" ]; then
+# An optional ':<dest>' places the link somewhere other than the worktree root,
+# and must stay inside the worktree. Every refusal here is loud: a silently
+# dropped env step would leave a worker unable to run the project with nothing
+# in the output saying so.
+ENV_SOURCE=
+ENV_DEST=
+ENV_DEST_SET=0
+if [ "$ENV_FILE_SET" -eq 1 ]; then
   if [ "$KIND" = secondmate ]; then
     echo "error: --env-file applies only to crewmate ship or scout briefs; a secondmate home is not a worktree" >&2
     exit 1
   fi
+  [ -n "$ENV_FILE" ] || {
+    echo "error: --env-file requires a value: the absolute path of the environment file in the project's primary checkout, optionally followed by ':<worktree-relative destination>'" >&2
+    exit 1
+  }
+  ENV_SOURCE=$ENV_FILE
   case "$ENV_FILE" in
-    /*) ;;
-    *) echo "error: --env-file must be the absolute path of the environment file in the project's primary checkout (got '$ENV_FILE')" >&2; exit 1 ;;
+    *:*) ENV_SOURCE=${ENV_FILE%:*}; ENV_DEST=${ENV_FILE##*:}; ENV_DEST_SET=1 ;;
   esac
+  case "$ENV_SOURCE" in
+    /*) ;;
+    *) echo "error: --env-file must be the absolute path of the environment file in the project's primary checkout (got '$ENV_SOURCE')" >&2; exit 1 ;;
+  esac
+  if [ "$ENV_DEST_SET" -eq 1 ]; then
+    [ -n "$ENV_DEST" ] || {
+      echo "error: --env-file destination after ':' is empty; give a worktree-relative destination or drop the ':' to link at the worktree root" >&2
+      exit 1
+    }
+    case "$ENV_DEST" in
+      /*) echo "error: --env-file destination must be relative to the worktree, not absolute (got '$ENV_DEST')" >&2; exit 1 ;;
+      ..|../*|*/..|*/../*) echo "error: --env-file destination must stay inside the worktree (got '$ENV_DEST')" >&2; exit 1 ;;
+    esac
+  fi
 fi
 
 if [ "$NO_PROJECTS" -eq 1 ] && [ "$KIND" != secondmate ]; then
@@ -266,9 +296,16 @@ CONTEXT_LINE='If the project has a `CONTEXT.md` at its root, read it before you 
 # that names another directory without saying why reads like an injected
 # instruction, and a worker is right to refuse it.
 ENV_SECTION=
-if [ -n "$ENV_FILE" ]; then
-  ENV_PRIMARY_DIR=$(dirname "$ENV_FILE")
-  ENV_BASENAME=$(basename "$ENV_FILE")
+if [ -n "$ENV_SOURCE" ]; then
+  ENV_PRIMARY_DIR=$(dirname "$ENV_SOURCE")
+  ENV_LINK_TARGET=${ENV_DEST:-$(basename "$ENV_SOURCE")}
+  # Both operands are shell-quoted so a path containing a space renders a command
+  # the worker can run exactly as printed.
+  ENV_MKDIR=
+  case "$ENV_LINK_TARGET" in
+    */*) ENV_MKDIR="mkdir -p $(shell_quote "$(dirname "$ENV_LINK_TARGET")")
+" ;;
+  esac
   IFS= read -r -d '' ENV_SECTION <<EOF || true
 
 
@@ -278,7 +315,7 @@ A worktree holds tracked files only, so the project's gitignored environment fil
 The primary checkout lives at \`$ENV_PRIMARY_DIR\`; that is a different folder on purpose, and that is why this brief points outside your worktree.
 Link its environment file into this worktree, never copy it:
 \`\`\`
-ln -sfn $ENV_FILE $ENV_BASENAME
+${ENV_MKDIR}ln -sfn $(shell_quote "$ENV_SOURCE") $(shell_quote "$ENV_LINK_TARGET")
 \`\`\`
 Verify it resolves.
 Never commit it, never print its contents, and never write any value from it into your report or status file.

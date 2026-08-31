@@ -138,8 +138,26 @@ map_log_state() {  # <line>
   esac
 }
 
+# The last line that carries a state, ignoring a TRAILING run of declared
+# external waits. A ship worker is instructed (bin/fm-dod-lib.sh) to follow its
+# `done: PR {url} checks green` line with `<paused verb>: awaiting merge of PR
+# {url}`, so the tail of a finished PR task is a declared wait, not its state.
+# Only that trailing wait run is skipped; any other verb appended after the done
+# line is the crew's state exactly as before.
+log_last_state_line() {
+  [ -f "$LOG" ] || return 1
+  local line last=
+  while IFS= read -r line; do
+    status_is_paused "$line" && continue
+    last=$line
+  done < <(grep -v '^[[:space:]]*$' "$LOG" 2>/dev/null)
+  [ -n "$last" ] || return 1
+  printf '%s\n' "$last"
+}
+
 LOG_LINE=$(log_last_line || true)
 LOG_VERB=$(status_line_verb "$LOG_LINE")
+STATE_LINE=$(log_last_state_line || true)
 
 # --- remote secondmate: the true source is the remote endpoint ---------------
 # A remote mate's recorded worktree and backend target live on its own host, so
@@ -284,8 +302,8 @@ nm_gate_findings_count() {
   printf '%s' "$rest"
 }
 log_reports_ci_ready() {
-  [ "$LOG_VERB" = "done" ] || return 1
-  case "$(status_line_note "$LOG_LINE")" in
+  [ "$(status_line_verb "$STATE_LINE")" = "done" ] || return 1
+  case "$(status_line_note "$STATE_LINE")" in
     *PR*"checks green"*|*"checks green"*PR*) return 0 ;;
     *) return 1 ;;
   esac
@@ -550,7 +568,7 @@ if [ "$HAVE_RUN" = 1 ]; then
 
   if [ "$RUN_STATE" = working ] && log_reports_ci_ready; then
     if [ "$RUN_SOURCE" = coarse ]; then
-      emit "done" status-log "$(status_line_note "$LOG_LINE")${SEP}run still monitoring PR"
+      emit "done" status-log "$(status_line_note "$STATE_LINE")${SEP}run still monitoring PR"
     fi
     [ -n "$CI_STEP_STATUS" ] || CI_STEP_STATUS=$(nm_effective_ci_step_status)
     if [ "$RUN_STATUS" = fixing ]; then
@@ -561,7 +579,7 @@ if [ "$HAVE_RUN" = 1 ]; then
       CI_LOG_STATE=not-ready
     fi
     if [ "$CI_LOG_STATE" != not-ready ]; then
-      emit "done" status-log "$(status_line_note "$LOG_LINE")${SEP}run still monitoring PR"
+      emit "done" status-log "$(status_line_note "$STATE_LINE")${SEP}run still monitoring PR"
     fi
   fi
 

@@ -830,8 +830,8 @@ test_env_file_block_is_opt_in_and_self_explaining() {
     "environment step lost the reason the file is absent here"
   assert_grep "that is a different folder on purpose" "$brief" \
     "environment step named a foreign path without explaining it in the same block"
-  assert_grep "ln -sfn /primary/some-proj/.env.local .env.local" "$brief" \
-    "environment step did not render the link command for the given file"
+  assert_grep "ln -sfn '/primary/some-proj/.env.local' '.env.local'" "$brief" \
+    "environment step did not render a quoted, runnable link command for the given file"
   assert_grep "never copy it" "$brief" "environment step lost the link-not-copy rule"
   assert_grep "never print its contents" "$brief" "environment step lost the secret-handling rule"
 
@@ -839,8 +839,25 @@ test_env_file_block_is_opt_in_and_self_explaining() {
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e4 some-proj --scout \
     --env-file /primary/some-proj/.env >/dev/null 2>&1 \
     || fail "scout brief with --env-file should scaffold"
-  assert_grep "ln -sfn /primary/some-proj/.env .env" "$home/data/brief-env-e4/brief.md" \
+  assert_grep "ln -sfn '/primary/some-proj/.env' '.env'" "$home/data/brief-env-e4/brief.md" \
     "scout environment step did not render the link command"
+
+  # A path containing a space must still render a command the worker can run.
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e8 some-proj --mode no-mistakes \
+    --env-file "/primary/My Projects/some-proj/.env" >/dev/null 2>&1 \
+    || fail "ship brief with a spaced --env-file path should scaffold"
+  assert_grep "ln -sfn '/primary/My Projects/some-proj/.env' '.env'" "$home/data/brief-env-e8/brief.md" \
+    "a path with a space rendered an unrunnable link command"
+
+  # Optional ':<dest>' for an env file the app loads from a sub-directory: the
+  # link lands there, and the block creates the missing parent first.
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e9 some-proj --mode no-mistakes \
+    --env-file "/primary/some-proj/.env.site:sites/alpha/.env" >/dev/null 2>&1 \
+    || fail "ship brief with a nested env destination should scaffold"
+  assert_grep "mkdir -p 'sites/alpha'" "$home/data/brief-env-e9/brief.md" \
+    "nested env destination did not create its parent directory"
+  assert_grep "ln -sfn '/primary/some-proj/.env.site' 'sites/alpha/.env'" "$home/data/brief-env-e9/brief.md" \
+    "nested env destination did not render the right link target"
 
   while IFS='|' read -r label args expect; do
     [ -n "$label" ] || continue
@@ -853,6 +870,10 @@ test_env_file_block_is_opt_in_and_self_explaining() {
 relative env path|brief-env-e5 some-proj --mode no-mistakes --env-file ../.env.local|must be the absolute path
 missing env value|brief-env-e6 some-proj --mode no-mistakes --env-file|requires a value
 env file on a charter|brief-env-e7 --secondmate --no-projects --env-file /primary/.env|applies only to crewmate ship or scout briefs
+empty env value|brief-env-e10 some-proj --mode no-mistakes --env-file=|requires a value
+empty env destination|brief-env-e11 some-proj --mode no-mistakes --env-file=/primary/.env:|destination after ':' is empty
+absolute env destination|brief-env-e12 some-proj --mode no-mistakes --env-file=/primary/.env:/etc/.env|must be relative to the worktree
+escaping env destination|brief-env-e13 some-proj --mode no-mistakes --env-file=/primary/.env:../outside/.env|must stay inside the worktree
 ROWS
   pass "fm-brief.sh: --env-file is opt-in, absolute, self-explaining, and refused on charters"
 }

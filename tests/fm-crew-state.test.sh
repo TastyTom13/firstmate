@@ -457,6 +457,31 @@ test_ci_ready_done_log_beats_monitoring_run() {
   pass "ci-ready status log beats monitoring run"
 }
 
+# A ship worker is told to follow its CI-ready done line with a declared
+# external wait ("paused: awaiting merge of PR ..."), so that wait is the LAST
+# line of a finished task's log. The declared wait must not hide the done line
+# from the CI-ready fallback, while any other verb appended after it still wins.
+test_ci_ready_done_survives_trailing_declared_wait() {
+  reset_fakes
+  local d out; d=$(new_case ci-ready-paused)
+  make_repo_on_branch "$d/wt" fm/feat-cipaused
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-cipaused.meta" "window=fm:fm-feat-cipaused" "worktree=$d/wt" "kind=ship"
+  printf 'done: PR https://github.com/o/r/pull/2 checks green\npaused: awaiting merge of PR https://github.com/o/r/pull/2\n' \
+    > "$d/state/feat-cipaused.status"
+  FM_FAKE_AXI_STATUS="$(run_ci_monitoring fm/feat-cipaused)"
+  out=$(run_crew_state "$d" feat-cipaused)
+  assert_contains "$out" "state: done" "trailing declared wait hid the ci-ready done line"
+  assert_contains "$out" "checks green" "ci-ready detail lost the done line's report"
+
+  # A non-wait verb after the done line is the crew's state, exactly as before.
+  printf 'done: PR https://github.com/o/r/pull/2 checks green\nblocked: merge conflict on main\n' \
+    > "$d/state/feat-cipaused.status"
+  out=$(run_crew_state "$d" feat-cipaused)
+  assert_not_contains "$out" "state: done" "a blocked line after done must not report done"
+  pass "ci-ready done line survives a trailing declared wait only"
+}
+
 # Regression for the PR #252 incident: the crew's own status log never got a
 # "done: ... checks green" line (log_reports_ci_ready above does not apply),
 # but the ci step's log tail shows CI is actually green and only waiting on
@@ -1555,6 +1580,7 @@ test_genuine_parked_not_superseded
 test_scalar_gate_parked_not_superseded
 test_gate_block_parked_not_superseded
 test_ci_ready_done_log_beats_monitoring_run
+test_ci_ready_done_survives_trailing_declared_wait
 test_ci_monitoring_checks_green_surfaces_done
 test_top_level_ci_checks_green_surfaces_done
 test_ci_monitoring_no_checks_terminal_surfaces_done

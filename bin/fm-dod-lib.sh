@@ -17,13 +17,18 @@
 # Every heredoc here stays outside a command substitution: `VAR=$(cat <<EOF ...)`
 # breaks parsing of the whole file on Bash 3.2 (tests/fm-brief.test.sh).
 
+_FM_DOD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null)" || _FM_DOD_LIB_DIR="."
+# The declared-external-wait verb this block instructs has ONE owner
+# (FM_CLASSIFY_PAUSED_VERB_DEFAULT in bin/fm-classify-lib.sh), so source it here
+# rather than repeating the literal: a caller that renders the block without
+# having sourced the classify lib itself (bin/fm-promote.sh) must still say the
+# same verb the rest of the fleet reads.
+# shellcheck source=bin/fm-classify-lib.sh
+. "$_FM_DOD_LIB_DIR/fm-classify-lib.sh"
+
 fm_dod_block() {  # <mode> <task-id>
   local mode=$1 id=$2
-  # The declared-external-wait verb is configurable fleet-wide, and this block
-  # instructs one, so it must render the same verb the rest of the brief does.
-  # Resolved locally so the block is correct whether or not the caller sourced
-  # bin/fm-classify-lib.sh first.
-  local paused=${FM_CLASSIFY_PAUSED_VERB:-${FM_CLASSIFY_PAUSED_VERB_DEFAULT:-paused}}
+  local paused=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}
   case "$mode" in
     direct-PR)
       cat <<EOF
