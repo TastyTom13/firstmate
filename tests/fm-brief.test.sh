@@ -859,6 +859,16 @@ test_env_file_block_is_opt_in_and_self_explaining() {
   assert_grep "ln -sfn '/primary/some-proj/.env.site' 'sites/alpha/.env'" "$home/data/brief-env-e9/brief.md" \
     "nested env destination did not render the right link target"
 
+  # A destination ending in '/' names a directory: the link goes inside it under
+  # the source basename, and that directory is the one created.
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e14 some-proj --mode no-mistakes \
+    --env-file "/primary/some-proj/.env.local:sites/alpha/" >/dev/null 2>&1 \
+    || fail "ship brief with a directory env destination should scaffold"
+  assert_grep "mkdir -p 'sites/alpha'" "$home/data/brief-env-e14/brief.md" \
+    "directory env destination did not create the directory the link needs"
+  assert_grep "ln -sfn '/primary/some-proj/.env.local' 'sites/alpha/.env.local'" "$home/data/brief-env-e14/brief.md" \
+    "directory env destination did not link inside it under the source basename"
+
   while IFS='|' read -r label args expect; do
     [ -n "$label" ] || continue
     # shellcheck disable=SC2086  # args is an intentional word-split arg list

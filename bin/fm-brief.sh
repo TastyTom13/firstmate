@@ -30,6 +30,8 @@
 #   absolute or escapes the worktree with '..' is refused. The value is split at its
 #   LAST colon, so a source path that itself contains a colon cannot also carry a
 #   destination; such a path is a known limitation of this separator.
+#   A destination ending in '/' names a DIRECTORY: the link is made inside it under
+#   the source file's basename.
 #   Pass it only for a task that must run the project; a docs-only or
 #   read-only task carries no env step. The block names the primary checkout and
 #   explains in the same breath why that foreign path is legitimate, so the
@@ -199,6 +201,7 @@ fi
 ENV_SOURCE=
 ENV_DEST=
 ENV_DEST_SET=0
+ENV_DEST_IS_DIR=0
 if [ "$ENV_FILE_SET" -eq 1 ]; then
   if [ "$KIND" = secondmate ]; then
     echo "error: --env-file applies only to crewmate ship or scout briefs; a secondmate home is not a worktree" >&2
@@ -217,6 +220,10 @@ if [ "$ENV_FILE_SET" -eq 1 ]; then
     *) echo "error: --env-file must be the absolute path of the environment file in the project's primary checkout (got '$ENV_SOURCE')" >&2; exit 1 ;;
   esac
   if [ "$ENV_DEST_SET" -eq 1 ]; then
+    while [ "${ENV_DEST%/}" != "$ENV_DEST" ]; do
+      ENV_DEST=${ENV_DEST%/}
+      ENV_DEST_IS_DIR=1
+    done
     [ -n "$ENV_DEST" ] || {
       echo "error: --env-file destination after ':' is empty; give a worktree-relative destination or drop the ':' to link at the worktree root" >&2
       exit 1
@@ -300,7 +307,11 @@ CONTEXT_LINE='If the project has a `CONTEXT.md` at its root, read it before you 
 ENV_SECTION=
 if [ -n "$ENV_SOURCE" ]; then
   ENV_PRIMARY_DIR=$(dirname "$ENV_SOURCE")
-  ENV_LINK_TARGET=${ENV_DEST:-$(basename "$ENV_SOURCE")}
+  if [ "$ENV_DEST_IS_DIR" -eq 1 ]; then
+    ENV_LINK_TARGET="$ENV_DEST/$(basename "$ENV_SOURCE")"
+  else
+    ENV_LINK_TARGET=${ENV_DEST:-$(basename "$ENV_SOURCE")}
+  fi
   # Both operands are shell-quoted so a path containing a space renders a command
   # the worker can run exactly as printed.
   ENV_MKDIR=

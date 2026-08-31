@@ -1028,7 +1028,15 @@ test_no_run_done_then_declared_wait_reports_done() {
   out=$(run_crew_state "$d" feat-donepause)
   assert_contains "$out" "state: paused" "a mid-task declared wait must still report paused"
   assert_contains "$out" "waiting on the vendor sandbox" "the mid-task pause reason is preserved"
-  pass "a trailing declared wait reveals a terminal outcome but never a mid-task state"
+
+  # Only a done line is revealed: a declared wait after a failure is still the
+  # crew's state, so the wait keeps absorbing it as it did before.
+  printf 'failed: could not reach the vendor API\npaused: waiting for the vendor status page to clear\n' \
+    > "$d/state/feat-donepause.status"
+  out=$(run_crew_state "$d" feat-donepause)
+  assert_contains "$out" "state: paused" "a declared wait after a failure must still report paused"
+  assert_contains "$out" "vendor status page" "the post-failure pause reason is preserved"
+  pass "a trailing declared wait reveals a done line but never another state"
 }
 
 test_no_run_idle_pane_custom_paused_verb() {

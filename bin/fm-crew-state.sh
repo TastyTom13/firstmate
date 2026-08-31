@@ -157,9 +157,10 @@ log_last_unpaused_line() {
 # than its outcome, and reading the tail alone would hide the finished crew from
 # every terminal-outcome consumer (bin/fm-inactive-reconcile.sh reads this
 # script's verdict). A trailing run of declared waits is therefore skipped, but
-# ONLY when the line beneath it is terminal: a mid-task pause with no terminal
-# line before it still reports paused, and any other verb appended after a done
-# line still wins, exactly as before.
+# ONLY when the line beneath it is a `done` line: a mid-task pause with no done
+# line before it still reports paused, a declared wait after any other verb
+# (including `failed`) still reports the wait, and any other verb appended after
+# a done line still wins, all exactly as before.
 log_effective_line() {
   local last prev
   last=$(log_last_line) || return 1
@@ -167,8 +168,8 @@ log_effective_line() {
   status_is_paused "$last" || { printf '%s\n' "$last"; return 0; }
   prev=$(log_last_unpaused_line) || { printf '%s\n' "$last"; return 0; }
   case "$(status_line_verb "$prev")" in
-    done|failed) printf '%s\n' "$prev" ;;
-    *)           printf '%s\n' "$last" ;;
+    done) printf '%s\n' "$prev" ;;
+    *)    printf '%s\n' "$last" ;;
   esac
 }
 
@@ -318,7 +319,7 @@ nm_gate_findings_count() {
   printf '%s' "$rest"
 }
 log_reports_ci_ready() {
-  [ "$(status_line_verb "$LOG_LINE")" = "done" ] || return 1
+  [ "$LOG_VERB" = "done" ] || return 1
   case "$(status_line_note "$LOG_LINE")" in
     *PR*"checks green"*|*"checks green"*PR*) return 0 ;;
     *) return 1 ;;
