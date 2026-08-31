@@ -69,7 +69,8 @@ test_deny_terms_refuse_and_innocent_words_do_not() {
     db dbs email emails \
     "user data" "User-data" user_data userdata \
     candidateProfile secretKey credentialStore apiToken SecretKey \
-    dbConnection userSecrets dataBase eMail; do
+    dbConnection userSecrets dataBase eMail \
+    APIKey APIToken DBConnection PIIRedact JWTToken HTTPSecret; do
     status=$(run_guard "$home" demo-repo "Add tests. Context: $term handling.")
     expect_code 1 "$status" "deny term '$term' did not refuse"
     assert_contains "$(cat "$home/err.txt")" "deny term" \

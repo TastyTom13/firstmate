@@ -18,7 +18,8 @@
 # "bulletin" does not. "article 9" also matches "article-9" and "article9",
 # "env" also matches ".env" and "environment", and "user data" also matches
 # "userdata". Both the brief as written and a camel-hump-split copy of it are
-# scanned, so "secretKey" and "dataBase" refuse too. The scan runs under
+# scanned, so "secretKey" and "dataBase" refuse too. The split also breaks the
+# acronym-prefix form, so "APIKey" and "DBConnection" refuse. The scan runs under
 # LC_ALL=C, so a brief that is not valid UTF-8 is compared byte by byte.
 # Over-refusal is the intended bias: a refusal costs one fallback to the paid
 # tier, a miss publishes content to a vendor. The exact terms in force are
@@ -109,7 +110,8 @@ if ! sed 's/#.*//' "$ALLOWLIST" | tr -d '[:blank:]' \
 fi
 
 if ! SPLIT_BRIEF=$(printf '%s\n' "$BRIEF" \
-  | LC_ALL=C sed 's/\([a-z0-9]\)\([A-Z]\)/\1 \2/g'); then
+  | LC_ALL=C sed -e 's/\([a-z0-9]\)\([A-Z]\)/\1 \2/g' \
+    -e 's/\([A-Z]\)\([A-Z][a-z]\)/\1 \2/g'); then
   echo "refused: deny-term scan could not normalise the brief text" >&2
   exit 1
 fi
