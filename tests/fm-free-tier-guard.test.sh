@@ -69,7 +69,7 @@ test_deny_terms_refuse_and_innocent_words_do_not() {
     db dbs email emails \
     "user data" "User-data" user_data userdata \
     candidateProfile secretKey credentialStore apiToken SecretKey \
-    dbConnection userSecrets; do
+    dbConnection userSecrets dataBase eMail; do
     status=$(run_guard "$home" demo-repo "Add tests. Context: $term handling.")
     expect_code 1 "$status" "deny term '$term' did not refuse"
     assert_contains "$(cat "$home/err.txt")" "deny term" \
@@ -188,6 +188,8 @@ test_usage_errors_are_distinct_from_refusals() {
   expect_code 2 "$status" "--help did not exit in the non-eligible class"
   ! grep -q '^eligible: ' "$out" \
     || fail "--help printed an eligible verdict"
+  assert_grep "credential" "$out" \
+    "--help did not print the deny set the operator page points at"
 
   pass "usage errors exit 2, --help exits 2, and an unreadable brief refuses"
 }

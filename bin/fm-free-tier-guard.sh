@@ -15,8 +15,14 @@
 # allowlist line, so a multi-line value can never be eligible.
 # Deny terms are matched case-insensitively at word boundaries, with an
 # optional plural suffix, so "Credentials" and "candidates" refuse while
-# "bulletin" does not. Over-refusal is the intended bias: a refusal costs one
-# fallback to the paid tier, a miss publishes content to a vendor.
+# "bulletin" does not. "article 9" also matches "article-9" and "article9",
+# "env" also matches ".env" and "environment", and "user data" also matches
+# "userdata". Both the brief as written and a camel-hump-split copy of it are
+# scanned, so "secretKey" and "dataBase" refuse too. The scan runs under
+# LC_ALL=C, so a brief that is not valid UTF-8 is compared byte by byte.
+# Over-refusal is the intended bias: a refusal costs one fallback to the paid
+# tier, a miss publishes content to a vendor. The exact terms in force are
+# printed at the end of this help text.
 # This is a mechanical backstop for obvious mis-scoping only, not a
 # classifier: firstmate's own judgement at intake remains the real gate.
 # docs/free-tier-routing.md owns the operator procedure this guard supports.
@@ -28,17 +34,14 @@ FM_HOME="${FM_HOME:-$FM_ROOT}"
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 ALLOWLIST="$CONFIG/free-tier-repos"
 
-# Single owner of the deny set. Each term is matched with an optional plural
-# suffix; "article 9" also matches "article-9" and "article9", "env" also
-# matches ".env" and "environment", and "user data" also matches "userdata".
-# Camel humps are split before matching, so "secretKey" and "candidateProfile"
-# refuse too. The match runs under LC_ALL=C so a brief that is not valid UTF-8
-# is compared byte by byte.
+# Single owner of the deny set; the header above owns the matching rules.
 DENY_WORDS='credential|secret|token|candidate|pii|bull|strategy|strategies|environment|env|key|database|db|email'
 DENY_PHRASE='article[^a-z0-9]*9|user[^a-z0-9]*data'
 
 usage() {
-  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+  awk 'NR > 1 { if ($0 !~ /^#/) { exit } sub(/^# ?/, ""); print }' "$0"
+  printf '\nDeny words: %s\n' "$DENY_WORDS"
+  printf 'Deny phrases: %s\n' "$DENY_PHRASE"
 }
 
 REPO=''
@@ -105,9 +108,14 @@ if ! sed 's/#.*//' "$ALLOWLIST" | tr -d '[:blank:]' \
   exit 1
 fi
 
+if ! SPLIT_BRIEF=$(printf '%s\n' "$BRIEF" \
+  | LC_ALL=C sed 's/\([a-z0-9]\)\([A-Z]\)/\1 \2/g'); then
+  echo "refused: deny-term scan could not normalise the brief text" >&2
+  exit 1
+fi
+
 DENY_STATUS=0
-printf '%s\n' "$BRIEF" \
-  | LC_ALL=C sed 's/\([a-z0-9]\)\([A-Z]\)/\1 \2/g' \
+printf '%s\n%s\n' "$BRIEF" "$SPLIT_BRIEF" \
   | LC_ALL=C grep -qiE "(^|[^a-z0-9])($DENY_WORDS)(s|es)?([^a-z0-9]|\$)|$DENY_PHRASE" \
   || DENY_STATUS=$?
 
