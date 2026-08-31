@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Behavior tests for fm-free-tier-guard.sh: refuse without an allowlist, refuse
-# an unlisted repo, refuse deny-term brief text without over-refusing an
-# innocent word, and allow only a listed repo with clean brief text.
+# an unlisted repo, refuse a multi-line repo value carrying a listed name,
+# refuse deny-term brief text without over-refusing an innocent word, and allow
+# only a listed repo with clean brief text.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -61,7 +62,9 @@ test_deny_terms_refuse_and_innocent_words_do_not() {
   printf '# pilot repos\ndemo-repo\n' > "$home/config/free-tier-repos"
 
   for term in credential credentials secret secrets token tokens \
-    candidate candidates PII "Article 9" "article-9" Bull strategy strategies; do
+    candidate candidates PII "Article 9" "article-9" Bull strategy strategies \
+    env .env envs key keys database databases db dbs email emails \
+    "user data" "User-data"; do
     status=$(run_guard "$home" demo-repo "Add tests. Context: $term handling.")
     expect_code 1 "$status" "deny term '$term' did not refuse"
     assert_contains "$(cat "$home/err.txt")" "deny term" \
@@ -74,6 +77,19 @@ test_deny_terms_refuse_and_innocent_words_do_not() {
   done
 
   pass "deny terms refuse while similar innocent words still pass"
+}
+
+test_multiline_repo_value_refuses() {
+  local home status
+  home=$(make_home multiline-repo)
+  printf 'demo-repo\n' > "$home/config/free-tier-repos"
+
+  status=$(run_guard "$home" "$(printf 'scout-core\ndemo-repo')" "write table fixtures")
+  expect_code 1 "$status" "guard allowed a multi-line repo value containing a listed name"
+  assert_not_contains "$(cat "$home/out.txt")" "eligible" \
+    "multi-line repo value still printed an eligible verdict"
+
+  pass "a multi-line repo value carrying a listed name is refused"
 }
 
 test_listed_repo_with_clean_brief_is_eligible() {
@@ -119,6 +135,7 @@ test_usage_errors_are_distinct_from_refusals() {
 
 test_missing_allowlist_refuses
 test_unlisted_repo_refuses
+test_multiline_repo_value_refuses
 test_deny_terms_refuse_and_innocent_words_do_not
 test_listed_repo_with_clean_brief_is_eligible
 test_usage_errors_are_distinct_from_refusals

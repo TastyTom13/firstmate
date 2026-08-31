@@ -31,6 +31,8 @@ Both entries are home-local configuration on the machine that runs the worker, n
 
 `GROQ_API_KEY` must be exported in the environment the worker harness inherits.
 
+Neither block below has been dispatched against a real harness, because no Groq key exists yet; treat both as unverified until the first key proves them.
+
 OpenCode, in `~/.config/opencode/opencode.json`.
 This block's field names were not verified against an installed OpenCode, so check the installed version's own configuration reference before pasting it:
 
@@ -40,7 +42,10 @@ This block's field names were not verified against an installed OpenCode, so che
     "groq": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "Groq",
-      "options": { "baseURL": "https://api.groq.com/openai/v1" },
+      "options": {
+        "baseURL": "https://api.groq.com/openai/v1",
+        "apiKey": "{env:GROQ_API_KEY}"
+      },
       "models": { "openai/gpt-oss-120b": { "name": "GPT-OSS 120B (Groq)" } }
     }
   }
@@ -48,6 +53,8 @@ This block's field names were not verified against an installed OpenCode, so che
 ```
 
 Dispatch it as `--model groq/openai/gpt-oss-120b`; confirm the exact identifier with `opencode models groq` before first use.
+
+Without the `apiKey` binding the provider dispatches unauthenticated and fails on the first call, so confirm how the installed OpenCode spells that environment reference before pasting.
 
 Pi, as a custom provider in Pi's own settings file.
 The field names below were not verified against an installed Pi, so read Pi's installed `docs/models.md` and `docs/settings.md` for the current key names before pasting this block:
@@ -81,7 +88,7 @@ Add this object to the `rules` array of the home's own `config/crew-dispatch.jso
 ```
 
 The rule is advisory data.
-The guard below is what actually stops a mis-scoped brief.
+The guard below is a mechanical backstop that catches obvious mis-scoping only; firstmate's own judgement when writing the brief remains the actual gate.
 
 ## The guard
 
@@ -100,8 +107,9 @@ Exit 0 prints `eligible: <repo>` and is the only state in which the free-tier pr
 Exit 1 prints the refusal reason; fall through to the existing paid cheap-model rule and dispatch there instead.
 Exit 2 is a usage error and means the check did not run at all, which is also not permission to dispatch.
 
-The guard refuses brief text matching any of `credential`, `secret`, `token`, `candidate`, `pii`, `bull`, `strategy`, or `article 9`.
+The guard refuses brief text matching any of `credential`, `secret`, `token`, `candidate`, `pii`, `bull`, `strategy`, `env` (which also covers `.env`), `key`, `database`, `db`, `email`, `user data`, or `article 9`.
 It over-refuses on purpose: a false refusal costs one fallback to the paid tier, while a miss publishes content to a vendor.
+A keyword list is not a classifier, so a brief that crosses a data line without using one of those words still passes; do not lean on the guard in place of reading the brief.
 
 ## Comparison procedure
 

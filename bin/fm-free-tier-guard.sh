@@ -7,12 +7,15 @@
 # The allowlist is FM_CONFIG_OVERRIDE (else FM_HOME/config)/free-tier-repos,
 # one repo name per line, blank lines and #-comments ignored. An absent,
 # empty, or unreadable allowlist refuses every repo, so free-tier routing is
-# off until a home opts a repo in by name.
+# off until a home opts a repo in by name. The repo name must equal one whole
+# allowlist line, so a multi-line value can never be eligible.
 # Deny terms are matched case-insensitively at word boundaries, with an
 # optional plural suffix, so "Credentials" and "candidates" refuse while
 # "bulletin" does not. Over-refusal is the intended bias: a refusal costs one
 # fallback to the paid tier, a miss publishes content to a vendor.
-# docs/free-tier-routing.md owns the operator procedure this guard enforces.
+# This is a mechanical backstop for obvious mis-scoping only, not a
+# classifier: firstmate's own judgement at intake remains the real gate.
+# docs/free-tier-routing.md owns the operator procedure this guard supports.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,12 +25,13 @@ CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 ALLOWLIST="$CONFIG/free-tier-repos"
 
 # Single owner of the deny set. Each term is matched with an optional plural
-# suffix; "article 9" also matches "article-9" and "article9".
-DENY_WORDS='credential|secret|token|candidate|pii|bull|strategy|strategies'
-DENY_PHRASE='article[^a-z0-9]*9'
+# suffix; "article 9" also matches "article-9" and "article9", and "env"
+# also matches ".env".
+DENY_WORDS='credential|secret|token|candidate|pii|bull|strategy|strategies|env|key|database|db|email'
+DENY_PHRASE='article[^a-z0-9]*9|user[^a-z0-9]+data'
 
 usage() {
-  sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 REPO=''
@@ -81,7 +85,10 @@ if [ ! -f "$ALLOWLIST" ] || [ ! -r "$ALLOWLIST" ]; then
   exit 1
 fi
 
-if ! sed 's/#.*//' "$ALLOWLIST" | tr -d '[:blank:]' | grep -Fxq -- "$REPO"; then
+if ! sed 's/#.*//' "$ALLOWLIST" | tr -d '[:blank:]' \
+  | FM_FREE_TIER_REPO="$REPO" awk 'BEGIN { repo = ENVIRON["FM_FREE_TIER_REPO"] }
+    $0 == repo { found = 1 }
+    END { exit found ? 0 : 1 }'; then
   echo "refused: repo '$REPO' is not on the free-tier allowlist" >&2
   exit 1
 fi
