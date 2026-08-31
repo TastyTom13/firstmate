@@ -1,0 +1,28 @@
+$ bin/fm-gpt-quota.sh
+bin: bin/fm-gpt-quota.sh
+description: Report the ChatGPT (Codex) subscription quota window for this home
+generatedAt: "2026-08-31T22:37:54Z"
+quota[1]{provider,scope,percentRemaining,window,resetsAt,source,estimate}:
+  openai-codex,primary,94,"30 day","2026-09-30T21:37:52Z",response_headers,false
+
+$ bin/fm-quota-pools.sh | jq .
+[
+  {
+    "provider": "claude",
+    "label": "Claude",
+    "percent_remaining": 66,
+    "window": "session",
+    "resets_at": "2026-09-01T02:19:59.743550+00:00",
+    "estimate": false,
+    "note": null
+  },
+  {
+    "provider": "openai-codex",
+    "label": "ChatGPT",
+    "percent_remaining": 94,
+    "window": "30 day",
+    "resets_at": "2026-09-30T21:37:52Z",
+    "estimate": false,
+    "note": null
+  }
+]
