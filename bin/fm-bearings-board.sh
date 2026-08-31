@@ -29,10 +29,23 @@
 #
 # Validation is fail-closed: the payload must be valid JSON with
 # schema=fm-bearings-board.v1 and every renderer-consumed field must satisfy
-# the fm-bearings-board.v1 types and item invariants below. Every fleet row and
-# Captain's Call item explicitly carries `repo`; the composer fills it from the
-# snapshot and task records wherever known, and uses null or an empty string
-# only as the deliberate genuinely-no-repo marker. In that exceptional case
+# the fm-bearings-board.v1 types and item invariants below.
+#
+# `pools` is the optional always-visible usage gauge: one entry per provider
+# subscription, each carrying `provider`, `label`, `percent_remaining` (a
+# number 0-100, or null for a pool that could not be read), `window`,
+# `resets_at`, `estimate`, and `note`. bin/fm-quota-pools.sh produces the array
+# in exactly this shape. The field is additive, so a payload that omits it
+# stays a valid fm-bearings-board.v1 payload and the board simply renders no
+# gauge; that is what keeps the schema version unchanged. A pool whose
+# `percent_remaining` is null renders as unreadable with its `note`, never as
+# an empty or full gauge, and a pool with `estimate` true is labelled on the
+# board as an estimate so a measured-spend number is never read as the
+# provider's own remaining allowance.
+#
+# Every fleet row and Captain's Call item explicitly carries `repo`; the
+# composer fills it from the snapshot and task records wherever known, and uses
+# null or an empty string only as the deliberate genuinely-no-repo marker. In that exceptional case
 # the template may display the routing id. Anything else refuses before the
 # existing board is touched.
 #
@@ -110,6 +123,18 @@ validate_payload() {  # <data.json>
       type == "object" and repo_marker and (.id | nonempty_string)
       and (.what | nonempty_string) and (.owner | nonempty_string)
       and optional_https_url("pr_url");
+    def pool_item:
+      type == "object"
+      and (.provider | slug(64))
+      and (.label | nonempty_string)
+      and has("percent_remaining")
+      and (.percent_remaining == null
+        or ((.percent_remaining | type) == "number"
+          and .percent_remaining >= 0 and .percent_remaining <= 100))
+      and optional_string("window")
+      and ((has("resets_at") | not) or .resets_at == null or (.resets_at | type == "string"))
+      and ((has("estimate") | not) or (.estimate | type) == "boolean")
+      and ((has("note") | not) or .note == null or (.note | type == "string"));
     def charted_item:
       type == "object" and repo_marker and (.id | slug(128))
       and (.title | nonempty_string) and (.reason | type == "string")
@@ -129,6 +154,8 @@ validate_payload() {  # <data.json>
       or ((.charted_more | type == "number") and (.charted_more >= 0) and (.charted_more | floor == .)))
     and ((has("charted_warning_more") | not)
       or ((.charted_warning_more | type == "number") and (.charted_warning_more >= 0) and (.charted_warning_more | floor == .)))
+    and ((has("pools") | not)
+      or ((.pools | type) == "array" and ([.pools[] | pool_item] | all)))
     and ([.captains_call[] | call_item] | all)
     and ([.underway[] | underway_item] | all)
     and ([.landed[] | landed_item] | all)

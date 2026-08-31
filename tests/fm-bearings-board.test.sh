@@ -404,6 +404,51 @@ test_charted_kind_is_optional_and_accepts_both_values() {
   pass "charted kind is optional and accepts queued and warning"
 }
 
+test_pools_are_optional_and_validated_when_present() {
+  local home data rc out
+  home=$(make_home pools)
+  data="$home/payload.json"
+
+  # Omitting pools keeps a payload valid, which is what lets the gauge ship
+  # without moving the board off fm-bearings-board.v1.
+  write_valid_payload "$data"
+  run_board "$home" build "$data" >/dev/null \
+    || fail "a payload without pools was refused"
+  extract_payload "$home/.lavish/bearings-board.html" | jq -e 'has("pools") | not' >/dev/null \
+    || fail "the board invented a pools field the payload never carried"
+
+  write_valid_payload "$data"
+  jq '.pools = [{"provider":"claude","label":"Claude","percent_remaining":70,
+                 "window":"week","resets_at":"2026-09-07T03:59:59Z","estimate":false,"note":null},
+                {"provider":"openai-codex","label":"ChatGPT","percent_remaining":null,
+                 "window":"","resets_at":null,"estimate":false,"note":"no credential"}]' \
+    "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  run_board "$home" build "$data" >/dev/null || fail "a well-formed pools array was refused"
+  extract_payload "$home/.lavish/bearings-board.html" | jq -e '
+    (.pools | length) == 2 and .pools[1].percent_remaining == null
+  ' >/dev/null || fail "the built board did not carry the pools it was given"
+
+  write_valid_payload "$data"
+  jq '.pools = [{"provider":"claude","label":"Claude","percent_remaining":140}]' \
+    "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
+  [ "$rc" -ne 0 ] || fail "a pool claiming more than 100% remaining was accepted: $out"
+
+  write_valid_payload "$data"
+  jq '.pools = [{"provider":"claude","label":"Claude"}]' "$data" > "$data.tmp" \
+    && mv "$data.tmp" "$data"
+  set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
+  [ "$rc" -ne 0 ] || fail "a pool with no percent_remaining at all was accepted: $out"
+
+  write_valid_payload "$data"
+  jq '.pools = [{"provider":"claude","label":"Claude","percent_remaining":"70"}]' \
+    "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
+  [ "$rc" -ne 0 ] || fail "a pool whose percentage is a string was accepted: $out"
+
+  pass "pools are optional, and a present pools array is validated field by field"
+}
+
 test_path_is_stable_and_home_scoped
 test_build_refuses_malformed_payloads_before_touching_the_board
 test_charted_kind_is_optional_and_accepts_both_values
@@ -412,3 +457,4 @@ test_registration_cannot_consume_before_any_origin_binding
 test_build_does_not_bind_or_arm_when_session_start_fails
 test_rebuild_is_idempotent_and_does_not_double_arm
 test_build_refuses_a_template_without_exactly_one_slot
+test_pools_are_optional_and_validated_when_present
