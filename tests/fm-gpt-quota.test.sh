@@ -194,6 +194,53 @@ test_the_default_view_names_an_unreadable_pool() {
   pass "an unreadable pool renders an attention block naming the reason"
 }
 
+test_a_partial_header_set_is_unavailable_not_a_crash() {
+  local home out
+  home=$(make_home partial-headers 'HTTP/2 400
+content-type: application/json
+x-codex-plan-type: plus
+x-codex-primary-window-minutes: 43200
+')
+  out=$(run_reader "$home" --json) || fail "a partial header set should not be fatal"
+  printf '%s' "$out" | jq -e '
+    .status == "unavailable" and (.detail | length) > 0
+    and .windows == [] and .limiting == null
+  ' >/dev/null || fail "a partial header set did not report unavailable: $out"
+  pass "a half-answered header set reports unavailable instead of failing"
+}
+
+test_a_fractional_percent_is_read_not_rejected() {
+  local home out
+  home=$(make_home fractional 'HTTP/2 400
+content-type: application/json
+x-codex-primary-window-minutes: 43200
+x-codex-primary-used-percent: 6.5
+')
+  out=$(run_reader "$home" --json) || fail "a fractional percent should not be fatal"
+  printf '%s' "$out" | jq -e '
+    .status == "known" and (.windows | length) == 1
+    and .limiting.percentRemaining == 93.5
+  ' >/dev/null || fail "a fractional used-percent was not read: $out"
+  pass "a fractional used-percent is read as a real reading"
+}
+
+test_a_zero_length_primary_window_is_dropped() {
+  local home out
+  home=$(make_home zero-primary 'HTTP/2 400
+content-type: application/json
+x-codex-primary-window-minutes: 0
+x-codex-primary-used-percent: 0
+x-codex-secondary-window-minutes: 10080
+x-codex-secondary-used-percent: 55
+')
+  out=$(run_reader "$home" --json) || fail "a zero-minute primary should not be fatal"
+  printf '%s' "$out" | jq -e '
+    (.windows | length) == 1 and .windows[0].id == "secondary"
+    and .limiting.percentRemaining == 45
+  ' >/dev/null || fail "a zero-minute primary window was not dropped: $out"
+  pass "a zero-length primary window is dropped, not shown as fully free"
+}
+
 test_it_reports_remaining_allowance_per_window
 test_the_headline_is_the_tightest_window
 test_a_window_the_account_does_not_have_is_not_reported_as_free
@@ -204,3 +251,6 @@ test_a_response_without_the_headers_is_unavailable
 test_an_unreachable_backend_is_unavailable
 test_the_default_view_is_a_quota_axi_shaped_block
 test_the_default_view_names_an_unreadable_pool
+test_a_partial_header_set_is_unavailable_not_a_crash
+test_a_fractional_percent_is_read_not_rejected
+test_a_zero_length_primary_window_is_dropped

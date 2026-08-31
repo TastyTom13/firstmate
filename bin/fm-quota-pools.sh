@@ -113,14 +113,29 @@ gpt_pool() {
   ' 2>/dev/null || unreadable_pool openai-codex ChatGPT "the ChatGPT reader returned an unreadable report"
 }
 
+# A reader that prints nothing at all is as unreadable as one that fails, so
+# both collapse to the same reported pool rather than breaking the array.
+or_unreadable() {  # <pool-json> <provider> <label> <note>
+  if printf '%s' "$1" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    printf '%s' "$1"
+  else
+    unreadable_pool "$2" "$3" "$4"
+  fi
+}
+
 main() {
+  local claude gpt
   case "${1-}" in
     -h|--help|help) usage; return 0 ;;
     '') : ;;
     *) usage >&2; exit 2 ;;
   esac
   command -v jq >/dev/null 2>&1 || fail "jq is required"
-  jq -nc --argjson claude "$(claude_pool)" --argjson gpt "$(gpt_pool)" '[$claude, $gpt]'
+  claude=$(or_unreadable "$(claude_pool)" claude Claude \
+    "quota-axi returned an unreadable report")
+  gpt=$(or_unreadable "$(gpt_pool)" openai-codex ChatGPT \
+    "the ChatGPT reader returned an unreadable report")
+  jq -nc --argjson claude "$claude" --argjson gpt "$gpt" '[$claude, $gpt]'
 }
 
 main "$@"

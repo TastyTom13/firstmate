@@ -88,6 +88,41 @@ window_label() {  # <minutes>
   fi
 }
 
+is_window_minutes() {  # <value>
+  case "$1" in
+    ''|0|*[!0-9]*) return 1 ;;
+  esac
+  return 0
+}
+
+is_percent() {  # <value>
+  case "$1" in
+    ''|.|*[!0-9.]*|*.*.*|.*|*.) return 1 ;;
+  esac
+  return 0
+}
+
+# A window the account does not have is reported as zero minutes; carrying it
+# as a 100%-free window would invent headroom that does not exist, so any
+# window without a usable length and percent is dropped.
+append_window() {  # <windows-json> <id> <minutes> <used> <resets-at> <resets-in>
+  local minutes=$3 used=$4
+  if ! is_window_minutes "$minutes" || ! is_percent "$used"; then
+    printf '%s' "$1"
+    return
+  fi
+  printf '%s' "$1" | jq -c \
+    --arg id "$2" --arg label "$(window_label "$minutes")" \
+    --argjson minutes "$minutes" --argjson used "$used" \
+    --arg resets_at "$5" --arg resets_in "$6" '
+    . + [{
+      id: $id, label: $label, windowMinutes: $minutes,
+      usedPercent: $used, percentRemaining: (100 - $used),
+      resetsAt: (if ($resets_at | test("^[0-9]+$")) then ($resets_at | tonumber | todate) else null end),
+      resetsInSeconds: (if ($resets_in | test("^[0-9]+$")) then ($resets_in | tonumber) else null end)
+    }]'
+}
+
 header_value() {  # <headers-file> <name>
   tr -d '\r' < "$1" | awk -v want="$2" '
     BEGIN { IGNORECASE = 1 }
@@ -100,8 +135,8 @@ header_value() {  # <headers-file> <name>
 }
 
 read_quota() {
-  local access account expires headers status code minutes used reset_at reset_in
-  local plan active_limit primary_label secondary_minutes secondary_used
+  local access account expires headers status minutes used reset_at reset_in
+  local plan active_limit secondary_minutes secondary_used
   local secondary_reset_at secondary_reset_in windows
 
   command -v jq >/dev/null 2>&1 || fail "jq is required"
@@ -160,8 +195,7 @@ read_quota() {
     return
   fi
 
-  code=$(header_value "$headers" 'x-codex-primary-window-minutes')
-  minutes=$code
+  minutes=$(header_value "$headers" 'x-codex-primary-window-minutes')
   used=$(header_value "$headers" 'x-codex-primary-used-percent')
   reset_at=$(header_value "$headers" 'x-codex-primary-reset-at')
   reset_in=$(header_value "$headers" 'x-codex-primary-reset-after-seconds')
@@ -173,45 +207,15 @@ read_quota() {
   secondary_reset_in=$(header_value "$headers" 'x-codex-secondary-reset-after-seconds')
   rm -f -- "$headers"
 
-  case "$minutes$used" in
-    ''|*[!0-9]*)
-      unavailable no_headers "the Codex backend answered without its rate-limit headers" \
-        "check that $MODEL is still accepted for this account"
-      return ;;
-  esac
-
-  # A window the account does not have is reported as zero minutes; carrying it
-  # as a 100%-free window would invent headroom that does not exist.
   windows='[]'
-  primary_label=$(window_label "$minutes")
-  windows=$(printf '%s' "$windows" | jq -c \
-    --arg id primary --arg label "$primary_label" \
-    --argjson minutes "$minutes" --argjson used "$used" \
-    --arg resets_at "$reset_at" --arg resets_in "$reset_in" '
-    . + [{
-      id: $id, label: $label, windowMinutes: $minutes,
-      usedPercent: $used, percentRemaining: (100 - $used),
-      resetsAt: (if ($resets_at | test("^[0-9]+$")) then ($resets_at | tonumber | todate) else null end),
-      resetsInSeconds: (if ($resets_in | test("^[0-9]+$")) then ($resets_in | tonumber) else null end)
-    }]')
-  case "$secondary_minutes" in
-    ''|0|*[!0-9]*) : ;;
-    *)
-      case "$secondary_used" in
-        ''|*[!0-9]*) : ;;
-        *)
-          windows=$(printf '%s' "$windows" | jq -c \
-            --arg id secondary --arg label "$(window_label "$secondary_minutes")" \
-            --argjson minutes "$secondary_minutes" --argjson used "$secondary_used" \
-            --arg resets_at "$secondary_reset_at" --arg resets_in "$secondary_reset_in" '
-            . + [{
-              id: $id, label: $label, windowMinutes: $minutes,
-              usedPercent: $used, percentRemaining: (100 - $used),
-              resetsAt: (if ($resets_at | test("^[0-9]+$")) then ($resets_at | tonumber | todate) else null end),
-              resetsInSeconds: (if ($resets_in | test("^[0-9]+$")) then ($resets_in | tonumber) else null end)
-            }]') ;;
-      esac ;;
-  esac
+  windows=$(append_window "$windows" primary "$minutes" "$used" "$reset_at" "$reset_in")
+  windows=$(append_window "$windows" secondary "$secondary_minutes" "$secondary_used" \
+    "$secondary_reset_at" "$secondary_reset_in")
+  if [ "$windows" = '[]' ]; then
+    unavailable no_headers "the Codex backend answered without usable rate-limit headers" \
+      "check that $MODEL is still accepted for this account"
+    return
+  fi
 
   # The account can only spend what its tightest window allows, so that window
   # is the one headline figure; ties keep the shorter window.

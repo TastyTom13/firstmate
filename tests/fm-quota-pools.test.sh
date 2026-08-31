@@ -151,8 +151,29 @@ test_the_output_satisfies_the_board_payload_contract() {
   pass "the reader's output is accepted by the board payload contract"
 }
 
+test_a_reader_that_prints_nothing_still_yields_a_marked_pool() {
+  local home out
+  home=$(make_home silent-reader)
+  fake_quota_axi "$home" "$QUOTA_AXI_JSON"
+  cat > "$home/fakebin/quota-axi" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  chmod +x "$home/fakebin/quota-axi"
+  fake_gpt_reader "$home" "$GPT_JSON"
+  out=$(run_pools "$home") || fail "a silent quota-axi should not be fatal"
+  printf '%s' "$out" | jq -e '
+    length == 2
+    and (.[0] | .provider == "claude" and .percent_remaining == null
+         and (.note | length) > 0)
+    and (.[1] | .percent_remaining == 94)
+  ' >/dev/null || fail "a silent reader did not leave a marked pool: $out"
+  pass "a reader that answers with nothing leaves its pool marked unreadable"
+}
+
 test_both_pools_land_in_one_board_shape
 test_an_absent_claude_reader_stays_in_the_array_with_its_reason
 test_an_unreadable_gpt_pool_carries_the_readers_own_detail
 test_an_estimated_reading_is_marked_as_an_estimate
 test_the_output_satisfies_the_board_payload_contract
+test_a_reader_that_prints_nothing_still_yields_a_marked_pool
