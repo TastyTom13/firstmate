@@ -241,6 +241,24 @@ x-codex-secondary-used-percent: 55
   pass "a zero-length primary window is dropped, not shown as fully free"
 }
 
+test_a_zero_padded_window_length_is_still_labelled() {
+  local home out
+  home=$(make_home zero-padded 'HTTP/2 400
+content-type: application/json
+x-codex-primary-window-minutes: 0080
+x-codex-primary-used-percent: 06
+')
+  out=$(run_reader "$home" --json 2>"$home/stderr.txt") \
+    || fail "a zero-padded window length should not be fatal"
+  printf '%s' "$out" | jq -e '
+    .status == "known" and (.windows | length) == 1
+    and .windows[0].windowMinutes == 80 and .windows[0].label == "80 min"
+    and .windows[0].percentRemaining == 94
+  ' >/dev/null || fail "a zero-padded window length was not read: $out"
+  [ ! -s "$home/stderr.txt" ] || fail "the reader wrote noise to stderr: $(cat "$home/stderr.txt")"
+  pass "a zero-padded window length is labelled instead of erroring"
+}
+
 test_it_reports_remaining_allowance_per_window
 test_the_headline_is_the_tightest_window
 test_a_window_the_account_does_not_have_is_not_reported_as_free
@@ -254,3 +272,4 @@ test_the_default_view_names_an_unreadable_pool
 test_a_partial_header_set_is_unavailable_not_a_crash
 test_a_fractional_percent_is_read_not_rejected
 test_a_zero_length_primary_window_is_dropped
+test_a_zero_padded_window_length_is_still_labelled

@@ -130,23 +130,29 @@ test_an_estimated_reading_is_marked_as_an_estimate() {
   pass "a reading the source calls an estimate stays marked as an estimate"
 }
 
-test_the_output_satisfies_the_board_payload_contract() {
-  local home out board data
-  home=$(make_home board-contract)
+# Build a board from <pools-json> through the real bin/fm-bearings-board.sh,
+# which is the validator this array has to satisfy.
+board_accepts() {  # <home> <pools-json>
+  local home=$1 data
   mkdir -p "$home/state" "$home/data"
   fm_fake_exit0 "$home/fakebin" lavish-axi
-  fake_quota_axi "$home" "$QUOTA_AXI_JSON"
-  fake_gpt_reader "$home" "$GPT_JSON"
-  out=$(run_pools "$home") || fail "the pool reader failed"
   data="$home/payload.json"
-  jq -n --argjson pools "$out" '{
+  jq -n --argjson pools "$2" '{
     schema:"fm-bearings-board.v1", home:"pool-home", generated:"2026-08-31T00:00Z",
     prs_live:false, captains_call:[], underway:[], landed:[], charted:[], pools:$pools}' > "$data"
-  board="$ROOT/bin/fm-bearings-board.sh"
   PATH="$home/fakebin:$PATH" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
-    "$board" build "$data" >/dev/null \
+    "$ROOT/bin/fm-bearings-board.sh" build "$data" >/dev/null
+}
+
+test_the_output_satisfies_the_board_payload_contract() {
+  local home out
+  home=$(make_home board-contract)
+  fake_quota_axi "$home" "$QUOTA_AXI_JSON"
+  fake_gpt_reader "$home" "$GPT_JSON"
+  out=$(run_pools "$home") || fail "the pool reader failed"
+  board_accepts "$home" "$out" \
     || fail "the board refused a payload built from this reader's own output"
   pass "the reader's output is accepted by the board payload contract"
 }
@@ -171,9 +177,26 @@ SH
   pass "a reader that answers with nothing leaves its pool marked unreadable"
 }
 
+test_an_out_of_range_percent_is_reported_unreadable() {
+  local home out
+  home=$(make_home out-of-range)
+  fake_quota_axi "$home" "${QUOTA_AXI_JSON/70.6/140}"
+  fake_gpt_reader "$home" '{"schema":"fm-gpt-quota.v1","status":"known",
+    "source":"response_headers","estimate":false,
+    "limiting":{"id":"primary","label":"5 hour","percentRemaining":-20,"resetsAt":null}}'
+  out=$(run_pools "$home") || fail "an out-of-range percent should not be fatal"
+  printf '%s' "$out" | jq -e '
+    length == 2 and all(.[]; .percent_remaining == null and (.note | length) > 0)
+  ' >/dev/null || fail "an out-of-range percent was not marked unreadable: $out"
+  board_accepts "$home" "$out" \
+    || fail "the board rejected a payload built from an out-of-range reading"
+  pass "a percent outside 0-100 is reported unreadable, not passed to the board"
+}
+
 test_both_pools_land_in_one_board_shape
 test_an_absent_claude_reader_stays_in_the_array_with_its_reason
 test_an_unreadable_gpt_pool_carries_the_readers_own_detail
 test_an_estimated_reading_is_marked_as_an_estimate
 test_the_output_satisfies_the_board_payload_contract
 test_a_reader_that_prints_nothing_still_yields_a_marked_pool
+test_an_out_of_range_percent_is_reported_unreadable

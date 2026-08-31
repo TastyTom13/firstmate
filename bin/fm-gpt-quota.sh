@@ -78,7 +78,7 @@ unavailable() {  # <kind> <detail> <remedy>
 
 # 43200 -> "30 day", 10080 -> "7 day", 300 -> "5 hour", 90 -> "90 min".
 window_label() {  # <minutes>
-  local m=$1
+  local m=$((10#$1))
   if [ "$m" -ge 1440 ] && [ $((m % 1440)) -eq 0 ]; then
     printf '%s day\n' $((m / 1440))
   elif [ "$m" -ge 60 ] && [ $((m % 60)) -eq 0 ]; then
@@ -113,11 +113,13 @@ append_window() {  # <windows-json> <id> <minutes> <used> <resets-at> <resets-in
   fi
   printf '%s' "$1" | jq -c \
     --arg id "$2" --arg label "$(window_label "$minutes")" \
-    --argjson minutes "$minutes" --argjson used "$used" \
+    --arg minutes "$minutes" --arg used "$used" \
     --arg resets_at "$5" --arg resets_in "$6" '
-    . + [{
-      id: $id, label: $label, windowMinutes: $minutes,
-      usedPercent: $used, percentRemaining: (100 - $used),
+    ($minutes | tonumber) as $m
+    | ($used | tonumber) as $u
+    | . + [{
+      id: $id, label: $label, windowMinutes: $m,
+      usedPercent: $u, percentRemaining: (100 - $u),
       resetsAt: (if ($resets_at | test("^[0-9]+$")) then ($resets_at | tonumber | todate) else null end),
       resetsInSeconds: (if ($resets_in | test("^[0-9]+$")) then ($resets_in | tonumber) else null end)
     }]'

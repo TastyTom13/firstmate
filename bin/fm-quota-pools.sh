@@ -56,6 +56,23 @@ unreadable_pool() {  # <provider> <label> <note>
   }'
 }
 
+# Both readers hand over a percentage this script did not compute. The board
+# rejects a payload whose pool percent falls outside 0-100, and a whole board
+# build failing is worse than one gauge missing, so a figure that cannot be a
+# remaining percentage is reported as unreadable here instead.
+# shellcheck disable=SC2016  # jq program text, not shell expansion
+POOL_SHAPE='
+def pool($provider; $label; $pct; $window; $resets; $estimate):
+  if ($pct | type) == "number" and $pct >= 0 and $pct <= 100 then
+    {provider: $provider, label: $label, percent_remaining: ($pct | floor),
+     window: $window, resets_at: $resets, estimate: $estimate, note: null}
+  else
+    {provider: $provider, label: $label, percent_remaining: null,
+     window: "", resets_at: null, estimate: false,
+     note: "the reader reported \($pct | tojson) percent remaining, which is out of range"}
+  end;
+'
+
 # quota-axi already reduces every Claude window to one effective figure; the
 # limiting window id is what names it and dates its reset.
 claude_pool() {
@@ -68,7 +85,7 @@ claude_pool() {
     unreadable_pool claude Claude "quota-axi could not report"
     return
   }
-  printf '%s' "$raw" | jq -c '
+  printf '%s' "$raw" | jq -c "$POOL_SHAPE"'
     (.providers // [] | map(select(.provider == "claude")) | first) as $p
     | ($p.quotaSemantics.effectiveAvailability // []
        | map(select(.scope == "all_models" and .status == "known")) | first) as $a
@@ -79,11 +96,8 @@ claude_pool() {
       else
         ($a.limitingWindowIds // [] | first) as $wid
         | (($p.windows // []) | map(select(.id == $wid)) | first) as $w
-        | {provider: "claude", label: "Claude",
-           percent_remaining: ($a.effectivePercentRemaining | floor),
-           window: ($w.label // $wid // ""),
-           resets_at: ($w.resetsAt // null),
-           estimate: false, note: null}
+        | pool("claude"; "Claude"; ($a.effectivePercentRemaining);
+               ($w.label // $wid // ""); ($w.resetsAt // null); false)
       end
   ' 2>/dev/null || unreadable_pool claude Claude "quota-axi returned an unreadable report"
 }
@@ -98,13 +112,11 @@ gpt_pool() {
     unreadable_pool openai-codex ChatGPT "the ChatGPT reader could not report"
     return
   }
-  printf '%s' "$raw" | jq -c '
+  printf '%s' "$raw" | jq -c "$POOL_SHAPE"'
     if .status == "known" and .limiting != null then
-      {provider: "openai-codex", label: "ChatGPT",
-       percent_remaining: (.limiting.percentRemaining | floor),
-       window: (.limiting.label // ""),
-       resets_at: (.limiting.resetsAt // null),
-       estimate: (.estimate == true), note: null}
+      pool("openai-codex"; "ChatGPT"; (.limiting.percentRemaining);
+           (.limiting.label // ""); (.limiting.resetsAt // null);
+           (.estimate == true))
     else
       {provider: "openai-codex", label: "ChatGPT", percent_remaining: null,
        window: "", resets_at: null, estimate: false,
