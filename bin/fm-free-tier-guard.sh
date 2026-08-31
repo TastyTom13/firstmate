@@ -31,7 +31,7 @@ DENY_WORDS='credential|secret|token|candidate|pii|bull|strategy|strategies|env|k
 DENY_PHRASE='article[^a-z0-9]*9|user[^a-z0-9]+data'
 
 usage() {
-  sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 REPO=''

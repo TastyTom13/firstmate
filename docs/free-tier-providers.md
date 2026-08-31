@@ -236,4 +236,6 @@ Amber: a convenience layer over already-vetted providers, adding neither indepen
 Adding every recommended vendor gives roughly 1,000 Groq requests a day, 1M Cerebras tokens a day, 1M Scaleway tokens, 10,000 Cloudflare neurons a day, and 50 to 1,000 OpenRouter requests a day.
 That is a real pool for mechanical work and nowhere near a replacement for a judgement lane.
 The binding constraint is not the token count.
-It is that only four vendors in this entire survey will put in writing that they do not train on your input, and the pilot's allow class exists precisely because it is the only work that survives being published.
+It is that a written promise not to train on your input stays rare, and the Summary table above is the current list of who makes one.
+A first-party serving vendor's own promise is also not the same thing as a router passing the question upstream to whichever provider actually serves the request, nor the same thing as a one-off trial credit that expires.
+The pilot's allow class exists precisely because it is the only work that survives being published.
