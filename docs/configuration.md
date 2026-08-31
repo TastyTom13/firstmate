@@ -373,6 +373,12 @@ Malformed JSON, an empty or malformed rule/default array, an unverified harness,
 While the file remains present, no crewmate or scout spawn may proceed without an explicit resolved harness; malformed configuration must be reported and corrected rather than selected around.
 Secondmate homes inherit this file from the primary, so a secondmate's own crewmates apply the same dispatch profile behavior.
 
+## Free-tier repository allowlist (config/free-tier-repos)
+
+`config/free-tier-repos` is an optional local, gitignored file listing the repository names that may be routed to a free-tier model provider, one name per line.
+It is read only by [`bin/fm-free-tier-guard.sh`](../bin/fm-free-tier-guard.sh), whose header owns the file's exact format and fail-closed behavior.
+[`docs/free-tier-routing.md`](free-tier-routing.md) owns the pilot procedure and the dispatch rule text that depend on it.
+
 ## Toolchain
 
 On session start the first mate detects what its required toolchain is missing or too old and lists each problem with either an exact install command or manual instructions.
