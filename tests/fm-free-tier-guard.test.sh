@@ -67,7 +67,9 @@ test_deny_terms_refuse_and_innocent_words_do_not() {
     candidate candidates PII "Article 9" "article-9" Bull strategy strategies \
     env .env envs environment environments key keys database databases \
     db dbs email emails \
-    "user data" "User-data"; do
+    "user data" "User-data" user_data userdata \
+    candidateProfile secretKey credentialStore apiToken SecretKey \
+    dbConnection userSecrets; do
     status=$(run_guard "$home" demo-repo "Add tests. Context: $term handling.")
     expect_code 1 "$status" "deny term '$term' did not refuse"
     assert_contains "$(cat "$home/err.txt")" "deny term" \

@@ -29,11 +29,13 @@ CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 ALLOWLIST="$CONFIG/free-tier-repos"
 
 # Single owner of the deny set. Each term is matched with an optional plural
-# suffix; "article 9" also matches "article-9" and "article9", and "env"
-# also matches ".env" and "environment". The match runs under LC_ALL=C so a
-# brief that is not valid UTF-8 is compared byte by byte.
+# suffix; "article 9" also matches "article-9" and "article9", "env" also
+# matches ".env" and "environment", and "user data" also matches "userdata".
+# Camel humps are split before matching, so "secretKey" and "candidateProfile"
+# refuse too. The match runs under LC_ALL=C so a brief that is not valid UTF-8
+# is compared byte by byte.
 DENY_WORDS='credential|secret|token|candidate|pii|bull|strategy|strategies|environment|env|key|database|db|email'
-DENY_PHRASE='article[^a-z0-9]*9|user[^a-z0-9]+data'
+DENY_PHRASE='article[^a-z0-9]*9|user[^a-z0-9]*data'
 
 usage() {
   sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
@@ -105,6 +107,7 @@ fi
 
 DENY_STATUS=0
 printf '%s\n' "$BRIEF" \
+  | LC_ALL=C sed 's/\([a-z0-9]\)\([A-Z]\)/\1 \2/g' \
   | LC_ALL=C grep -qiE "(^|[^a-z0-9])($DENY_WORDS)(s|es)?([^a-z0-9]|\$)|$DENY_PHRASE" \
   || DENY_STATUS=$?
 

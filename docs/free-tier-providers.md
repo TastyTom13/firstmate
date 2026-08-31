@@ -182,23 +182,11 @@ Paid has the opposite clause.
 This is the clearest confirmation in the survey that unpaid means published and read by a person.
 Free request limits are genuinely volatile and only reliable from the live dashboard: **exact current figures unverified**.
 
-### Mistral Experiment tier
-
-Pay-as-you-go customers are opted out of training by default; the free Experiment plan is the named exception and may be used to train Mistral's models unless "Anonymous improvement data" is manually disabled in the Admin Console.
-Volume is generous at roughly 1 billion tokens a month, and Codestral suits boilerplate code well.
-Conditional at best: the protection depends on a manual toggle staying off, which nothing in this fleet would notice being flipped back.
-
 ### Agnes AI
 
 A first-party lab (SapiensAI) with real published terms, a free multimodal API with no fixed end date, and roughly 20 requests per minute.
 Its privacy policy is explicit about the price: *"For users of the Free API tier and other Free Services, interactions with the Service may be used to train and improve our AI models unless you opt out where applicable"*, while *"Enterprise customers and Paid Token Plan users are excluded from model training by default."*
 Rejected on terms, but recorded as a legitimate vendor with honest documentation rather than as a scam.
-
-### Requesty
-
-A unified gateway over 600+ models at a stated 5% markup, with "free credits" on new accounts whose amount is not published: **unverified**.
-It is a router, not a free token pool, and it costs more per token than going direct.
-No training clause was found in the pages read.
 
 ### Puter AI
 
@@ -218,6 +206,23 @@ Rejected as unverifiable.
 There is no free API tier.
 Free Grok access is the consumer chat product on grok.com, X, and X Premium, which has no programmatic surface a harness can dispatch to.
 Rejected on plumbing.
+
+## Not rejected on terms, but not a free pool either
+
+These vendors are not out under a policy line.
+They are here because the Summary table's verdict for each is something other than a usable free pool: conditional, a paid router, dead, or a pass-through that adds no protection of its own.
+
+### Mistral Experiment tier
+
+Pay-as-you-go customers are opted out of training by default; the free Experiment plan is the named exception and may be used to train Mistral's models unless "Anonymous improvement data" is manually disabled in the Admin Console.
+Volume is generous at roughly 1 billion tokens a month, and Codestral suits boilerplate code well.
+Conditional at best: the protection depends on a manual toggle staying off, which nothing in this fleet would notice being flipped back.
+
+### Requesty
+
+A unified gateway over 600+ models at a stated 5% markup, with "free credits" on new accounts whose amount is not published: **unverified**.
+It is a router, not a free token pool, and it costs more per token than going direct.
+No training clause was found in the pages read.
 
 ### GitHub Models
 
