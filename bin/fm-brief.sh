@@ -27,7 +27,9 @@
 #   the worktree. Without a ':<dest>' the link is made at the worktree root under the
 #   source file's basename; with one, at that worktree-RELATIVE destination, whose
 #   missing parent directories the rendered block creates first. A destination that is
-#   absolute or escapes the worktree with '..' is refused.
+#   absolute or escapes the worktree with '..' is refused. The value is split at its
+#   LAST colon, so a source path that itself contains a colon cannot also carry a
+#   destination; such a path is a known limitation of this separator.
 #   Pass it only for a task that must run the project; a docs-only or
 #   read-only task carries no env step. The block names the primary checkout and
 #   explains in the same breath why that foreign path is legitimate, so the

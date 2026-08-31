@@ -1001,6 +1001,36 @@ test_no_run_idle_pane_paused() {
   pass "no run + idle pane on a paused: status reports state: paused with its reason"
 }
 
+# A direct-PR ship task raises no no-mistakes run, so its finished state comes
+# from the status log alone. The worker is instructed to follow its done line
+# with a declared merge wait, and that trailing wait must not hide the terminal
+# outcome from the reconciler, which reads this script's verdict.
+test_no_run_done_then_declared_wait_reports_done() {
+  reset_fakes
+  local d out; d=$(new_case done-then-pause)
+  make_repo_on_branch "$d/wt" fm/feat-donepause
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-donepause.meta" "window=fm:fm-feat-donepause" "worktree=$d/wt" "kind=ship" "harness=claude"
+  printf 'done: PR https://github.com/o/r/pull/7\npaused: awaiting merge of PR https://github.com/o/r/pull/7\n' \
+    > "$d/state/feat-donepause.status"
+  FM_FAKE_AXI_STATUS=""
+  FM_FAKE_BUSY=0
+  arm_idle_record "$d/state" feat-donepause
+  out=$(run_crew_state "$d" feat-donepause)
+  assert_contains "$out" "state: done" "a declared merge wait after done hid the terminal outcome"
+  assert_contains "$out" "source: status-log" "done-then-wait state comes from the status log"
+  assert_contains "$out" "https://github.com/o/r/pull/7" "the done line's PR is carried in the detail"
+
+  # A declared wait that follows ordinary progress is still a pause, not a state
+  # to look past: only a terminal line under the trailing wait run is promoted.
+  printf 'working: rebasing onto main\npaused: waiting on the vendor sandbox\n' \
+    > "$d/state/feat-donepause.status"
+  out=$(run_crew_state "$d" feat-donepause)
+  assert_contains "$out" "state: paused" "a mid-task declared wait must still report paused"
+  assert_contains "$out" "waiting on the vendor sandbox" "the mid-task pause reason is preserved"
+  pass "a trailing declared wait reveals a terminal outcome but never a mid-task state"
+}
+
 test_no_run_idle_pane_custom_paused_verb() {
   reset_fakes
   local d; d=$(new_case custom-paused)
@@ -1607,6 +1637,7 @@ test_no_run_herdr_idle_agent_status_and_idle_record_stays_idle
 test_no_run_idle_pane_uses_log
 test_no_run_idle_pane_uses_keyed_log
 test_no_run_idle_pane_paused
+test_no_run_done_then_declared_wait_reports_done
 test_no_run_idle_pane_custom_paused_verb
 test_no_run_idle_secondmate_resolved_event_not_state
 test_dead_window_ignores_stale_status_log
