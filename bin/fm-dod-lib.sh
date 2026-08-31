@@ -10,11 +10,25 @@
 # mode is refused rather than silently rendered as the pipeline contract.
 # The block opens with the fixed machine-readable "Delivery contract: mode=<mode>"
 # line that bin/fm-spawn.sh checks a ship brief against.
+# The two PR-raising modes also tell the worker to follow its done line with
+# "paused: awaiting merge of PR {url}", so the wait for a merge is a declared
+# external wait rather than an idle pane the watcher escalates as stale.
+# local-only raises no PR and therefore carries no such line.
 # Every heredoc here stays outside a command substitution: `VAR=$(cat <<EOF ...)`
 # breaks parsing of the whole file on Bash 3.2 (tests/fm-brief.test.sh).
 
+_FM_DOD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null)" || _FM_DOD_LIB_DIR="."
+# The declared-external-wait verb this block instructs has ONE owner
+# (FM_CLASSIFY_PAUSED_VERB_DEFAULT in bin/fm-classify-lib.sh), so source it here
+# rather than repeating the literal: a caller that renders the block without
+# having sourced the classify lib itself (bin/fm-promote.sh) must still say the
+# same verb the rest of the fleet reads.
+# shellcheck source=bin/fm-classify-lib.sh
+. "$_FM_DOD_LIB_DIR/fm-classify-lib.sh"
+
 fm_dod_block() {  # <mode> <task-id>
   local mode=$1 id=$2
+  local paused=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}
   case "$mode" in
     direct-PR)
       cat <<EOF
@@ -22,7 +36,8 @@ fm_dod_block() {  # <mode> <task-id>
 Delivery contract: mode=direct-PR
 This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
-When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file and stop.
+When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file, follow it with \`$paused: awaiting merge of PR {url}\`, and stop.
+That second line declares a known external wait, so your idle pane is rechecked on a long cadence instead of being treated as a possible wedge.
 Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
 EOF
       ;;
@@ -57,7 +72,8 @@ Two firstmate-specific rules layer on top of that guidance:
 - NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`no-mistakes axi respond\`. It is banned fleet-wide.
   It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
 
-After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. You are finished.
+After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\`, follow it with \`$paused: awaiting merge of PR {url}\`, and stop. You are finished.
+That second line declares a known external wait, so your idle pane is rechecked on a long cadence instead of being treated as a possible wedge.
 EOF
       ;;
     *)
