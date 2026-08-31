@@ -7,6 +7,7 @@
 # "refused: <reason>" on stderr. Exit 2 means the check did not run at all,
 # which covers a usage error and --help, and is never permission to
 # dispatch.
+# An empty or whitespace-only brief refuses, because no text was checked.
 # The allowlist is FM_CONFIG_OVERRIDE (else FM_HOME/config)/free-tier-repos,
 # one repo name per line, blank lines and #-comments ignored. An absent,
 # empty, or unreadable allowlist refuses every repo, so free-tier routing is
@@ -29,12 +30,13 @@ ALLOWLIST="$CONFIG/free-tier-repos"
 
 # Single owner of the deny set. Each term is matched with an optional plural
 # suffix; "article 9" also matches "article-9" and "article9", and "env"
-# also matches ".env".
-DENY_WORDS='credential|secret|token|candidate|pii|bull|strategy|strategies|env|key|database|db|email'
+# also matches ".env" and "environment". The match runs under LC_ALL=C so a
+# brief that is not valid UTF-8 is compared byte by byte.
+DENY_WORDS='credential|secret|token|candidate|pii|bull|strategy|strategies|environment|env|key|database|db|email'
 DENY_PHRASE='article[^a-z0-9]*9|user[^a-z0-9]+data'
 
 usage() {
-  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 REPO=''
@@ -83,6 +85,11 @@ else
   exit 1
 fi
 
+if [ -z "$(printf '%s' "$BRIEF" | LC_ALL=C tr -d '[:space:]')" ]; then
+  echo "refused: brief text is empty" >&2
+  exit 1
+fi
+
 if [ ! -f "$ALLOWLIST" ] || [ ! -r "$ALLOWLIST" ]; then
   echo "refused: no free-tier repo allowlist at $ALLOWLIST" >&2
   exit 1
@@ -96,9 +103,16 @@ if ! sed 's/#.*//' "$ALLOWLIST" | tr -d '[:blank:]' \
   exit 1
 fi
 
-if printf '%s\n' "$BRIEF" \
-  | grep -qiE "(^|[^a-z0-9])($DENY_WORDS)(s|es)?([^a-z0-9]|\$)|$DENY_PHRASE"; then
+DENY_STATUS=0
+printf '%s\n' "$BRIEF" \
+  | LC_ALL=C grep -qiE "(^|[^a-z0-9])($DENY_WORDS)(s|es)?([^a-z0-9]|\$)|$DENY_PHRASE" \
+  || DENY_STATUS=$?
+
+if [ "$DENY_STATUS" -eq 0 ]; then
   echo "refused: brief text matches a free-tier deny term" >&2
+  exit 1
+elif [ "$DENY_STATUS" -ne 1 ]; then
+  echo "refused: deny-term scan failed with status $DENY_STATUS" >&2
   exit 1
 fi
 

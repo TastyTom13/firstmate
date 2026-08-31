@@ -107,7 +107,7 @@ Exit 0 prints `eligible: <repo>` and is the only state in which the free-tier pr
 Exit 1 prints the refusal reason; fall through to the existing paid cheap-model rule and dispatch there instead.
 Exit 2 means the check did not run at all, which covers a usage error and `--help`, and is never permission to dispatch.
 
-The guard refuses brief text matching any of `credential`, `secret`, `token`, `candidate`, `pii`, `bull`, `strategy`, `env` (which also covers `.env`), `key`, `database`, `db`, `email`, `user data`, or `article 9`.
+The guard refuses brief text matching any of `credential`, `secret`, `token`, `candidate`, `pii`, `bull`, `strategy`, `env` (which also covers `.env` and `environment`), `key`, `database`, `db`, `email`, `user data`, or `article 9`.
 It over-refuses on purpose: a false refusal costs one fallback to the paid tier, while a miss publishes content to a vendor.
 A keyword list is not a classifier, so a brief that crosses a data line without using one of those words still passes; do not lean on the guard in place of reading the brief.
 
