@@ -3,7 +3,9 @@
 // asserted through the real template rather than by reading its source.
 //
 // Usage: node board-render-harness.mjs <built-board.html>
-// Prints one JSON document: { stats:[{n,label}], charted:[{title,sub,badges,pickable}] }
+// Prints one JSON document:
+//   { stats:[{n,label}], fuel:{hidden,cells:[{tone,name,pct,fill,meta}]},
+//     charted:[{title,sub,badges,pickable}] }
 import { readFileSync } from "node:fs";
 
 const html = readFileSync(process.argv[2], "utf8");
@@ -93,6 +95,24 @@ const stats = strip.children.map((t) => ({
   label: t.children.find((c) => c.className.includes("bb-stat__label"))?.textContent,
 }));
 
+// The fuel gauge strip: what the board actually shows for each provider pool.
+const fuelNode = byId.get("bb-fuel") || new Node("div");
+const fuel = {
+  hidden: fuelNode.hidden === true,
+  cells: fuelNode.children.map((cell) => {
+    const head = cell.children.find((c) => c.className.includes("bb-fuel__head"));
+    const track = cell.children.find((c) => c.className.includes("bb-fuel__track"));
+    const fill = track?.children[0];
+    return {
+      tone: cell.className.replace(/.*bb-fuel__cell--/, "").trim(),
+      name: head?.children.find((c) => c.className.includes("bb-fuel__name"))?.textContent ?? "",
+      pct: head?.children.find((c) => c.className.includes("bb-fuel__pct"))?.textContent ?? "",
+      fill: fill?.attributes.style ?? "",
+      meta: cell.children.find((c) => c.className.includes("bb-fuel__meta"))?.textContent ?? "",
+    };
+  }),
+};
+
 const ch = byId.get("bb-charted") || new Node("div");
 const charted = ch.children
   .filter((r) => r.className.split(/\s+/).includes("bb-row"))
@@ -114,4 +134,4 @@ const errorText = [...byId.entries()]
 const empty = ch.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
 const more = ch.children.filter((c) => c.className.includes("bb-morechip")).map((c) => c.textContent);
 
-process.stdout.write(JSON.stringify({ stats, charted, empty, more, error: errorText }) + "\n");
+process.stdout.write(JSON.stringify({ stats, fuel, charted, empty, more, error: errorText }) + "\n");

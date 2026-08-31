@@ -151,6 +151,36 @@ a { color: inherit; text-decoration: none; }
 .bb-stat--call .bb-stat__num { color: var(--rust-600); }
 .bb-stat__label { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
 
+/* fuel gauges - how much of each subscription is left, always on deck */
+.bb-fuel { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.bb-fuel[hidden] { display: none; }
+.bb-fuel__cell {
+  display: flex; flex-direction: column; gap: 7px; padding: 12px 16px 13px; min-width: 0;
+  background: var(--surface-card-warm); border: 1px solid var(--border-soft); border-radius: var(--radius-md);
+}
+.bb-fuel__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.bb-fuel__name {
+  font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bb-fuel__pct { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; color: var(--text-strong); white-space: nowrap; }
+.bb-fuel__track {
+  height: 8px; border-radius: var(--radius-pill); overflow: hidden;
+  background: var(--paper-200); border: 1px solid var(--border-soft);
+}
+.bb-fuel__fill { display: block; height: 100%; background: var(--status-online); }
+.bb-fuel__cell--mid .bb-fuel__fill { background: var(--status-warn); }
+.bb-fuel__cell--mid .bb-fuel__pct { color: var(--status-warn); }
+.bb-fuel__cell--low { border-color: var(--rust-500); }
+.bb-fuel__cell--low .bb-fuel__fill { background: var(--status-danger); }
+.bb-fuel__cell--low .bb-fuel__pct { color: var(--status-danger); }
+.bb-fuel__cell--unknown { border-style: dashed; }
+.bb-fuel__cell--unknown .bb-fuel__pct { color: var(--text-faint); }
+.bb-fuel__meta {
+  font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-faint);
+  overflow-wrap: anywhere; min-width: 0;
+}
+
 .bb-section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .bb-section__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .bb-cols { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 22px; }
@@ -295,6 +325,10 @@ a { color: inherit; text-decoration: none; }
 <main class="bb-main">
 
   <div class="bb-stats" id="bb-stats"></div>
+
+  <!-- Fuel gauges. Rendered only when the payload carries `pools`, so a board
+       built without a usage reading simply has no gauge instead of an empty one. -->
+  <div class="bb-fuel" id="bb-fuel" hidden></div>
 
   <div class="bb-cols">
   <section class="bb-section">
@@ -463,6 +497,43 @@ __FM_BEARINGS_BOARD_DATA__
   });
   document.getElementById("bb-call-sub").textContent =
     callTotal ? callTotal + " item" + (callTotal === 1 ? "" : "s") + " wait on you, captain" : "nothing needs you, captain";
+
+  /* fuel gauges: one bar per provider subscription, always visible.
+     A pool the readers could not reach shows as unreadable with its reason,
+     never as an empty or full bar - a wrong gauge is worse than no gauge. */
+  function shortWhen(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return d.getUTCDate() + " " + MON[d.getUTCMonth()];
+  }
+  var fuel = document.getElementById("bb-fuel");
+  var pools = Array.isArray(data.pools) ? data.pools : [];
+  fuel.hidden = pools.length === 0;
+  pools.forEach(function (p) {
+    var readable = typeof p.percent_remaining === "number" && isFinite(p.percent_remaining);
+    var pct = readable ? Math.max(0, Math.min(100, Math.round(p.percent_remaining))) : 0;
+    var tone = !readable ? "unknown" : pct < 20 ? "low" : pct < 50 ? "mid" : "ok";
+    var cell = el("div", "bb-fuel__cell bb-fuel__cell--" + tone);
+    var head = el("div", "bb-fuel__head");
+    head.appendChild(el("span", "bb-fuel__name", String(p.label || p.provider || "pool")));
+    head.appendChild(el("span", "bb-fuel__pct", readable ? pct + "% left" : "unreadable"));
+    cell.appendChild(head);
+    var track = el("div", "bb-fuel__track");
+    var fill = el("div", "bb-fuel__fill");
+    fill.setAttribute("style", "width: " + pct + "%");
+    track.appendChild(fill);
+    cell.appendChild(track);
+    var bits = [];
+    if (p.window) bits.push(String(p.window) + " window");
+    if (readable && p.resets_at) bits.push("resets " + shortWhen(p.resets_at));
+    /* An estimate answers a different question from an allowance reading, so
+       say which one this bar is rather than letting the number imply it. */
+    if (p.estimate === true) bits.push("estimate: our own spend, not the account's allowance");
+    if (!readable && p.note) bits.push(String(p.note));
+    cell.appendChild(el("span", "bb-fuel__meta", bits.join(" \u00b7 ")));
+    fuel.appendChild(cell);
+  });
 
   /* Captain's Call deck: every item renders as the same full card */
   var deck = document.getElementById("bb-call");

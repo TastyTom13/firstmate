@@ -41,6 +41,25 @@ render() {  # <home> <charted-json> [charted_more] [charted_warning_more]
     || fail "the built board could not be rendered"
 }
 
+# Build a board carrying <pools-json> and return what the renderer produced.
+render_pools() {  # <home> <pools-json|->
+  local home=$1 pools=$2 data="$1/pools-payload.json"
+  if [ "$pools" = "-" ]; then
+    jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
+      prs_live:false, captains_call:[], underway:[], landed:[], charted:[]}' > "$data"
+  else
+    jq -n --argjson pools "$pools" '{schema:"fm-bearings-board.v1", home:"render-home",
+      generated:"2026-08-31T00:00Z", prs_live:false, captains_call:[], underway:[],
+      landed:[], charted:[], pools:$pools}' > "$data"
+  fi
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  node "$HARNESS" "$home/.lavish/bearings-board.html" \
+    || fail "the built board could not be rendered"
+}
+
 charted_next_count() {  # <render-json>
   printf '%s' "$1" | jq -r '.stats[] | select(.label == "charted next") | .n'
 }
@@ -128,8 +147,87 @@ test_an_omitted_kind_keeps_the_existing_queued_rendering() {
   pass "an omitted kind renders exactly as queued work always did"
 }
 
+
+test_a_readable_pool_shows_how_much_is_left_and_when_it_resets() {
+  local home out
+  home=$(make_home fuel-readable)
+  out=$(render_pools "$home" '[
+    {"provider":"claude","label":"Claude","percent_remaining":70,"window":"week",
+     "resets_at":"2026-09-07T03:59:59Z","estimate":false,"note":null},
+    {"provider":"openai-codex","label":"ChatGPT","percent_remaining":94,"window":"30 day",
+     "resets_at":"2026-09-30T21:37:52Z","estimate":false,"note":null}
+  ]')
+  printf '%s' "$out" | jq -e '.error == ""' >/dev/null \
+    || fail "the board rendered its fail-closed error instead of the fleet: $out"
+  printf '%s' "$out" | jq -e '
+    .fuel.hidden == false and (.fuel.cells | length) == 2
+    and (.fuel.cells[0] | .name == "Claude" and .pct == "70% left" and .tone == "ok"
+      and (.meta | test("week window")) and (.meta | test("resets 7 Sep")))
+    and (.fuel.cells[1] | .name == "ChatGPT" and .pct == "94% left"
+      and (.meta | test("30 day window")))
+  ' >/dev/null || fail "the gauge did not show both pools: $out"
+  pass "a readable pool shows how much is left, its window, and when it resets"
+}
+
+test_a_board_without_pools_shows_no_gauge_at_all() {
+  local home out
+  home=$(make_home fuel-absent)
+  out=$(render_pools "$home" -)
+  printf '%s' "$out" | jq -e '.error == "" and .fuel.hidden == true and (.fuel.cells | length) == 0' \
+    >/dev/null || fail "a board with no pools still rendered a gauge: $out"
+  pass "a board built without pools renders no gauge instead of an empty one"
+}
+
+test_an_unreadable_pool_says_so_instead_of_showing_a_bar() {
+  local home out
+  home=$(make_home fuel-unreadable)
+  out=$(render_pools "$home" '[
+    {"provider":"openai-codex","label":"ChatGPT","percent_remaining":null,"window":"",
+     "resets_at":null,"estimate":false,"note":"no credential file at /nowhere"}
+  ]')
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.fuel.cells | length) == 1
+    and (.fuel.cells[0] | .pct == "unreadable" and .tone == "unknown"
+      and (.fill | test("width: 0%"))
+      and (.meta | test("no credential file at /nowhere")))
+  ' >/dev/null || fail "an unreadable pool did not say why: $out"
+  pass "an unreadable pool reads as unreadable with its reason, not as an empty bar"
+}
+
+test_a_nearly_spent_pool_reads_differently_from_a_healthy_one() {
+  local home out
+  home=$(make_home fuel-tone)
+  out=$(render_pools "$home" '[
+    {"provider":"a","label":"Healthy","percent_remaining":80,"window":"week"},
+    {"provider":"b","label":"Tight","percent_remaining":35,"window":"week"},
+    {"provider":"c","label":"Nearly gone","percent_remaining":4,"window":"week"}
+  ]')
+  printf '%s' "$out" | jq -e '
+    [.fuel.cells[] | .tone] == ["ok", "mid", "low"]
+    and [.fuel.cells[] | .fill] == ["width: 80%", "width: 35%", "width: 4%"]
+  ' >/dev/null || fail "the gauge did not separate a healthy pool from a spent one: $out"
+  pass "a nearly spent pool reads differently from a healthy one"
+}
+
+test_an_estimated_reading_says_it_is_an_estimate() {
+  local home out
+  home=$(make_home fuel-estimate)
+  out=$(render_pools "$home" '[
+    {"provider":"openai-codex","label":"ChatGPT","percent_remaining":80,"window":"30 day",
+     "resets_at":null,"estimate":true,"note":null}
+  ]')
+  printf '%s' "$out" | jq -e '.fuel.cells[0].meta | test("estimate")' >/dev/null \
+    || fail "an estimated reading did not say so on the board: $out"
+  pass "an estimated reading is labelled an estimate on the gauge"
+}
+
 test_a_warning_row_reads_as_a_repair_not_as_queued_work
 test_warnings_are_excluded_from_the_charted_next_count
 test_a_board_of_only_warnings_still_reports_nothing_queued
 test_omitted_warnings_never_count_as_more_queued
 test_an_omitted_kind_keeps_the_existing_queued_rendering
+test_a_readable_pool_shows_how_much_is_left_and_when_it_resets
+test_a_board_without_pools_shows_no_gauge_at_all
+test_an_unreadable_pool_says_so_instead_of_showing_a_bar
+test_a_nearly_spent_pool_reads_differently_from_a_healthy_one
+test_an_estimated_reading_says_it_is_an_estimate
