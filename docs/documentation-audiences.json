@@ -341,6 +341,14 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "docs/free-tier-providers.md",
+      "audience": "operator-current"
+    },
+    {
+      "path": "docs/free-tier-routing.md",
+      "audience": "operator-current"
+    },
+    {
       "path": "docs/gitlab-merge-watch.md",
       "audience": "maintainer-verification"
     },
