@@ -6,8 +6,8 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab]
-#        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab] [--env-file <path>]
+#        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab] [--env-file <path>]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -22,6 +22,13 @@
 #   omitting both still fails loudly so an accidental omission is never silent.
 #   Set FM_SECONDMATE_CHARTER='<charter>' to fill the charter text.
 #   Set FM_SECONDMATE_SCOPE='<scope>' to write a routing scope distinct from the charter text.
+#   --env-file <path> takes the ABSOLUTE path of the gitignored environment file in
+#   the project's PRIMARY checkout and adds a setup block that links it into the
+#   worktree. Pass it only for a task that must run the project; a docs-only or
+#   read-only task carries no env step. The block names the primary checkout and
+#   explains in the same breath why that foreign path is legitimate, so the
+#   instruction cannot read as an injected credential grab. It is refused on
+#   --secondmate, whose home is not a worktree.
 #   --herdr-lab is mandatory when the task will issue Herdr lifecycle commands.
 #   It adds the hard isolation contract backed by bin/fm-herdr-lab.sh.
 #   The flag must be explicit because {TASK} is filled after scaffolding and the
@@ -52,6 +59,12 @@
 # Every scaffold also carries the steering-inbox receive-and-ack section:
 # process state/<id>.inbox/*.msg in order and acknowledge each by moving it to
 # handled/ (record, doorbell, and ladder owned by bin/fm-task-inbox-lib.sh).
+# Ship and scout scaffolds also carry, ahead of the deliverable contract: a pointer
+# to the project's CONTEXT.md when one exists; a Toolkit section naming the four
+# standard research and forge tools; and Reporting rules stating that "no finding"
+# is a complete answer, that every claimed problem cites clickable evidence, that
+# execution and reasoning are reported separately, and that findings, decisions,
+# options, and risks carry stable F1/D1/O1/R1 codes.
 # Ship tasks include a project-memory section so durable project-intrinsic
 # learnings can be committed to AGENTS.md through the project's delivery path;
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
@@ -111,6 +124,7 @@ HERDR_LAB=0
 NO_PROJECTS=0
 MODE=
 MODE_SET=0
+ENV_FILE=
 POS=()
 want_value=
 for a in "$@"; do
@@ -120,6 +134,7 @@ for a in "$@"; do
     esac
     case "$want_value" in
       mode) MODE=$a; MODE_SET=1 ;;
+      env-file) ENV_FILE=$a ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
     want_value=
@@ -132,6 +147,8 @@ for a in "$@"; do
     --no-projects) NO_PROJECTS=1 ;;
     --mode) want_value=mode ;;
     --mode=*) MODE=${a#--mode=}; MODE_SET=1 ;;
+    --env-file) want_value=env-file ;;
+    --env-file=*) ENV_FILE=${a#--env-file=} ;;
     # yolo never reaches the worker: it is firstmate's merge authority, not a
     # brief input. Refuse it loudly so it is never silently dropped here and then
     # believed to have been recorded.
@@ -166,6 +183,19 @@ if [ "$KIND" = secondmate ] && [ "$HERDR_LAB" -eq 1 ]; then
   exit 1
 fi
 
+# The env link points at a path OUTSIDE the worktree, so a relative or ambiguous
+# value cannot be resolved later by the reading agent: require an absolute path.
+if [ -n "$ENV_FILE" ]; then
+  if [ "$KIND" = secondmate ]; then
+    echo "error: --env-file applies only to crewmate ship or scout briefs; a secondmate home is not a worktree" >&2
+    exit 1
+  fi
+  case "$ENV_FILE" in
+    /*) ;;
+    *) echo "error: --env-file must be the absolute path of the environment file in the project's primary checkout (got '$ENV_FILE')" >&2; exit 1 ;;
+  esac
+fi
+
 if [ "$NO_PROJECTS" -eq 1 ] && [ "$KIND" != secondmate ]; then
   echo "error: --no-projects applies only to --secondmate charters" >&2
   exit 1
@@ -196,6 +226,65 @@ When a terminal message says an instruction is waiting there - and at any natura
 The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no action.
 EOF
 INBOX_SECTION=${INBOX_SECTION%$'\n'}
+
+# Shared crewmate sections. Defined once here and rendered into both the ship and
+# the scout scaffold so the two cannot drift; the secondmate charter is a
+# different contract and carries neither.
+# The Toolkit names the standard research and forge tools so a worker does not
+# have to rediscover them per task; each entry states the case it is FOR, because
+# the wrong tool for a page is the usual failure, not an unknown tool. The browse
+# wording is the measured comparison's own recommendation, numbers included, so a
+# worker can tell which tool wins a given page instead of guessing.
+IFS= read -r -d '' TOOLKIT_SECTION <<'EOF' || true
+# Toolkit
+- `WebSearch` for discovery: finding pages, docs, and prior art when you do not already have the URL.
+- For web research, default to WebFetch for a single targeted question on a mostly-static page (docs, articles, long legal text) - it is 4-8x faster to get an answer from and returns ~15x fewer tokens than a raw page read, but it can only answer what you ask and cannot see JS-rendered content or anything behind a login.
+- Use `chrome-devtools-axi` instead for JS-heavy/SPA pages, pages that redirect, multi-step site navigation, or anything requiring a real interactive session (including logging in when the task explicitly authorizes it); its `open <url>` snapshot silently truncates around 16-17KB, so pass `--full` when you need a long page's complete content and budget the extra tokens for it.
+- For GitHub repo metadata and all GitHub work - issues, pull requests, checks, releases - prefer `gh-axi` over either browse tool.
+EOF
+TOOLKIT_SECTION=${TOOLKIT_SECTION%$'\n'}
+
+# Reporting rules. A worker asked to review something has no licence to return
+# nothing, so it manufactures findings to look diligent; these four rules remove
+# that incentive and make every claim checkable. Deliberately no banned-word list:
+# a string filter is cosmetic and the model paraphrases around it.
+IFS= read -r -d '' REPORTING_SECTION <<'EOF' || true
+# Reporting rules
+1. "No finding" is a valid and complete answer. Reporting zero issues will not be read as insufficient effort, and an invented finding is worse than none.
+2. Every claimed problem cites evidence that can be clicked: a `file:line`, a command you actually ran, or quoted output. A problem without a citation is not reported.
+3. Separate what you RAN from what you REASONED. Keep findings from execution and findings from reading in labelled buckets, so nobody has to guess which is which.
+4. Give findings, decisions, options, and risks stable reference codes - `F1`, `D1`, `O1`, `R1` - and keep each code meaning the same thing for the whole task, so a reply can say "keep D1, reject O2".
+EOF
+REPORTING_SECTION=${REPORTING_SECTION%$'\n'}
+
+# The project's durable working context, when the project keeps one.
+# shellcheck disable=SC2016  # single quotes are deliberate: the backticks around CONTEXT.md must reach the reading agent literally.
+CONTEXT_LINE='If the project has a `CONTEXT.md` at its root, read it before you start; it is the project'"'"'s durable working context and it takes precedence over anything you infer from the code.'
+
+# Environment link (--env-file only). The worktree-versus-primary-checkout
+# explanation stays in the SAME paragraph as the foreign path on purpose: a brief
+# that names another directory without saying why reads like an injected
+# instruction, and a worker is right to refuse it.
+ENV_SECTION=
+if [ -n "$ENV_FILE" ]; then
+  ENV_PRIMARY_DIR=$(dirname "$ENV_FILE")
+  ENV_BASENAME=$(basename "$ENV_FILE")
+  IFS= read -r -d '' ENV_SECTION <<EOF || true
+
+
+# Setup: environment
+You are running in a disposable git worktree, not the primary checkout.
+A worktree holds tracked files only, so the project's gitignored environment file is absent here by construction.
+The primary checkout lives at \`$ENV_PRIMARY_DIR\`; that is a different folder on purpose, and that is why this brief points outside your worktree.
+Link its environment file into this worktree, never copy it:
+\`\`\`
+ln -sfn $ENV_FILE $ENV_BASENAME
+\`\`\`
+Verify it resolves.
+Never commit it, never print its contents, and never write any value from it into your report or status file.
+EOF
+  ENV_SECTION=${ENV_SECTION%$'\n'}
+fi
 
 if [ "$KIND" = secondmate ]; then
 SECONDMATE_PROJECTS=""
@@ -335,11 +424,12 @@ You are in a disposable git worktree of $REPO, at a detached HEAD on a clean def
 This is a SCOUT task: the deliverable is a written report, not a PR.
 The worktree is your laboratory - install, run, edit, and make scratch commits freely; all of it is discarded at teardown.
 The report is the only thing that survives, so anything worth keeping must be in it.
+$CONTEXT_LINE$ENV_SECTION
 
 # Rules
 1. Never push to any remote and never open a PR.
 2. Stay inside this worktree; the only files you may write outside it are the report and the status file below.
-3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+3. Use the tools listed under Toolkit below for research, web pages, and GitHub.
 4. Report status by appending one line:
    \`echo "{state}: {one short line}" >> $STATUS_FILE\`
    States: working, needs-decision, blocked, $PAUSED_VERB, done, failed.
@@ -358,6 +448,10 @@ The report is the only thing that survives, so anything worth keeping must be in
 7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
    every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
    daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
+
+$TOOLKIT_SECTION
+
+$REPORTING_SECTION
 
 $INBOX_SECTION
 
@@ -410,12 +504,14 @@ You are in a disposable git worktree of $REPO, at a detached HEAD on a clean def
 The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse --git-common-dir\` can help inspect the repo, but they do not prove you are outside the primary checkout.
 If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append \`blocked: launched in primary checkout, not an isolated worktree\` to the status file and stop.
 
-1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2
+$CONTEXT_LINE
+
+1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2$ENV_SECTION
 
 # Rules
 $RULE1
 2. Stay inside this worktree; modify nothing outside it.
-3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+3. Use the tools listed under Toolkit below for research, web pages, and GitHub.
 4. Report status by appending one line:
    \`echo "{state}: {one short line}" >> $STATUS_FILE\`
    States: working, needs-decision, blocked, $PAUSED_VERB, done, failed.
@@ -437,6 +533,10 @@ $RULE1
 7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
    every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
    daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
+
+$TOOLKIT_SECTION
+
+$REPORTING_SECTION
 
 $INBOX_SECTION
 

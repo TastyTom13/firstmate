@@ -762,6 +762,137 @@ test_scout_and_secondmate_scaffold() {
   pass "fm-brief: scout and secondmate code paths still scaffold well-formed briefs"
 }
 
+# The five worker-orientation additions: a project CONTEXT.md pointer, the
+# Toolkit, the Reporting rules, the optional env link, and the PR-wait follow-up.
+# Ship and scout must carry the always-on three; only ship modes that raise a PR
+# carry the merge-wait line, and the env block appears only when asked for.
+test_orientation_sections_render_for_ship_and_scout() {
+  local home id brief kind
+  home="$TMP_ROOT/orientation-home"
+  mkdir -p "$home/data"
+  for kind in ship scout; do
+    id="brief-orientation-$kind"
+    case "$kind" in
+      ship)  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1 ;;
+      scout) FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1 ;;
+    esac
+    brief="$home/data/$id/brief.md"
+    assert_present "$brief" "$kind: brief was not scaffolded"
+    assert_grep "If the project has a \`CONTEXT.md\` at its root, read it before you start" "$brief" \
+      "$kind brief lost the project CONTEXT.md pointer"
+    assert_grep "# Toolkit" "$brief" "$kind brief lost the Toolkit section"
+    assert_grep "\`WebSearch\` for discovery" "$brief" "$kind Toolkit lost the discovery tool"
+    assert_grep "default to WebFetch for a single targeted question on a mostly-static page" "$brief" \
+      "$kind Toolkit lost the ordinary page-read tool"
+    assert_grep "4-8x faster" "$brief" "$kind Toolkit lost the measured browse comparison"
+    assert_grep "\`chrome-devtools-axi\` instead for JS-heavy/SPA pages" "$brief" \
+      "$kind Toolkit lost the rendered-page tool"
+    assert_grep "pass \`--full\` when you need a long page's complete content" "$brief" \
+      "$kind Toolkit lost the snapshot-truncation caveat"
+    assert_grep "prefer \`gh-axi\` over either browse tool" "$brief" "$kind Toolkit lost the GitHub tool"
+    assert_grep "# Reporting rules" "$brief" "$kind brief lost the Reporting rules section"
+    assert_grep '"No finding" is a valid and complete answer' "$brief" \
+      "$kind Reporting rules lost the zero-issues permission that removes the invent-a-finding incentive"
+    assert_grep "cites evidence that can be clicked" "$brief" "$kind Reporting rules lost the citation requirement"
+    assert_grep "Separate what you RAN from what you REASONED" "$brief" \
+      "$kind Reporting rules lost the execution-versus-reasoning split"
+    assert_grep "\`F1\`, \`D1\`, \`O1\`, \`R1\`" "$brief" "$kind Reporting rules lost the stable reference codes"
+    # A banned-word list is deliberately absent: it is cosmetic and paraphrased around.
+    assert_no_grep "banned word" "$brief" "$kind brief added a banned-word list"
+  done
+  pass "fm-brief.sh: ship and scout carry the CONTEXT pointer, Toolkit, and Reporting rules"
+}
+
+# The env link names a path OUTSIDE the worktree. It is opt-in, and when present
+# it must explain the worktree-versus-primary-checkout reason in the same block,
+# or a worker is right to read a foreign path as an injected instruction.
+test_env_file_block_is_opt_in_and_self_explaining() {
+  local home brief out status
+  home="$TMP_ROOT/env-file-home"
+  mkdir -p "$home/data"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e1 some-proj --mode no-mistakes >/dev/null 2>&1 \
+    || fail "ship brief without --env-file should scaffold"
+  assert_no_grep "# Setup: environment" "$home/data/brief-env-e1/brief.md" \
+    "a brief with no --env-file must carry no environment step"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e2 some-proj --scout >/dev/null 2>&1 \
+    || fail "scout brief without --env-file should scaffold"
+  assert_no_grep "# Setup: environment" "$home/data/brief-env-e2/brief.md" \
+    "a scout with no --env-file must carry no environment step"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e3 some-proj --mode no-mistakes \
+    --env-file /primary/some-proj/.env.local >/dev/null 2>&1 \
+    || fail "ship brief with --env-file should scaffold"
+  brief="$home/data/brief-env-e3/brief.md"
+  assert_grep "# Setup: environment" "$brief" "--env-file did not render the environment step"
+  assert_grep "A worktree holds tracked files only" "$brief" \
+    "environment step lost the reason the file is absent here"
+  assert_grep "that is a different folder on purpose" "$brief" \
+    "environment step named a foreign path without explaining it in the same block"
+  assert_grep "ln -sfn /primary/some-proj/.env.local .env.local" "$brief" \
+    "environment step did not render the link command for the given file"
+  assert_grep "never copy it" "$brief" "environment step lost the link-not-copy rule"
+  assert_grep "never print its contents" "$brief" "environment step lost the secret-handling rule"
+
+  # The scout path takes it too: reproducing a bug can need the app to run.
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e4 some-proj --scout \
+    --env-file /primary/some-proj/.env >/dev/null 2>&1 \
+    || fail "scout brief with --env-file should scaffold"
+  assert_grep "ln -sfn /primary/some-proj/.env .env" "$home/data/brief-env-e4/brief.md" \
+    "scout environment step did not render the link command"
+
+  while IFS='|' read -r label args expect; do
+    [ -n "$label" ] || continue
+    # shellcheck disable=SC2086  # args is an intentional word-split arg list
+    out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" $args 2>&1)
+    status=$?
+    [ "$status" -ne 0 ] || fail "$label: expected a non-zero exit"
+    assert_contains "$out" "$expect" "$label: refusal did not explain why"
+  done <<'ROWS'
+relative env path|brief-env-e5 some-proj --mode no-mistakes --env-file ../.env.local|must be the absolute path
+missing env value|brief-env-e6 some-proj --mode no-mistakes --env-file|requires a value
+env file on a charter|brief-env-e7 --secondmate --no-projects --env-file /primary/.env|applies only to crewmate ship or scout briefs
+ROWS
+  pass "fm-brief.sh: --env-file is opt-in, absolute, self-explaining, and refused on charters"
+}
+
+# A worker that reports done and then sits waiting for a merge looks wedged. The
+# PR-raising modes tell it to declare that wait; local-only raises no PR and a
+# scout raises none either, so neither may carry the line.
+test_pr_wait_follow_up_only_where_a_pr_exists() {
+  local home brief
+  home="$TMP_ROOT/pr-wait-home"
+  mkdir -p "$home/data"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f1 some-proj --mode no-mistakes >/dev/null 2>&1
+  brief="$home/data/brief-wait-f1/brief.md"
+  # shellcheck disable=SC2016  # Literal backticks and braces must remain unexpanded.
+  assert_grep 'follow it with `paused: awaiting merge of PR {url}`' "$brief" \
+    "no-mistakes done line lost its declared merge wait"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f2 some-proj --mode direct-PR >/dev/null 2>&1
+  # shellcheck disable=SC2016  # Literal backticks and braces must remain unexpanded.
+  assert_grep 'follow it with `paused: awaiting merge of PR {url}`' "$home/data/brief-wait-f2/brief.md" \
+    "direct-PR done line lost its declared merge wait"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f3 some-proj --mode local-only >/dev/null 2>&1
+  assert_no_grep "awaiting merge of PR" "$home/data/brief-wait-f3/brief.md" \
+    "local-only raises no PR and must not instruct a merge wait"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f4 some-proj --scout >/dev/null 2>&1
+  assert_no_grep "awaiting merge of PR" "$home/data/brief-wait-f4/brief.md" \
+    "a scout raises no PR and must not instruct a merge wait"
+
+  # The wait verb is configurable fleet-wide, so this line must follow it too.
+  FM_HOME="$home" FM_CLASSIFY_PAUSED_VERB=awaiting \
+    "$ROOT/bin/fm-brief.sh" brief-wait-f5 some-proj --mode no-mistakes >/dev/null 2>&1
+  # shellcheck disable=SC2016  # Literal backticks and braces must remain unexpanded.
+  assert_grep 'follow it with `awaiting: awaiting merge of PR {url}`' "$home/data/brief-wait-f5/brief.md" \
+    "the merge-wait line ignored the configured declared-external-wait verb"
+  pass "fm-brief.sh: the merge wait is declared exactly where a PR is raised"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
@@ -783,3 +914,6 @@ test_secondmate_directory_paths_are_absolute_and_output_is_stable
 test_pause_verb_override_renders_all_brief_scaffolds
 test_scout_and_secondmate_load_decision_hold_policy
 test_scout_and_secondmate_scaffold
+test_orientation_sections_render_for_ship_and_scout
+test_env_file_block_is_opt_in_and_self_explaining
+test_pr_wait_follow_up_only_where_a_pr_exists
