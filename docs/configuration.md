@@ -379,6 +379,10 @@ Secondmate homes inherit this file from the primary, so a secondmate's own crewm
 It is read only by [`bin/fm-free-tier-guard.sh`](../bin/fm-free-tier-guard.sh), whose header owns the file's exact format and fail-closed behavior.
 [`docs/free-tier-routing.md`](free-tier-routing.md) owns the pilot procedure and the dispatch rule text that depend on it.
 
+`config/free-lane-launcher` is the generated, local, gitignored launcher that supplies the free-tier lane keys.
+It is written only by `bin/fm-free-lane-run.sh --install-launcher`, whose header owns its exact contents, and it is gitignored rather than tracked because its shebang carries this machine's own `av` interpreter path.
+[`docs/free-tier-routing.md`](free-tier-routing.md) owns the one-time `av bless` step that makes it usable without a per-call approval.
+
 ## Toolchain
 
 On session start the first mate detects what its required toolchain is missing or too old and lists each problem with either an exact install command or manual instructions.
