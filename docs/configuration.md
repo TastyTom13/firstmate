@@ -383,6 +383,10 @@ It is read only by [`bin/fm-free-tier-guard.sh`](../bin/fm-free-tier-guard.sh), 
 It is written only by `bin/fm-free-lane-run.sh --install-launcher`, whose header owns its exact contents, and it is gitignored rather than tracked because its shebang carries this machine's own `av` interpreter path.
 [`docs/free-tier-routing.md`](free-tier-routing.md) owns the one-time `av bless` step that makes it usable without a per-call approval.
 
+`config/cloudflare-account-id` is the local, gitignored file holding this home's Cloudflare account identifier on its first line, which the account-scoped Cloudflare lane needs in addition to its API key.
+It is read only by [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh), which exports the value for that lane when `CLOUDFLARE_ACCOUNT_ID` is not already in the environment and otherwise refuses the lane naming the missing variable.
+The identifier is deliberately kept here rather than in the vault because it is not a secret, and gitignored so no account identifier is ever committed.
+
 ## Toolchain
 
 On session start the first mate detects what its required toolchain is missing or too old and lists each problem with either an exact install command or manual instructions.

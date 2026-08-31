@@ -112,7 +112,9 @@ Groq's free tier allows 8,000 tokens per minute, so pi's default 65,536-token ou
 Keep the free lanes' `maxTokens` small; 4,000 on Groq and 8,000 elsewhere is what the smoke ran on.
 
 The Cloudflare entry is account-scoped: its `baseUrl` embeds the account identifier, and the OpenAI-compatible path is `/ai/v1` under that account.
-This page uses `${CLOUDFLARE_ACCOUNT_ID}` so no account identifier is published; the installed home-local file may carry the literal value instead.
+This page templates the account identifier as `${CLOUDFLARE_ACCOUNT_ID}` and never hardcodes a literal one, in the tracked block and in the installed home-local file alike.
+The cloudflare lane therefore requires `CLOUDFLARE_ACCOUNT_ID` in addition to `CLOUDFLARE_API_KEY`, and refuses with exit 3 naming that variable rather than dispatching against an empty account segment when it is absent.
+The account identifier is not a secret, so it lives in a home-local config file rather than in the vault; [`docs/configuration.md`](configuration.md) owns that file.
 
 Pi ships its own built-in `groq` and `cerebras` catalogues, and `models.json` composes above them rather than replacing them, so both providers list more models than this block defines.
 The name `openrouter-free` is deliberate: pi already has a built-in `openrouter` provider, and a separate identifier keeps the free-model lane from being confused with the paid one.
@@ -126,7 +128,8 @@ No key value is ever written to a file, including this one.
 Routine lane invocations go through one stable launcher so the owner reviews it once instead of approving every call.
 
 [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh) is the single command shape for every lane; its header owns the exact flags, lane table, and exit codes.
-It is an ordinary portable script that reads each lane's key from its own environment and refuses with exit 3 when that variable is absent, so an unauthenticated lane never dispatches.
+It is an ordinary portable script that reads every variable a lane declares from its own environment and refuses with exit 3 naming the missing one, so an unusable lane never dispatches.
+The cloudflare lane declares `CLOUDFLARE_ACCOUNT_ID` alongside its key, and because that identifier is not a secret the launcher never injects it: the script reads it from the home-local file owned by [`docs/configuration.md`](configuration.md) when it is not already exported.
 
 `bin/fm-free-lane-run.sh --install-launcher` writes a home-local launcher to `config/free-lane-launcher` whose shebang is an `av inject` line naming exactly the four lane keys, resolving this machine's own `av` path.
 The owner then runs `av bless <that path>` once, and every later call runs without a further approval prompt.
