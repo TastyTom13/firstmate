@@ -746,6 +746,10 @@ CLEANUP_RECOVERY=$TEARDOWN_CLEANUP_RECOVERY
 KIND=$TEARDOWN_META_KIND
 MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
 [ -n "$MODE" ] || MODE=no-mistakes
+ATTR_MODEL=$(fm_meta_get "$META" model)
+[ -n "$ATTR_MODEL" ] || ATTR_MODEL=default
+ATTR_EFFORT=$(fm_meta_get "$META" effort)
+[ -n "$ATTR_EFFORT" ] || ATTR_EFFORT=default
 PUBLIC_FOLLOWUP_HOME=$FM_HOME
 PUBLIC_FOLLOWUP_STATE=$STATE
 PUBLIC_FOLLOWUP_WORK_HOME=main
@@ -1158,20 +1162,26 @@ work_is_landed() {
 # The completion links this teardown already holds locally. A scout's
 # deliverable is its report, a local-only ship lands on local main, and every
 # other ship carries the PR recorded on its own record.
+# Every case also appends a one-line "model=<model> effort=<effort>" note,
+# read from the task's own state/<id>.meta, so the per-model scorecard
+# (bin/fm-model-scorecard.sh) can tally completions without re-deriving
+# attribution from PR bodies or status logs.
 BACKLOG_DONE_ARGS=()
 backlog_done_args() {
-  local data_relative
+  local data_relative attr_note="model=$ATTR_MODEL effort=$ATTR_EFFORT"
   BACKLOG_DONE_ARGS=()
   case "$KIND" in
     scout)
       data_relative=$(fm_backlog_data_relative "$DATA") || return 1
-      BACKLOG_DONE_ARGS=(--report "$data_relative/$ID/report.md")
+      BACKLOG_DONE_ARGS=(--report "$data_relative/$ID/report.md" --note "$attr_note")
       ;;
     *)
       if [ "$MODE" = local-only ]; then
-        BACKLOG_DONE_ARGS=(--note "local main")
+        BACKLOG_DONE_ARGS=(--note "local main $attr_note")
       elif [ -n "$PR_URL" ]; then
-        BACKLOG_DONE_ARGS=(--pr "$PR_URL")
+        BACKLOG_DONE_ARGS=(--pr "$PR_URL" --note "$attr_note")
+      else
+        BACKLOG_DONE_ARGS=(--note "$attr_note")
       fi
       ;;
   esac
