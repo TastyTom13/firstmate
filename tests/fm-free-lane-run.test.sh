@@ -52,7 +52,7 @@ write_models() {
 # Resolves a repeated flag the way pi itself does, taking the last
 # occurrence, from the argv the fake pi recorded one argument per line.
 last_flag_value() {  # <argv-file> <flag>
-  local file=$1 flag=$2 line value= take=0
+  local file=$1 flag=$2 line value="" take=0
   while IFS= read -r line; do
     if [ "$take" = 1 ]; then
       value=$line
