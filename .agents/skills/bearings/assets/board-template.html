@@ -487,6 +487,12 @@ __FM_BEARINGS_BOARD_DATA__
   }
 
   try {
+  /* An idea's stored task title carries a literal "Idea: " prefix so the
+     tasks-axi positional can never start with "-"; that is plumbing, so no
+     captain-facing row ever shows it. */
+  function shownTitle(text) {
+    return String(text == null ? "" : text).replace(/^Idea:[ \t]*/, "");
+  }
   function el(tag, cls, text) {
     var n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -747,7 +753,7 @@ __FM_BEARINGS_BOARD_DATA__
   parkedIdeas.forEach(function (idea) {
     var row = el("div", "bb-row");
     var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", idea.title));
+    main.appendChild(el("div", "bb-row__title", shownTitle(idea.title)));
     if (idea.repo) main.appendChild(el("div", "bb-row__sub", idea.repo));
     row.appendChild(main);
     pi.appendChild(row);
@@ -821,7 +827,7 @@ __FM_BEARINGS_BOARD_DATA__
       row.appendChild(el("span", "bb-pick-spacer"));
     }
     var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", t.title));
+    main.appendChild(el("div", "bb-row__title", shownTitle(t.title)));
     /* second line keeps the title uncrowded in the half-width column */
     var chSub = t.repo || t.id;
     main.appendChild(el("div", "bb-row__sub", t.reason ? t.reason + " · " + chSub : chSub));

@@ -269,6 +269,35 @@ test_parked_ideas_render_title_and_repo() {
   pass "parked ideas render their title, and their repo only when known"
 }
 
+test_the_stored_idea_prefix_never_reaches_the_captain() {
+  local home out
+  home=$(make_home ideas-prefix)
+  out=$(render_ideas "$home" '[{"id":"idea-a","title":"Idea: batch the merges","repo":"sample"}]')
+  printf '%s' "$out" | jq -e '
+    .error == "" and .parkedIdeas[0].title == "batch the merges"
+  ' >/dev/null || fail "the parked idea still showed its plumbing prefix: $out"
+  pass "a parked idea renders without the stored Idea: prefix"
+}
+
+test_a_promoted_idea_row_drops_the_prefix_too() {
+  local home out data
+  home=$(make_home ideas-promoted); data="$home/promoted-payload.json"
+  jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
+    prs_live:false, captains_call:[], underway:[], landed:[],
+    charted:[{id:"idea-a", title:"Idea: batch the merges", repo:"sample",
+              reason:"waiting on review", dispatchable:true}]}' > "$data"
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  out=$(node "$HARNESS" "$home/.lavish/bearings-board.html") \
+    || fail "the built board could not be rendered"
+  printf '%s' "$out" | jq -e '
+    .error == "" and .charted[0].title == "batch the merges" and .charted[0].pickable == true
+  ' >/dev/null || fail "a promoted idea kept its plumbing prefix in Charted Next: $out"
+  pass "a promoted idea's Charted Next row drops the stored Idea: prefix"
+}
+
 test_two_captured_ideas_queue_two_distinct_answers() {
   local home out
   home=$(make_home ideas-capture)
@@ -310,3 +339,5 @@ test_a_board_without_parked_ideas_shows_the_empty_state
 test_parked_ideas_render_title_and_repo
 test_two_captured_ideas_queue_two_distinct_answers
 test_an_over_long_idea_is_refused_instead_of_queued
+test_the_stored_idea_prefix_never_reaches_the_captain
+test_a_promoted_idea_row_drops_the_prefix_too
