@@ -537,11 +537,13 @@ fm_backlog_close_report_value_valid() {  # <value>
 
 # <value> is this task's attribution note as bin/fm-teardown.sh's
 # backlog_done_args percent-encodes it (fm_backlog_close_marker_stage below):
-# unreserved characters only, so a well-formed record can never smuggle a
-# control byte, a shell metacharacter, or a second backlog-note line past
-# this validator into `tasks-axi done`.
+# unreserved characters only, and every %XX escape must decode to a printable
+# byte, so a well-formed record can never smuggle a control byte, a shell
+# metacharacter, or a second backlog-note line past this validator into
+# `tasks-axi done` - decoding happens after validation, so an escape that
+# decodes to a control byte is rejected here in its encoded form.
 fm_backlog_close_note_value_valid() {  # <value>
-  local arg_value=$1 percent_tail percent_valid
+  local arg_value=$1 percent_tail percent_valid escape
   [ -n "$arg_value" ] && [ "${#arg_value}" -le 512 ] || return 1
   case "$arg_value" in
     *[!A-Za-z0-9._~%-]*) return 1 ;;
@@ -551,7 +553,13 @@ fm_backlog_close_note_value_valid() {  # <value>
   while case "$percent_tail" in *%*) true ;; *) false ;; esac; do
     percent_tail=${percent_tail#*%}
     case "$percent_tail" in
-      [0-9A-Fa-f][0-9A-Fa-f]*) percent_tail=${percent_tail#??} ;;
+      [0-9A-Fa-f][0-9A-Fa-f]*)
+        escape=${percent_tail%"${percent_tail#??}"}
+        case "$escape" in
+          [0-1][0-9A-Fa-f]|7[Ff]) percent_valid=0; break ;;
+        esac
+        percent_tail=${percent_tail#??}
+        ;;
       *) percent_valid=0; break ;;
     esac
   done
@@ -662,7 +670,8 @@ fm_backlog_close_marker_validate() {  # <marker-path> <authorized-data-dir> <exp
     4)
       # The only 4-element shape is a completion link paired with the
       # per-model attribution note bin/fm-teardown.sh's backlog_done_args
-      # always appends (AGENTS.md section 10's model-scorecard evidence).
+      # always appends; that note's shape is owned by bin/fm-teardown.sh's
+      # backlog_done_args and read back by bin/fm-model-scorecard.sh.
       if case "${args[0]}" in
         --pr) fm_backlog_close_pr_value_valid "${args[1]}" ;;
         --report) fm_backlog_close_report_value_valid "${args[1]}" ;;

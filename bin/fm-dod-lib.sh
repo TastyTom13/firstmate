@@ -20,6 +20,10 @@
 # external wait rather than an idle pane the watcher escalates as stale.
 # local-only raises no PR and therefore carries no such line, and no
 # "Built by" instruction either, since it never opens one.
+# The no-mistakes "Built by" recipe is the fleet's ONE sanctioned use of raw
+# `gh` instead of `gh-axi`: gh-axi has no way to read a PR body back verbatim
+# (`pr view --full` renders a record, and `--body-file` has no stdin form), so
+# the read half of that one read-modify-write uses `gh pr view --json body`.
 # Every heredoc here stays outside a command substitution: `VAR=$(cat <<EOF ...)`
 # breaks parsing of the whole file on Bash 3.2 (tests/fm-brief.test.sh).
 
@@ -79,7 +83,7 @@ Two firstmate-specific rules layer on top of that guidance:
 - NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`no-mistakes axi respond\`. It is banned fleet-wide.
   It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
 
-Once no-mistakes reports the PR, read $meta and turn its \`harness=\`, \`model=\`, and \`effort=\` fields into a trailing PR-body line \`Built by: <harness>/<model> at <effort>\` (an unset model or effort reads back as the literal \`default\`, matching how it was recorded); for example: \`awk -F= '\$1=="harness"{h=\$2} \$1=="model"{m=\$2} \$1=="effort"{e=\$2} END{printf "Built by: %s/%s at %s", h, m, e}' $meta\`. Append that exact line, on its own line, to the PR body before you report done: \`gh-axi pr edit <number> --body-file -\` fed the PR's current body (\`gh-axi pr view <number> --full\`) plus that line works, where \`<number>\` is the trailing path segment of the PR url.
+Once no-mistakes reports the PR, read $meta and turn its \`harness=\`, \`model=\`, and \`effort=\` fields into a trailing PR-body line \`Built by: <harness>/<model> at <effort>\` (an unset model or effort reads back as the literal \`default\`, matching how it was recorded); for example: \`awk -F= '\$1=="harness"{h=\$2} \$1=="model"{m=\$2} \$1=="effort"{e=\$2} END{printf "Built by: %s/%s at %s", h, m, e}' $meta\`. Append that exact line, on its own line, to the PR body before you report done, where \`<number>\` is the trailing path segment of the PR url: \`gh pr view <number> --json body -q .body > /tmp/pr-body.md\`, append the \`Built by:\` line to that file, then \`gh-axi pr edit <number> --body-file /tmp/pr-body.md\`.
 After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\`, follow it with \`$paused: awaiting merge of PR {url}\`, and stop. You are finished.
 That second line declares a known external wait, so your idle pane is rechecked on a long cadence instead of being treated as a possible wedge.
 EOF

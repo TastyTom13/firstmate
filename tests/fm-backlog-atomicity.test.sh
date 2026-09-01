@@ -1718,6 +1718,31 @@ test_recovery_rejects_raw_control_bytes() {
   pass "recovery rejects marker control bytes before parsing"
 }
 
+# The note value is percent-decoded AFTER validation, so an escape that decodes
+# to a control byte must be refused in its encoded form - otherwise a tampered
+# marker smuggles a newline into the `tasks-axi done --note` value and gains a
+# backlog body line no record author wrote.
+test_recovery_rejects_a_note_escape_that_decodes_to_a_control_byte() {
+  local case_dir id marker data out
+  id=atomic-marker-note-control-escape-b12
+  case_dir=$(make_home marker-note-control-escape)
+  add_item "$case_dir" "$id"
+  start_item "$case_dir" "$id"
+  write_task_meta "$case_dir" "$id" ship no-mistakes "spawn_gen=spawn-note-control-escape"
+  data="$(home_of "$case_dir")/data"
+  marker="$(home_of "$case_dir")/state/$id.backlog-close"
+  printf 'id=%s\ndata=%s\nspawn_gen=spawn-note-control-escape\narg=--note\narg=model%%3Da%%0Aeffort%%3Db\n' \
+    "$id" "$data" > "$marker"
+
+  out=$(run_bootstrap "$case_dir")
+  assert_present "$marker" "a note escape decoding to a newline was consumed"
+  assert_present "$(home_of "$case_dir")/state/$id.meta" \
+    "a note escape decoding to a newline removed the task record"
+  [ "$(row_state "$case_dir" "$id")" = in_flight ] \
+    || fail "a note escape decoding to a newline changed the backlog row: $out"
+  pass "recovery rejects a note escape that decodes to a control byte"
+}
+
 test_recovery_rejects_malformed_pr_urls() {
   local case_dir first_id second_id third_id first_marker second_marker third_marker out
   first_id=atomic-marker-pr-port-b12
@@ -2280,6 +2305,7 @@ test_recovery_rejects_a_foreign_data_directory
 test_recovery_rejects_an_unterminated_unknown_field
 test_recovery_rejects_lexical_data_traversal
 test_recovery_rejects_raw_control_bytes
+test_recovery_rejects_a_note_escape_that_decodes_to_a_control_byte
 test_recovery_rejects_malformed_pr_urls
 test_failed_close_replay_is_not_started_as_live_work
 test_recovery_rejects_invalid_close_arguments

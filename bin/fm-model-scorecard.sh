@@ -36,6 +36,11 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# fm_backlog_root is the single owner of "the directory a backlog's own
+# .tasks.toml is resolved from"; resolving it here by hand would be a second
+# implementation of that rule.
+# shellcheck source=bin/fm-backlog-transition-lib.sh
+. "$SCRIPT_DIR/fm-backlog-transition-lib.sh"
 
 usage() {
   awk '
@@ -71,8 +76,10 @@ FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
-ROOT="${DATA%/*}"
-[ -n "$ROOT" ] || ROOT=/
+ROOT=$(fm_backlog_root "$DATA") || {
+  echo "error: could not resolve the home root for $DATA" >&2
+  exit 1
+}
 
 BACKLOG="$DATA/backlog.md"
 if [ ! -f "$BACKLOG" ]; then
