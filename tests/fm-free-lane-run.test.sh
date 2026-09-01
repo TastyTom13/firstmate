@@ -18,6 +18,9 @@
 # extension discovery, and a caller can still override the default system
 # prompt with its own flag, because the runner's own flags always precede the
 # caller's and pi takes the last occurrence.
+# A fake pi accepts whatever argv it is handed, so that those four flags still
+# mean what the runner assumes is proven separately against the real binary by
+# tests/fm-free-lane-slim-prompt-live-e2e.test.sh.
 set -u
 
 # shellcheck source=tests/lib.sh
