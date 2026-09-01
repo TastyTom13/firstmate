@@ -12,6 +12,10 @@
 # three, it carries the FM_FREE_LANE_ACTIVE marker, a lane invocation that
 # already sees that marker refuses with exit 4, and the generated launcher
 # records variable names rather than values.
+# Every lane dispatch also passes a slim --system-prompt, --no-builtin-tools,
+# and --no-context-files to pi instead of its default coding-agent prompt,
+# tool set, and AGENTS.md/CLAUDE.md auto-discovery, and a caller can still
+# override the default system prompt with its own flag.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -373,6 +377,47 @@ test_pi_sees_only_the_invoked_lanes_own_key() {
   pass "pi sees the invoked lane's own key and none of the other three"
 }
 
+test_lane_dispatch_uses_a_slim_prompt_and_no_builtin_tools() {
+  local dir args
+  dir="$TMP_ROOT/slim-prompt"
+  make_fakebin "$dir/bin"
+  export FM_TEST_PI_ARGS="$dir/pi-args.txt"
+
+  GROQ_API_KEY=not-a-real-value PATH="$dir/bin:$PATH" "$RUNNER" groq -p "hi" \
+    >/dev/null 2>&1 || fail "the groq lane did not dispatch"
+
+  args=$(cat "$FM_TEST_PI_ARGS")
+  assert_contains "$args" "--system-prompt" \
+    "the runner did not pass a system prompt to pi"
+  assert_contains "$args" "one-shot text generator" \
+    "the runner did not pass its slim free-lane system prompt to pi"
+  assert_contains "$args" "--no-builtin-tools" \
+    "the runner did not disable pi's built-in tools"
+  assert_contains "$args" "--no-context-files" \
+    "the runner did not disable pi's AGENTS.md/CLAUDE.md context-file discovery"
+
+  unset FM_TEST_PI_ARGS
+  pass "a lane invocation passes a slim system prompt, disables built-in tools, and disables context-file discovery"
+}
+
+test_caller_can_still_override_the_default_system_prompt() {
+  local dir args
+  dir="$TMP_ROOT/slim-prompt-override"
+  make_fakebin "$dir/bin"
+  export FM_TEST_PI_ARGS="$dir/pi-args.txt"
+
+  GROQ_API_KEY=not-a-real-value PATH="$dir/bin:$PATH" \
+    "$RUNNER" groq --system-prompt "caller prompt" -p "hi" \
+    >/dev/null 2>&1 || fail "the groq lane did not dispatch with a caller override"
+
+  args=$(cat "$FM_TEST_PI_ARGS")
+  assert_contains "$args" "caller prompt" \
+    "the caller's own --system-prompt did not reach pi"
+
+  unset FM_TEST_PI_ARGS
+  pass "a caller-supplied --system-prompt still reaches pi alongside the default"
+}
+
 test_a_lane_session_may_not_start_another_lane() {
   local dir status err lane
   dir="$TMP_ROOT/reentry"
@@ -416,4 +461,6 @@ test_cloudflare_refuses_an_unfilled_account_segment
 test_cloudflare_shape_problems_warn_and_still_dispatch
 test_the_account_guard_is_scoped_to_the_cloudflare_lane
 test_pi_sees_only_the_invoked_lanes_own_key
+test_lane_dispatch_uses_a_slim_prompt_and_no_builtin_tools
+test_caller_can_still_override_the_default_system_prompt
 test_a_lane_session_may_not_start_another_lane
