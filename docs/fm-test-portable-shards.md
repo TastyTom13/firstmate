@@ -64,7 +64,8 @@ Each shard is still strictly serial in itself, and separate runners mean no two 
 `.github/workflows/ci.yml` derives the same `n` from `strategy.job-total` rather than a literal, so changing the shard count in either file without the other fails the lane loudly instead of leaving part of the required suite unrun.
 
 Assignment is longest-processing-time bin packing over per-script duration hints embedded in `bin/fm-test-run.sh`.
-The hints came from the `fm-test-timing-portable-serial-*` artifacts of green CI run [33448875426](https://github.com/TastyTom13/firstmate/actions/runs/33448875426) on 2026-09-01, where the lane ran 143 scripts in 3718507 ms of serial work.
+The hints came from the `fm-test-timing-portable-serial-*` artifacts of green CI run [33448875426](https://github.com/TastyTom13/firstmate/actions/runs/33448875426) on 2026-09-01, where the lane ran 142 scripts in 3718016 ms of serial work.
+`tests/fm-free-lane-run.test.sh` did not exist on that run, so its 491 ms hint comes from the shard 1 artifact of run [33457396883](https://github.com/TastyTom13/firstmate/actions/runs/33457396883), whose `Behavior portable serial 1` job completed even though the run as a whole was cancelled.
 A script with no hint gets the conservative `PORTABLE_SERIAL_DEFAULT_WEIGHT_MS` default.
 Hints only affect balance: the coverage guard keeps the partition complete and disjoint whatever they say, so a stale hint costs a slower shard rather than lost coverage.
 Balance is still worth keeping current, because enough unmeasured or under-measured scripts let one shard carry substantially more real work than another and reach the job cap while another runner sits idle - this exact drift (hints last refreshed 2026-08-21 against a lane that had since grown from 116 to 143 scripts and about 42.6 min to about 62 min of real serial work) is what cancelled `portable-serial-3of4` at its 20-minute cap on green `main` with no PR code present.
