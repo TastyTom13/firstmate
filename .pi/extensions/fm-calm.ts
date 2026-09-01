@@ -138,6 +138,14 @@ export default function (pi: ExtensionAPI) {
     if (pendingExportRepaintTimeout === undefined) return;
     clearTimeout(pendingExportRepaintTimeout);
     pendingExportRepaintTimeout = undefined;
+    // Cancelling the repaint drops the redraw, not the state it was carrying:
+    // the stock-export window still has to close, or Calm and every extension
+    // that consumes the published presentation event stay latched in stock
+    // rendering until the next session_start. Only the ctx-touching part of the
+    // callback is unsafe here, so run the rest.
+    exportRendering = false;
+    setCalmStockExportRendering(false);
+    publishPresentationState();
   };
   // One logical agent run, tracked from agent_start through agent_settled rather than
   // from turns or tool calls, so the boat never flickers between tool calls, automatic
