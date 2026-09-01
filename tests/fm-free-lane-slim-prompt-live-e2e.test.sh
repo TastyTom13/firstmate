@@ -17,9 +17,12 @@
 #
 # This guard therefore runs the REAL installed pi against a local mock
 # OpenAI-compatible endpoint and asserts on the request pi actually assembled:
-# no tools, no context-file content, and a system prompt that is not pi's own
-# default. No provider key, no network, and no model tokens are spent - the
-# mock answers every request with a canned stream.
+# no tools, no context-file content, and the runner's own system prompt rather
+# than pi's default. No provider key and no model tokens are spent - the mock
+# answers every request with a canned stream. What keeps the run off the
+# network is the loopback baseUrl in the models.json this guard generates under
+# its own PI_CODING_AGENT_DIR: that file is the only provider pi can resolve
+# here, and the lane key it carries is a placeholder value.
 #
 # It proves the flags by contrast against a baseline run of the same pi in the
 # same directory with none of them: that run must show the built-in tools, the
@@ -55,6 +58,7 @@ BODY="$LAB/body.json"
 MOCK_PID=''
 FAILED=0
 SENTINEL='FM-FREE-LANE-LIVE-CONTEXT-SENTINEL'
+LANE_PHRASE='one-shot text generator'
 PROBE_TOOL='fm_free_lane_live_probe'
 RUN_TIMEOUT=${FM_FREE_LANE_SLIM_LIVE_TIMEOUT:-120}
 
@@ -100,15 +104,17 @@ const server = http.createServer((req, res) => {
 server.listen(0, "127.0.0.1", () => { console.log(server.address().port); });
 MOCK
 
-# Reads the recorded request and prints the three facts the assertions need:
-# the tool names pi offered, how many times the context-file sentinel reached
-# the request, and a digest of the system prompt pi sent.
+# Reads the recorded request and prints the facts the assertions need: the tool
+# names pi offered, how many times the context-file sentinel reached the
+# request, how many times the lane's own prompt phrase did, and a digest of the
+# whole system prompt pi sent.
 cat > "$LAB/read-request.mjs" <<'READ'
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 
 const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const sentinel = process.argv[3];
+const lanePhrase = process.argv[4];
 const tools = (body.tools ?? []).map((t) => t.function?.name ?? t.name ?? "?");
 const system = (body.messages ?? [])
   .filter((m) => m.role === "system")
@@ -117,6 +123,7 @@ const system = (body.messages ?? [])
 const whole = JSON.stringify(body);
 console.log(`tools=${tools.join(",")}`);
 console.log(`sentinel=${whole.split(sentinel).length - 1}`);
+console.log(`lane_phrase=${system.split(lanePhrase).length - 1}`);
 console.log(`system_digest=${createHash("sha256").update(system).digest("hex")}`);
 READ
 
@@ -185,7 +192,6 @@ capture() {  # <label> <command...>
     cd "$WORK" || exit 1
     GROQ_API_KEY=not-a-real-value \
     PI_CODING_AGENT_DIR="$AGENT_DIR" \
-    PI_OFFLINE=1 \
     FM_FREE_LANE_ACTIVE='' \
       fm_run_timed "$RUN_TIMEOUT" "$@" </dev/null >"$LAB/$label.out" 2>"$LAB/$label.err"
   ) || status=$?
@@ -197,7 +203,7 @@ capture() {  # <label> <command...>
     fail "$label: pi sent no request to the mock provider"
     return 1
   fi
-  node "$LAB/read-request.mjs" "$BODY" "$SENTINEL"
+  node "$LAB/read-request.mjs" "$BODY" "$SENTINEL" "$LANE_PHRASE"
 }
 
 fact() {  # <captured-facts> <key>
@@ -259,14 +265,17 @@ else
   pass "the lane request carries no AGENTS.md content, while the same pi loads it without the flag"
 fi
 
+LANE_PHRASE_HITS=$(fact "$LANE" lane_phrase)
 if [ "$LANE_DIGEST" = "$DEFAULT_DIGEST" ]; then
   fail "the lane request carries pi's own default system prompt; --system-prompt no longer takes effect"
+elif [ "${LANE_PHRASE_HITS:-0}" -lt 1 ]; then
+  fail "the lane request's system prompt does not carry the runner's own prompt text; --system-prompt no longer reaches the request intact"
 else
   pass "the lane request carries the runner's own system prompt, not pi's default"
 fi
 
 if [ "$FAILED" != 0 ]; then
-  echo "# pi $PI_VERSION: a flag bin/fm-free-lane-run.sh depends on changed meaning; pi accepts unknown flags silently, so check pi --help before editing the runner" >&2
+  echo "# pi $PI_VERSION: a flag bin/fm-free-lane-run.sh depends on changed meaning, or its own prompt text moved away from '$LANE_PHRASE'; check pi --help and the runner's FREE_LANE_SYSTEM_PROMPT before editing either" >&2
   exit 1
 fi
 

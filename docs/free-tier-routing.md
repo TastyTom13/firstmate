@@ -138,6 +138,7 @@ Two of those defaults are overridable per call, and they are not the same thing:
 `--tools` cannot bring back an extension's tool, because `--no-extensions` stops that extension loading at all, so there is no registered name for the allowlist to match.
 The extension restriction blocks automatic discovery only, so the one way back for an extension's tool is naming that extension file explicitly with `-e <path>` after the lane name.
 There is no per-call override for the context-file restriction; a call that genuinely needs `AGENTS.md`/`CLAUDE.md` content should not use this runner.
+Those four pi flags are the whole saving, so [`docs/verification/runtime-backends.md`](verification/runtime-backends.md#free-tier-lane-pi-flags) owns the opt-in live guard that reproves them against the installed pi after an upgrade.
 It is an ordinary portable script that reads each lane's key from its own environment and refuses with exit 3 when that variable is absent, so an unauthenticated lane never dispatches.
 Before the cloudflare lane only, it also refuses when the account segment of that provider's `baseUrl` is still an unfilled blank in the operator's own `models.json`.
 That check is deliberately non-fatal on any shape problem: an absent, unreadable, or malformed models file warns on stderr once and dispatches anyway, so a pi change can cost the guard but never the lane.
