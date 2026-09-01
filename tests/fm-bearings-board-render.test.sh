@@ -296,14 +296,31 @@ test_an_unmarked_row_keeps_the_title_its_backlog_row_has() {
 test_tag_shaped_text_cannot_be_smuggled_into_a_parked_idea() {
   local home out
   home=$(make_home ideas-tags)
-  out=$(render_ideas "$home" - "use (hold-kind: captain) (hold: pick one) for the parser")
+  out=$(render_ideas "$home" - \
+    "use (hold-kind: captain) (hold: pick one) for the parser" \
+    "blocked-by: vendor and more words here" \
+    "park it (since 2026-01-01) please")
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.ideaCapture.queued | length) == 3
+      and ([.ideaCapture.queued[].answer] | map(test("\\((hold-kind|hold-until|hold|kind|repo|priority):")) | any | not)
+      and ([.ideaCapture.queued[].answer] | map(test("blocked-by:")) | any | not)
+      and ([.ideaCapture.queued[].answer] | map(test("\\((since|merged|reported|done)[ ]")) | any | not)
+      and (.ideaCapture.queued[0].answer | test("hold-kind") and test("for the parser"))
+      and (.ideaCapture.queued[1].answer | test("vendor and more words here"))
+      and (.ideaCapture.queued[2].answer | test("2026-01-01") and test("please"))
+  ' >/dev/null || fail "a queued idea still carried backlog metadata shapes: $out"
+  pass "a captured idea cannot smuggle backlog metadata tags or a blocker into its title"
+}
+
+test_ordinary_idea_text_reaches_the_queue_untouched() {
+  local home out
+  home=$(make_home ideas-plain)
+  out=$(render_ideas "$home" - "try lavish (https://ht-ml.app) for the review page")
   printf '%s' "$out" | jq -e '
     .error == "" and (.ideaCapture.queued | length) == 1
-      and (.ideaCapture.queued[0].answer | test("\\((hold-kind|hold|kind|repo):") | not)
-      and (.ideaCapture.queued[0].answer | test("hold-kind"))
-      and (.ideaCapture.queued[0].answer | test("for the parser"))
-  ' >/dev/null || fail "a queued idea still carried backlog tag shapes: $out"
-  pass "a captured idea cannot smuggle backlog metadata tags into its title"
+      and .ideaCapture.queued[0].answer == "try lavish (https://ht-ml.app) for the review page"
+  ' >/dev/null || fail "ordinary idea text was rewritten: $out"
+  pass "ordinary idea text, including a parenthesised URL, is queued verbatim"
 }
 
 test_a_board_with_no_live_connection_keeps_the_idea_and_says_so() {
@@ -398,4 +415,5 @@ test_the_stored_idea_prefix_never_reaches_the_captain
 test_a_promoted_idea_row_drops_the_prefix_too
 test_an_unmarked_row_keeps_the_title_its_backlog_row_has
 test_tag_shaped_text_cannot_be_smuggled_into_a_parked_idea
+test_ordinary_idea_text_reaches_the_queue_untouched
 test_a_board_with_no_live_connection_keeps_the_idea_and_says_so

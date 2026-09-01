@@ -768,10 +768,15 @@ __FM_BEARINGS_BOARD_DATA__
   ideaForm.addEventListener("submit", function (ev) {
     ev.preventDefault();
     ideaLimit.classList.remove("is-visible");
-    /* a captured idea becomes a backlog TITLE, and backlog rows carry their
-       metadata as "(key: value)" tags, so neutralise that shape here: nothing
-       typed in this box may steer how any reader classifies the task */
-    var idea = ideaInput.value.trim().replace(/([(,][ \t]*)([A-Za-z][A-Za-z-]*):/g, "$1$2 -");
+    /* a captured idea becomes a backlog TITLE, so break exactly the shapes the
+       backlog reader treats as metadata - and nothing else, so an ordinary
+       "(https://ht-ml.app)" survives untouched. Each rewrite mirrors one real
+       parse shape: "(key: value)" and ", key: value" tags, "(word value)"
+       tags, and an unanchored "blocked-by:" which the reader matches anywhere. */
+    var idea = ideaInput.value.trim()
+      .replace(/([(,][ \t]*)(repo|kind|priority|hold-kind|hold-until|hold):/g, "$1$2 -")
+      .replace(/([(,][ \t]*)(since|merged|reported|done)([ \t])/g, "$1$2-$3")
+      .replace(/blocked-by:/g, "blocked-by -");
     if (!idea) return;
     if (utf8ByteLength(idea) > 512) {
       ideaLimit.textContent = "Idea is too long to queue (512 bytes maximum).";
