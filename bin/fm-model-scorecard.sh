@@ -21,7 +21,8 @@
 #
 # Sources, in the order read:
 #   1. This home's data/backlog.md "## Done" section.
-#   2. This home's configured Done archive (.tasks.toml's `archive` key,
+#   2. This home's configured Done archive (.tasks.toml's `[markdown]`
+#      `archive` key, the only one tasks-axi itself honours;
 #      default "data/done-archive.md"; absent file is skipped, not an error).
 #   3. state/<id>.status for every id found in (1) or (2) that still has one -
 #      teardown never removes this file (bin/fm-crew-state.sh), but it is not
@@ -90,9 +91,17 @@ fi
 ARCHIVE_REL="data/done-archive.md"
 TOML="$ROOT/.tasks.toml"
 if [ -f "$TOML" ]; then
-  toml_value=$(grep -E '^[[:space:]]*archive[[:space:]]*=' "$TOML" 2>/dev/null | tail -1 \
-    | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)".*/\1/')
-  [ -n "$toml_value" ] && ARCHIVE_REL=$toml_value
+  toml_value=$(awk '
+    /^[[:space:]]*\[/ { table = $0; sub(/^[[:space:]]*\[[[:space:]]*/, "", table); sub(/[[:space:]]*\].*/, "", table); next }
+    table == "markdown" && /^[[:space:]]*archive[[:space:]]*=/ {
+      value = $0
+      sub(/^[^=]*=[[:space:]]*"/, "", value)
+      sub(/".*/, "", value)
+      last = value
+    }
+    END { if (last != "") print last }
+  ' "$TOML" 2>/dev/null)
+  if [ -n "$toml_value" ]; then ARCHIVE_REL=$toml_value; fi
 fi
 case "$ARCHIVE_REL" in
   /*) ARCHIVE=$ARCHIVE_REL ;;
@@ -143,10 +152,18 @@ TMP_ROWS=$(mktemp)
 trap 'rm -f "$TMP_ROWS"' EXIT
 
 extract_done_ids "$BACKLOG" > "$TMP_ROWS"
-[ -f "$ARCHIVE" ] && extract_done_ids "$ARCHIVE" >> "$TMP_ROWS"
+ARCHIVE_READ=0
+if [ -f "$ARCHIVE" ]; then
+  extract_done_ids "$ARCHIVE" >> "$TMP_ROWS"
+  ARCHIVE_READ=1
+fi
 
 if [ ! -s "$TMP_ROWS" ]; then
-  echo "no attributed Done tasks found in $BACKLOG${ARCHIVE:+ or $ARCHIVE}"
+  if [ "$ARCHIVE_READ" = 1 ]; then
+    echo "no attributed Done tasks found in $BACKLOG or $ARCHIVE"
+  else
+    echo "no attributed Done tasks found in $BACKLOG"
+  fi
   exit 0
 fi
 

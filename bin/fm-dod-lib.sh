@@ -36,6 +36,14 @@ _FM_DOD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null)" || _
 # shellcheck source=bin/fm-classify-lib.sh
 . "$_FM_DOD_LIB_DIR/fm-classify-lib.sh"
 
+# Both callers must hand <meta-path> in as a single shell-quoted literal, so
+# the quoting rule for this lib's own argument lives with the lib.
+fm_shell_quote() {  # <value>
+  printf "'"
+  printf '%s' "$1" | sed "s/'/'\\\\''/g"
+  printf "'"
+}
+
 fm_dod_block() {  # <mode> <task-id> <meta-path>
   local mode=$1 id=$2 meta=$3
   local paused=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}

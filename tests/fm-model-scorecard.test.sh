@@ -71,6 +71,7 @@ test_tallies_every_note_shape_and_status_proxy() {
   home="$TMP_ROOT/full-tally"
   mkdir -p "$home/data" "$home/state"
   cat > "$home/.tasks.toml" <<'EOF'
+[markdown]
 archive = "data/done-archive.md"
 EOF
   cat > "$home/data/backlog.md" <<'EOF'
@@ -202,6 +203,7 @@ test_absolute_archive_path_is_read_as_is() {
   home="$TMP_ROOT/absolute-archive"
   mkdir -p "$home/data" "$home/state" "$home/elsewhere"
   cat > "$home/.tasks.toml" <<EOF
+[markdown]
 archive = "$home/elsewhere/done.md"
 EOF
   cat > "$home/data/backlog.md" <<'EOF'
@@ -223,6 +225,63 @@ EOF
   pass "fm-model-scorecard.sh: an absolute archive path in .tasks.toml is read as-is"
 }
 
+# Regression: tasks-axi honours only [markdown].archive (an archive key under
+# any other table is ignored), and the no-op message must not name an archive
+# that was never read.
+test_archive_key_outside_markdown_table_is_ignored() {
+  local home out
+  home="$TMP_ROOT/foreign-archive-table"
+  mkdir -p "$home/data" "$home/state"
+  cat > "$home/.tasks.toml" <<EOF
+[markdown]
+archive = "$home/data/real-archive.md"
+
+[other]
+archive = "$home/data/decoy-archive.md"
+EOF
+  cat > "$home/data/backlog.md" <<'EOF'
+# Backlog
+
+## Done
+EOF
+  cat > "$home/data/real-archive.md" <<'EOF'
+
+## Archived 2026-05-01
+- [x] task-real - archived https://github.com/o/r/pull/13 (merged 2026-05-01)
+  model=claude-sonnet-5 effort=xhigh
+EOF
+  cat > "$home/data/decoy-archive.md" <<'EOF'
+
+## Archived 2026-05-01
+- [x] task-decoy - archived https://github.com/o/r/pull/14 (merged 2026-05-01)
+  model=decoy-model effort=low
+EOF
+  out=$(FM_HOME="$home" "$SCORECARD")
+  echo "$out" | grep -E '^claude-sonnet-5 +xhigh +1 +0 +0$' >/dev/null \
+    || fail "[markdown].archive was not the archive the scorecard read (got: $out)"
+  echo "$out" | grep -q 'decoy-model' \
+    && fail "an archive key outside the [markdown] table was honoured (got: $out)"
+  pass "fm-model-scorecard.sh: only [markdown].archive selects the archive file"
+}
+
+test_no_op_message_names_only_files_it_read() {
+  local home out
+  home="$TMP_ROOT/no-archive-on-disk"
+  mkdir -p "$home/data" "$home/state"
+  cat > "$home/data/backlog.md" <<'EOF'
+# Backlog
+
+## Done
+- [x] pre-attribution-task - shipped before this contract existed (done 2026-01-01)
+EOF
+  out=$(FM_HOME="$home" "$SCORECARD")
+  echo "$out" | grep -q 'done-archive.md' \
+    && fail "the no-op message named an archive file that does not exist (got: $out)"
+  assert_contains "$out" "no attributed Done tasks found in $home/data/backlog.md" \
+    "the no-op message did not name the backlog it actually read"
+  pass "fm-model-scorecard.sh: the no-op message names only the files it read"
+}
+
 test_script_parses
 test_help_renders
 test_missing_backlog_is_refused
@@ -231,3 +290,5 @@ test_tallies_every_note_shape_and_status_proxy
 test_note_after_body_lines_is_attributed
 test_ask_user_counts_every_needs_decision_shape
 test_absolute_archive_path_is_read_as_is
+test_archive_key_outside_markdown_table_is_ignored
+test_no_op_message_names_only_files_it_read

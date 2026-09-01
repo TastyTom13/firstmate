@@ -746,10 +746,21 @@ CLEANUP_RECOVERY=$TEARDOWN_CLEANUP_RECOVERY
 KIND=$TEARDOWN_META_KIND
 MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
 [ -n "$MODE" ] || MODE=no-mistakes
-ATTR_MODEL=$(fm_meta_get "$META" model)
-[ -n "$ATTR_MODEL" ] || ATTR_MODEL=default
-ATTR_EFFORT=$(fm_meta_get "$META" effort)
-[ -n "$ATTR_EFFORT" ] || ATTR_EFFORT=default
+# The attribution note is a single space-separated line inside a validated,
+# length-bounded crash-recovery record, and bin/fm-spawn.sh never constrains
+# what --model/--effort carry. An unbounded value with whitespace or a control
+# byte would either split a scorecard row or fail the pending-close validator
+# outright and wedge a destructive teardown, so each value is reduced here to
+# one printable whitespace-free token before it can reach either.
+attr_note_token() {  # <value>
+  local token
+  token=$(LC_ALL=C printf '%s' "$1" | tr -c '[:graph:]' '_')
+  token=${token:0:64}
+  [ -n "$token" ] || token=default
+  printf '%s' "$token"
+}
+ATTR_MODEL=$(attr_note_token "$(fm_meta_get "$META" model)")
+ATTR_EFFORT=$(attr_note_token "$(fm_meta_get "$META" effort)")
 PUBLIC_FOLLOWUP_HOME=$FM_HOME
 PUBLIC_FOLLOWUP_STATE=$STATE
 PUBLIC_FOLLOWUP_WORK_HOME=main
