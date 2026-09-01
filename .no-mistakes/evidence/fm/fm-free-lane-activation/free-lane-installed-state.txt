@@ -1,0 +1,23 @@
+=== Installed pi providers (~/.pi/agent/models.json), account id redacted ===
+cerebras
+cloudflare
+groq
+openrouter-free
+
+Cloudflare baseUrl (account segment redacted): https://api.cloudflare.com/client/v4/accounts/<REDACTED>/ai/v1
+-> the lane's account-segment guard finds a filled id, so the cloudflare lane dispatches.
+
+=== Home-local dispatch rule candidates, in survey-preference order ===
+pi groq/openai/gpt-oss-120b effort=low
+pi cloudflare/@cf/openai/gpt-oss-120b effort=low
+pi openrouter-free/minimax/minimax-m3:free effort=low
+(cerebras deliberately absent)
+
+=== Guarded path: guard first, then a lane ===
+$ printf '<boilerplate test brief>' | bin/fm-free-tier-guard.sh --repo lens --brief-stdin
+eligible: lens
+exit=0
+
+$ printf '<brief mentioning credentials>' | bin/fm-free-tier-guard.sh --repo lens --brief-stdin
+refused: brief text matches a free-tier deny term
+exit=1
