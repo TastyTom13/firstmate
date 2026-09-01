@@ -1,0 +1,13 @@
+== portable-serial shard estimates: base 29fff31 vs head 4d0c01d ==
+
+shard  | BEFORE (old hints, old split) | BEFORE split @ measured times | AFTER (new hints, new split)
+-------+------------------------------+------------------------------+-----------------------------
+1      |    754.6 s ( 35 scripts) |    647.8 s ( 35 scripts) |    929.6 s ( 35 scripts)
+2      |    754.6 s ( 37 scripts) |    892.3 s ( 37 scripts) |    929.6 s ( 36 scripts)
+3      |    754.6 s ( 36 scripts) |   1205.8 s ( 36 scripts) |    929.6 s ( 36 scripts)
+4      |    754.6 s ( 35 scripts) |    972.6 s ( 35 scripts) |    929.6 s ( 36 scripts)
+
+20-minute CI cap = 1200.0 s
+
+scripts in the lane with NO measured hint (fall back to 20000 ms default):
+  (none - all 143 scripts have a measured hint)
