@@ -924,6 +924,47 @@ test_pr_wait_follow_up_only_where_a_pr_exists() {
   pass "fm-brief.sh: the merge wait is declared exactly where a PR is raised"
 }
 
+# bin/fm-dod-lib.sh's PR-raising modes must tell the worker to read this
+# task's own state/<id>.meta - the durable record bin/fm-spawn.sh writes
+# harness=/model=/effort= into - and fold it into a trailing "Built by:"
+# PR-body line, so every PR is traceable to the model that shipped it and
+# bin/fm-model-scorecard.sh has attribution to tally later. local-only raises
+# no PR and must carry no such instruction.
+test_built_by_line_reads_task_meta() {
+  local home id brief meta_quoted
+  home="$TMP_ROOT/built-by-home"
+  mkdir -p "$home/data"
+
+  id="brief-builtby-nm1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  meta_quoted="'$home/state/$id.meta'"
+  # shellcheck disable=SC2016  # Literal backticks must remain unexpanded.
+  assert_grep 'Built by: <harness>/<model> at <effort>' "$brief" \
+    "no-mistakes DOD lost the Built-by PR-body line instruction"
+  assert_grep "$meta_quoted" "$brief" \
+    "no-mistakes DOD did not point at this task's own state/<id>.meta"
+  # shellcheck disable=SC2016  # Literal backticks must remain unexpanded.
+  assert_grep '`harness=`, `model=`, and `effort=` fields' "$brief" \
+    "no-mistakes DOD did not tell the worker which meta fields to read"
+
+  id="brief-builtby-dp1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode direct-PR >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  meta_quoted="'$home/state/$id.meta'"
+  assert_grep 'Built by: <harness>/<model> at <effort>' "$brief" \
+    "direct-PR DOD lost the Built-by PR-body line instruction"
+  assert_grep "$meta_quoted" "$brief" \
+    "direct-PR DOD did not point at this task's own state/<id>.meta"
+
+  id="brief-builtby-lo1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only >/dev/null 2>&1
+  assert_no_grep "Built by:" "$home/data/$id/brief.md" \
+    "local-only raises no PR and must not carry a Built-by instruction"
+
+  pass "fm-brief.sh: the Built-by PR-body line reads this task's own recorded harness/model/effort"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
@@ -948,3 +989,4 @@ test_scout_and_secondmate_scaffold
 test_orientation_sections_render_for_ship_and_scout
 test_env_file_block_is_opt_in_and_self_explaining
 test_pr_wait_follow_up_only_where_a_pr_exists
+test_built_by_line_reads_task_meta

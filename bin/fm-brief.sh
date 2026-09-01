@@ -244,14 +244,9 @@ BRIEF="$DATA/$ID/brief.md"
 [ -e "$BRIEF" ] && { echo "error: $BRIEF already exists" >&2; exit 1; }
 mkdir -p "$DATA/$ID"
 
-shell_quote() {
-  printf "'"
-  printf '%s' "$1" | sed "s/'/'\\\\''/g"
-  printf "'"
-}
-
-STATUS_FILE=$(shell_quote "$STATE/$ID.status")
-INBOX_DIR=$(shell_quote "$STATE/$ID.inbox")
+STATUS_FILE=$(fm_shell_quote "$STATE/$ID.status")
+INBOX_DIR=$(fm_shell_quote "$STATE/$ID.inbox")
+META_FILE=$(fm_shell_quote "$STATE/$ID.meta")
 
 # The receive-and-ack half of the steering-inbox contract, included in every
 # scaffold kind. The record format, doorbell line, and re-ring ladder are
@@ -316,7 +311,7 @@ if [ -n "$ENV_SOURCE" ]; then
   # the worker can run exactly as printed.
   ENV_MKDIR=
   case "$ENV_LINK_TARGET" in
-    */*) ENV_MKDIR="mkdir -p $(shell_quote "$(dirname "$ENV_LINK_TARGET")")
+    */*) ENV_MKDIR="mkdir -p $(fm_shell_quote "$(dirname "$ENV_LINK_TARGET")")
 " ;;
   esac
   IFS= read -r -d '' ENV_SECTION <<EOF || true
@@ -328,7 +323,7 @@ A worktree holds tracked files only, so the project's gitignored environment fil
 The primary checkout lives at \`$ENV_PRIMARY_DIR\`; that is a different folder on purpose, and that is why this brief points outside your worktree.
 Link its environment file into this worktree, never copy it:
 \`\`\`
-${ENV_MKDIR}ln -sfn $(shell_quote "$ENV_SOURCE") $(shell_quote "$ENV_LINK_TARGET")
+${ENV_MKDIR}ln -sfn $(fm_shell_quote "$ENV_SOURCE") $(fm_shell_quote "$ENV_LINK_TARGET")
 \`\`\`
 Verify it resolves.
 Never commit it, never print its contents, and never write any value from it into your report or status file.
@@ -429,7 +424,7 @@ fi
 REPO=${POS[1]}
 
 if [ "$HERDR_LAB" -eq 1 ]; then
-HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")
+HERDR_LAB_HELPER=$(fm_shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")
 # shellcheck disable=SC2016  # single quotes are deliberate: these lines are literal brief text whose backtick-wrapped $(...) and "$HERDR_LAB_SESSION" snippets must reach the reading agent verbatim, not expand at scaffold time; only the '"$VAR"' break-outs interpolate.
 HERDR_SECTION=$(printf '%s\n' \
 '# Herdr isolation - HARD SAFETY CONTRACT' \
@@ -537,7 +532,7 @@ case "$MODE" in
     RULE1='1. Never push to the default branch. Never merge a PR.'
     ;;
 esac
-DOD=$(fm_dod_block "$MODE" "$ID") || exit 1
+DOD=$(fm_dod_block "$MODE" "$ID" "$META_FILE") || exit 1
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.

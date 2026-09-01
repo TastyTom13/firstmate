@@ -465,6 +465,13 @@ test_backlog_tasks_axi_forms_and_overrides() {
 - [x] done-bracket-pr - Done Bracket PR - <https://github.com/kunchenguid/firstmate/pull/43> (repo: gamma, merged 2026-07-12) (kind: ship)
 - [x] reported-comma - Reported Scout data/reported-comma/report.md (repo: gamma, reported 2026-07-10) (kind: scout)
 - [x] done-note - Done Note local main (repo: delta, done 2026-07-11) (kind: ship)
+- [x] done-attributed - Done Attributed https://github.com/kunchenguid/firstmate/pull/44 (repo: gamma, merged 2026-07-13) (kind: ship)
+  model=claude-opus-5 effort=high
+- [x] done-attributed-local - Done Attributed Local (repo: delta, done 2026-07-13) (kind: ship)
+  local main model=claude-opus-5 effort=high
+- [x] done-described - Done Described https://github.com/kunchenguid/firstmate/pull/45 (repo: gamma, merged 2026-07-13) (kind: ship)
+  Why this mattered.
+  model=claude-opus-5 effort=high
 EOF
   printf '# Bold Scout\n' > "$data/bold-task/report.md"
   fm_write_meta "$home/state/bold-task.meta" \
@@ -500,6 +507,19 @@ EOF
     .backlog.records[] | select(.id == "queued-comma")
     | .repo == "beta" and .since == "2026-07-08"
   ' >/dev/null || fail "queued comma metadata did not split"
+  # The teardown attribution note is a durable backlog body line, but it must
+  # never become the row's body summary - a reader looking at a Done row wants
+  # the title and PR link, not the model that built it.
+  printf '%s' "$out" | jq -e '
+    .backlog.records[] | select(.id == "done-attributed") | .body_excerpt == null
+  ' >/dev/null || fail "an attribution-only body became the Done row's body excerpt"
+  printf '%s' "$out" | jq -e '
+    .backlog.records[] | select(.id == "done-attributed-local") | .body_excerpt == null
+  ' >/dev/null || fail "a local-only attribution body became the Done row's body excerpt"
+  printf '%s' "$out" | jq -e '
+    .backlog.records[] | select(.id == "done-described")
+    | .body_excerpt == "Why this mattered."
+  ' >/dev/null || fail "the attribution note was not dropped from a Done row that has a real body"
   printf '%s' "$out" | jq -e '
     .backlog.records[] | select(.id == "parenthetical-title")
     | .title == "Refresh sidebar (mobile)" and .repo == "beta"

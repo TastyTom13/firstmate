@@ -468,11 +468,120 @@ fm_backlog_close_marker_path() {  # <state-dir> <id>
   printf '%s/%s.backlog-close\n' "$1" "$2"
 }
 
-fm_backlog_close_marker_validate() {  # <marker-path> <authorized-data-dir> <expected-id> <state-dir>
-  local marker=$1 authorized_data data_resolved expected_id=$3 state=$4
-  local id='' data='' marker_spawn_gen='' cleanup_incomplete=0 line raw_bytes arg_value
+# <url> is a well-formed https:// PR link: no whitespace or exotic bytes, a
+# valid dotted host, an optional numeric port, and a percent-escaped path.
+fm_backlog_close_pr_value_valid() {  # <value>
+  local arg_value=$1
   local url_tail url_authority url_path url_host url_port host_rest host_label host_valid
   local percent_tail percent_valid
+  [ "${#arg_value}" -le 2048 ] \
+    && case "$arg_value" in https://*) true ;; *) false ;; esac \
+    && case "$arg_value" in
+      *[[:space:]]*|*[!A-Za-z0-9:/?\&=._#%+~@-]*) false ;;
+      *) true ;;
+    esac \
+    && {
+      url_tail=${arg_value#https://}
+      url_authority=${url_tail%%/*}
+      url_path=${url_tail#*/}
+      url_host=$url_authority
+      url_port=
+      case "$url_authority" in
+        *:*) url_host=${url_authority%%:*}; url_port=${url_authority#*:} ;;
+      esac
+      [ "$url_path" != "$url_tail" ] \
+        && case "$url_host" in
+          ''|[-.]*|*[-.]|*..*|*[!A-Za-z0-9.-]*) false ;;
+          *[A-Za-z0-9]*) true ;;
+          *) false ;;
+        esac \
+        && {
+          host_rest=$url_host
+          host_valid=1
+          while :; do
+            host_label=${host_rest%%.*}
+            case "$host_label" in ''|-*|*-) host_valid=0; break ;; esac
+            [ "$host_rest" = "$host_label" ] && break
+            host_rest=${host_rest#*.}
+          done
+          [ "$host_valid" = 1 ]
+        } \
+        && case "$url_authority" in
+          *:*) case "$url_port" in ''|*[!0-9]*|??????*) false ;; *) true ;; esac ;;
+          *) true ;;
+        esac \
+        && case "$url_path" in *[A-Za-z0-9]*) true ;; *) false ;; esac \
+        && {
+          percent_tail=$url_path
+          percent_valid=1
+          while case "$percent_tail" in *%*) true ;; *) false ;; esac; do
+            percent_tail=${percent_tail#*%}
+            case "$percent_tail" in
+              [0-9A-Fa-f][0-9A-Fa-f]*) percent_tail=${percent_tail#??} ;;
+              *) percent_valid=0; break ;;
+            esac
+          done
+          [ "$percent_valid" = 1 ]
+        }
+    }
+}
+
+# <path> is a non-absolute, non-empty, dot-clean report path (fm-teardown.sh
+# always passes one relative to the backlog's data directory).
+fm_backlog_close_report_value_valid() {  # <value>
+  local arg_value=$1
+  [ "${#arg_value}" -le 4096 ] \
+    && [ -n "${arg_value// /}" ] \
+    && case "$arg_value" in .|..|-*|/*|../*|*/../*|*/..) false ;; *) true ;; esac
+}
+
+# <value> is this task's attribution note as bin/fm-teardown.sh's
+# backlog_done_args percent-encodes it (fm_backlog_close_marker_stage below):
+# unreserved characters only, and every %XX escape must decode to a printable
+# byte, so a well-formed record can never smuggle a control byte or a second
+# backlog-note line past this validator into `tasks-axi done` - decoding
+# happens after validation, so an escape that decodes to a control byte is
+# rejected here in its encoded form. A decoded value may still contain shell
+# metacharacters; what neutralises those is that the replay passes the decoded
+# arguments on as an argv array and never evals them.
+fm_backlog_close_note_value_valid() {  # <value>
+  local arg_value=$1 percent_tail percent_valid escape
+  [ -n "$arg_value" ] && [ "${#arg_value}" -le 512 ] || return 1
+  case "$arg_value" in
+    *[!A-Za-z0-9._~%-]*) return 1 ;;
+  esac
+  percent_tail=$arg_value
+  percent_valid=1
+  while case "$percent_tail" in *%*) true ;; *) false ;; esac; do
+    percent_tail=${percent_tail#*%}
+    case "$percent_tail" in
+      [0-9A-Fa-f][0-9A-Fa-f]*)
+        escape=${percent_tail%"${percent_tail#??}"}
+        case "$escape" in
+          [0-1][0-9A-Fa-f]|7[Ff]) percent_valid=0; break ;;
+        esac
+        percent_tail=${percent_tail#??}
+        ;;
+      *) percent_valid=0; break ;;
+    esac
+  done
+  [ "$percent_valid" = 1 ]
+}
+
+# Percent-encode/decode a --note value for the pending-close record, the same
+# escaping fm_backlog_close_note_value_valid requires. perl for the same
+# locale-independent byte reasons as fm_backlog_bytes_of_string above.
+fm_backlog_note_percent_encode() {  # <value>
+  perl -e 'my $s = $ARGV[0]; $s =~ s/([^A-Za-z0-9._~-])/sprintf("%%%02X", ord($1))/ge; print $s;' -- "$1"
+}
+
+fm_backlog_note_percent_decode() {  # <value>
+  perl -e 'my $s = $ARGV[0]; $s =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/ge; print $s;' -- "$1"
+}
+
+fm_backlog_close_marker_validate() {  # <marker-path> <authorized-data-dir> <expected-id> <state-dir>
+  local marker=$1 authorized_data data_resolved expected_id=$3 state=$4
+  local id='' data='' marker_spawn_gen='' cleanup_incomplete=0 line raw_bytes
   local id_count=0 data_count=0 spawn_gen_count=0 cleanup_incomplete_count=0
   local args=()
   FM_BACKLOG_CLOSE_VALIDATED_ID=
@@ -554,68 +663,27 @@ fm_backlog_close_marker_validate() {  # <marker-path> <authorized-data-dir> <exp
     0) ;;
     2)
       case "${args[0]}" in
-        --note) [ "${args[1]}" = "local%20main" ] ;;
-        --pr)
-          arg_value=${args[1]}
-          [ "${#arg_value}" -le 2048 ] \
-            && case "$arg_value" in https://*) true ;; *) false ;; esac \
-            && case "$arg_value" in
-              *[[:space:]]*|*[!A-Za-z0-9:/?\&=._#%+~@-]*) false ;;
-              *) true ;;
-            esac \
-            && {
-              url_tail=${arg_value#https://}
-              url_authority=${url_tail%%/*}
-              url_path=${url_tail#*/}
-              url_host=$url_authority
-              url_port=
-              case "$url_authority" in
-                *:*) url_host=${url_authority%%:*}; url_port=${url_authority#*:} ;;
-              esac
-              [ "$url_path" != "$url_tail" ] \
-                && case "$url_host" in
-                  ''|[-.]*|*[-.]|*..*|*[!A-Za-z0-9.-]*) false ;;
-                  *[A-Za-z0-9]*) true ;;
-                  *) false ;;
-                esac \
-                && {
-                  host_rest=$url_host
-                  host_valid=1
-                  while :; do
-                    host_label=${host_rest%%.*}
-                    case "$host_label" in ''|-*|*-) host_valid=0; break ;; esac
-                    [ "$host_rest" = "$host_label" ] && break
-                    host_rest=${host_rest#*.}
-                  done
-                  [ "$host_valid" = 1 ]
-                } \
-                && case "$url_authority" in
-                  *:*) case "$url_port" in ''|*[!0-9]*|??????*) false ;; *) true ;; esac ;;
-                  *) true ;;
-                esac \
-                && case "$url_path" in *[A-Za-z0-9]*) true ;; *) false ;; esac \
-                && {
-                  percent_tail=$url_path
-                  percent_valid=1
-                  while case "$percent_tail" in *%*) true ;; *) false ;; esac; do
-                    percent_tail=${percent_tail#*%}
-                    case "$percent_tail" in
-                      [0-9A-Fa-f][0-9A-Fa-f]*) percent_tail=${percent_tail#??} ;;
-                      *) percent_valid=0; break ;;
-                    esac
-                  done
-                  [ "$percent_valid" = 1 ]
-                }
-            }
-          ;;
-        --report)
-          arg_value=${args[1]}
-          [ "${#arg_value}" -le 4096 ] \
-            && [ -n "${arg_value// /}" ] \
-            && case "$arg_value" in .|..|-*|/*|../*|*/../*|*/..) false ;; *) true ;; esac
-          ;;
+        --note) fm_backlog_close_note_value_valid "${args[1]}" ;;
+        --pr) fm_backlog_close_pr_value_valid "${args[1]}" ;;
+        --report) fm_backlog_close_report_value_valid "${args[1]}" ;;
         *) false ;;
       esac || { FM_BACKLOG_TRANSITION_ERROR="invalid pending-close arguments in $marker"; return 1; }
+      ;;
+    4)
+      # The only 4-element shape is a completion link paired with the
+      # per-model attribution note bin/fm-teardown.sh's backlog_done_args
+      # always appends; that note's shape is owned by bin/fm-teardown.sh's
+      # backlog_done_args and read back by bin/fm-model-scorecard.sh.
+      if case "${args[0]}" in
+        --pr) fm_backlog_close_pr_value_valid "${args[1]}" ;;
+        --report) fm_backlog_close_report_value_valid "${args[1]}" ;;
+        *) false ;;
+      esac && [ "${args[2]}" = --note ] && fm_backlog_close_note_value_valid "${args[3]}"; then
+        :
+      else
+        FM_BACKLOG_TRANSITION_ERROR="invalid pending-close arguments in $marker"
+        return 1
+      fi
       ;;
     *) FM_BACKLOG_TRANSITION_ERROR="invalid pending-close arguments in $marker"; return 1 ;;
   esac
@@ -644,8 +712,8 @@ fm_backlog_close_marker_stage() {  # <temporary-path> <id> <data-dir> <spawn-gen
   esac
   shift 6
   for arg in "$@"; do
-    if [ "$previous_arg" = --note ] && [ "$arg" = "local main" ]; then
-      serialized_args+=("local%20main")
+    if [ "$previous_arg" = --note ]; then
+      serialized_args+=("$(fm_backlog_note_percent_encode "$arg")")
     else
       serialized_args+=("$arg")
     fi
@@ -716,9 +784,12 @@ fm_backlog_close_marker_replay() {  # <state-dir> <marker-path> <authorized-data
   marker_spawn_gen=$FM_BACKLOG_CLOSE_VALIDATED_SPAWN_GEN
   cleanup_incomplete=$FM_BACKLOG_CLOSE_VALIDATED_CLEANUP_INCOMPLETE
   args=("${FM_BACKLOG_CLOSE_VALIDATED_ARGS[@]+"${FM_BACKLOG_CLOSE_VALIDATED_ARGS[@]}"}")
-  if [ "${args[0]-}" = --note ]; then
-    args[1]="local main"
-  fi
+  local note_index
+  for note_index in 0 2; do
+    if [ "${args[$note_index]-}" = --note ]; then
+      args[note_index + 1]=$(fm_backlog_note_percent_decode "${args[$((note_index + 1))]}")
+    fi
+  done
   meta="$state/$id.meta"
   if [ -e "$meta" ] || [ -L "$meta" ]; then
     if ! fm_backlog_record_present "$meta" "task record" "$state"; then
