@@ -96,6 +96,7 @@ Compose the payload from the same snapshot with the same ranking judgment as the
 That command is the one place that maps both quota readers - quota-axi for the Claude pool, `bin/fm-gpt-quota.sh` for the ChatGPT pool - onto the board shape, so never hand-compose a pool, and never drop a pool it reports as unreadable: the board shows that pool with its reason, which is how the captain learns a reading is missing rather than seeing a gauge quietly disappear.
 If the command itself fails, omit `pools` entirely and build the board without a gauge rather than inventing one.
 - Every Captain's Call item and every Underway, Recently Landed, and Charted Next row carries an explicit `repo` field. Fill it from the snapshot and task records wherever known; use null or an empty string only as the deliberate genuinely-no-repo marker, in which case the template may show the internal id. Ids otherwise stay in the payload only as the routing channel, and composed reasons name blockers in plain words.
+- Fill the optional `parked_ideas` field from `tasks-axi list --state queued --kind idea`: one entry per queued idea-kind task, each carrying `id`, `title`, and `repo` (null when the idea named no project). Omit the field entirely when there are none queued, the same additive contract as `pools`.
 
 Run `build` once after composing the payload.
 Its serve-first sequence publishes the board, establishes or resumes its Lavish session with `lavish-axi`, and only then binds and arms the polling source; use the session URL it prints in the chat digest.
@@ -110,6 +111,7 @@ Route the non-decision keys yourself:
 
 - `merge.<task-id>` is the captain's explicit merge order; follow the merge ruling below.
 - `dispatch.charted` carries comma-separated task ids the captain picked to start now; verify each id against the current backlog - still queued, blocker and time gate actually clear - then dispatch through the normal lifecycle, and report any id that no longer qualifies instead of forcing it.
+- `idea.<unique-suffix>` is a captured idea from the board's freeform capture box; its answer text is the idea itself, never a decision to reconcile. File it mechanically as a new queued backlog task, `tasks-axi add "<idea text>" --kind idea --mint --queue`, with no further judgment about whether it is a good idea - that judgment happens later when the captain reviews the parked-ideas list or the backlog. The key's suffix exists only to keep repeated submissions from colliding in the answer read; never reuse it as the task id.
 
 After handling, rebuild the board from a fresh snapshot so acted-on items leave Captain's Call, and echo every action taken in chat so the board and chat never diverge silently.
 

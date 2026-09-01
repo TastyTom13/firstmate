@@ -43,6 +43,27 @@
 # board as an estimate so a measured-spend number is never read as the
 # provider's own remaining allowance.
 #
+# `parked_ideas` is the optional small list of captured-but-not-yet-scoped
+# ideas: one entry per queued idea-kind backlog task, each carrying `id`,
+# `title`, and `repo` (null when the idea names no project yet). Like `pools`,
+# the field is additive - a payload that omits it stays a valid
+# fm-bearings-board.v1 payload and the board simply renders no parked-ideas
+# list, so the schema version stays unchanged. The board's own idea-capture box
+# does not read this list; it only submits a new idea through the existing
+# answer channel (`idea.<id>` in the fm-bearings-board.v1 answer shape below).
+#
+# THE IDEA-ANSWER SHAPE. A captured idea rides the same `window.lavish.
+# queuePrompt` "choice" mechanism as every other board answer
+# (bin/fm-procevent-lavish.sh's `answers` command), so it needs no schema
+# change to travel: its Context data is `{"question": "idea.<unique-suffix>",
+# "answer": "<idea text, <=512 bytes>"}`. The key is `idea.` followed by a
+# client-minted unique suffix (never a fixed key), because `answers` keeps only
+# the LAST submission for a repeated key, and every distinct idea must survive
+# even when several are queued in one board session. `bin/fm-bearings-board.sh`
+# does not consume idea answers itself; the receiving side is the bearings
+# skill's board-wake handling, which files each `idea.*` key as a queued
+# backlog task tagged `--kind idea` through the ordinary tasks-axi path.
+#
 # Every fleet row and Captain's Call item explicitly carries `repo`; the
 # composer fills it from the snapshot and task records wherever known, and uses
 # null or an empty string only as the deliberate genuinely-no-repo marker. In that exceptional case
@@ -141,6 +162,9 @@ validate_payload() {  # <data.json>
       and (.dispatchable | type == "boolean")
       and ((has("kind") | not) or (.kind == "queued" or .kind == "warning"))
       and (if .kind == "warning" then .dispatchable == false else true end);
+    def idea_item:
+      type == "object" and repo_marker and (.id | slug(128))
+      and (.title | nonempty_string);
     type == "object"
     and (.schema == $schema)
     and (.home | nonempty_string)
@@ -156,6 +180,8 @@ validate_payload() {  # <data.json>
       or ((.charted_warning_more | type == "number") and (.charted_warning_more >= 0) and (.charted_warning_more | floor == .)))
     and ((has("pools") | not)
       or ((.pools | type) == "array" and ([.pools[] | pool_item] | all)))
+    and ((has("parked_ideas") | not)
+      or ((.parked_ideas | type) == "array" and ([.parked_ideas[] | idea_item] | all)))
     and ([.captains_call[] | call_item] | all)
     and ([.underway[] | underway_item] | all)
     and ([.landed[] | landed_item] | all)

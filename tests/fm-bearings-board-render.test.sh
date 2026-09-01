@@ -221,6 +221,53 @@ test_an_estimated_reading_says_it_is_an_estimate() {
   pass "an estimated reading is labelled an estimate on the gauge"
 }
 
+# Build a board carrying <parked-ideas-json|-> and return what the renderer produced.
+render_ideas() {  # <home> <parked-ideas-json|->
+  local home=$1 ideas=$2 data="$1/ideas-payload.json"
+  if [ "$ideas" = "-" ]; then
+    jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
+      prs_live:false, captains_call:[], underway:[], landed:[], charted:[]}' > "$data"
+  else
+    jq -n --argjson ideas "$ideas" '{schema:"fm-bearings-board.v1", home:"render-home",
+      generated:"2026-08-31T00:00Z", prs_live:false, captains_call:[], underway:[],
+      landed:[], charted:[], parked_ideas:$ideas}' > "$data"
+  fi
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  node "$HARNESS" "$home/.lavish/bearings-board.html" \
+    || fail "the built board could not be rendered"
+}
+
+test_a_board_without_parked_ideas_shows_the_empty_state() {
+  local home out
+  home=$(make_home ideas-absent)
+  out=$(render_ideas "$home" -)
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.parkedIdeas | length) == 0
+      and (.parkedIdeasEmpty | length) == 1
+      and (.parkedIdeasEmpty[0] | test("No ideas parked yet"))
+  ' >/dev/null || fail "a board with no parked ideas did not render the empty state: $out"
+  pass "a board built without parked ideas shows the parked-ideas empty state"
+}
+
+test_parked_ideas_render_title_and_repo() {
+  local home out
+  home=$(make_home ideas-present)
+  out=$(render_ideas "$home" '[
+    {"id":"idea-a","title":"Try a dark theme","repo":"sample"},
+    {"id":"idea-b","title":"General fleet idea","repo":null}
+  ]')
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.parkedIdeas | length) == 2
+      and (.parkedIdeasEmpty | length) == 0
+      and (.parkedIdeas[0].title == "Try a dark theme" and .parkedIdeas[0].sub == "sample")
+      and (.parkedIdeas[1].title == "General fleet idea" and .parkedIdeas[1].sub == "")
+  ' >/dev/null || fail "the built board did not render both parked ideas correctly: $out"
+  pass "parked ideas render their title, and their repo only when known"
+}
+
 test_a_warning_row_reads_as_a_repair_not_as_queued_work
 test_warnings_are_excluded_from_the_charted_next_count
 test_a_board_of_only_warnings_still_reports_nothing_queued
@@ -231,3 +278,5 @@ test_a_board_without_pools_shows_no_gauge_at_all
 test_an_unreadable_pool_says_so_instead_of_showing_a_bar
 test_a_nearly_spent_pool_reads_differently_from_a_healthy_one
 test_an_estimated_reading_says_it_is_an_estimate
+test_a_board_without_parked_ideas_shows_the_empty_state
+test_parked_ideas_render_title_and_repo

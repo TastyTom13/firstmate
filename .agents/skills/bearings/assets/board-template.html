@@ -302,6 +302,11 @@ a { color: inherit; text-decoration: none; }
 
 .bb-foot { display: flex; justify-content: flex-end; border-top: 1px solid var(--border-default); padding-top: 14px; }
 
+/* ---- Park an Idea (idea-capture box) ---- */
+.bb-idea { display: flex; align-items: center; gap: 10px; padding: 14px 18px; flex-wrap: wrap; }
+.bb-idea .bb-freeform { flex: 1 1 260px; }
+.bb-idea .bb-limit { flex: 1 0 100%; }
+
 @media (max-width: 900px) {
   .bb-cols { grid-template-columns: 1fr; }
 }
@@ -376,6 +381,26 @@ a { color: inherit; text-decoration: none; }
     </div>
   </section>
   </div>
+
+  <section class="bb-section">
+    <div class="bb-section__head">
+      <span class="fm-sign fm-sign--eyebrow">
+        <svg class="fm-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.6.6 1.28 1.4 1.41 2.5"/></svg>
+        Park an Idea
+      </span>
+      <span class="fm-sign fm-sign--muted" id="bb-idea-sub"></span>
+    </div>
+    <div class="fm-card">
+      <form class="bb-idea" id="bb-idea-form">
+        <input type="text" name="idea" id="bb-idea-input" class="bb-freeform"
+          placeholder="jot an idea for later, captain…" maxlength="512" />
+        <button type="submit" class="fm-btn fm-btn--sm fm-btn--primary">Park it</button>
+        <span class="bb-queued" id="bb-idea-queued">queued</span>
+        <span class="bb-limit" id="bb-idea-limit" role="alert"></span>
+      </form>
+      <div class="bb-rows" id="bb-parked-ideas"></div>
+    </div>
+  </section>
 
   <div class="bb-cols">
     <section class="bb-section">
@@ -710,6 +735,51 @@ __FM_BEARINGS_BOARD_DATA__
       row.appendChild(a);
     }
     ld.appendChild(row);
+  });
+
+  /* Park an Idea: the small parked-ideas list from queued idea-kind tasks,
+     plus the freeform capture box that queues a new one. */
+  var parkedIdeas = Array.isArray(data.parked_ideas) ? data.parked_ideas : [];
+  var pi = document.getElementById("bb-parked-ideas");
+  document.getElementById("bb-idea-sub").textContent =
+    parkedIdeas.length ? parkedIdeas.length + " parked" : "";
+  if (!parkedIdeas.length) pi.appendChild(el("div", "bb-empty", "No ideas parked yet."));
+  parkedIdeas.forEach(function (idea) {
+    var row = el("div", "bb-row");
+    var main = el("div", "bb-row__main");
+    main.appendChild(el("div", "bb-row__title", idea.title));
+    if (idea.repo) main.appendChild(el("div", "bb-row__sub", idea.repo));
+    row.appendChild(main);
+    pi.appendChild(row);
+  });
+
+  var ideaForm = document.getElementById("bb-idea-form");
+  var ideaInput = document.getElementById("bb-idea-input");
+  var ideaLimit = document.getElementById("bb-idea-limit");
+  ideaForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    ideaLimit.classList.remove("is-visible");
+    var idea = ideaInput.value.trim();
+    if (!idea) return;
+    if (utf8ByteLength(idea) > 512) {
+      ideaLimit.textContent = "Idea is too long to queue (512 bytes maximum).";
+      ideaLimit.classList.add("is-visible");
+      return;
+    }
+    /* every idea needs its OWN key: the answer channel keeps only the last
+       submission for a repeated key, and each parked idea must survive even
+       when several are queued in one board session */
+    var key = "idea." + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+    if (window.lavish && window.lavish.queuePrompt) {
+      window.lavish.queuePrompt(
+        "Parked idea: " + idea,
+        { tag: "choice", text: "Idea -> " + idea, element: ideaForm,
+          data: { question: key, answer: idea } }
+      );
+    }
+    ideaForm.classList.add("is-queued");
+    ideaInput.value = "";
+    setTimeout(function () { ideaForm.classList.remove("is-queued"); }, 1600);
   });
 
   /* Charted Next + dispatch picker */

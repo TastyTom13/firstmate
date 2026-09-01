@@ -5,7 +5,7 @@
 // Usage: node board-render-harness.mjs <built-board.html>
 // Prints one JSON document:
 //   { stats:[{n,label}], fuel:{hidden,cells:[{tone,name,pct,fill,meta}]},
-//     charted:[{title,sub,badges,pickable}] }
+//     charted:[{title,sub,badges,pickable}], parkedIdeas:[{title,sub}] }
 import { readFileSync } from "node:fs";
 
 const html = readFileSync(process.argv[2], "utf8");
@@ -134,4 +134,19 @@ const errorText = [...byId.entries()]
 const empty = ch.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
 const more = ch.children.filter((c) => c.className.includes("bb-morechip")).map((c) => c.textContent);
 
-process.stdout.write(JSON.stringify({ stats, fuel, charted, empty, more, error: errorText }) + "\n");
+// Parked ideas: the small list of already-captured ideas from the payload.
+const piNode = byId.get("bb-parked-ideas") || new Node("div");
+const parkedIdeas = piNode.children
+  .filter((r) => r.className.split(/\s+/).includes("bb-row"))
+  .map((row) => {
+    const main = row.children.find((c) => c.className.includes("bb-row__main"));
+    return {
+      title: main?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "",
+      sub: main?.children.find((c) => c.className.includes("bb-row__sub"))?.textContent ?? "",
+    };
+  });
+const parkedIdeasEmpty = piNode.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
+
+process.stdout.write(JSON.stringify({
+  stats, fuel, charted, empty, more, parkedIdeas, parkedIdeasEmpty, error: errorText,
+}) + "\n");
