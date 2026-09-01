@@ -1,0 +1,57 @@
+# Built-by PR line: generated brief -> real state/<id>.meta -> real PR body line
+
+$ FM_HOME=/private/tmp/briefdemo bin/fm-brief.sh ship-alpha some-proj --mode no-mistakes
+
+--- Definition of done, no-mistakes mode (generated brief the worker reads) ---
+# Definition of done
+Delivery contract: mode=no-mistakes
+The task is complete only when committed on your branch.
+When you believe it is complete, append `done: {summary}` to the status file and stop.
+Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
+
+You drive no-mistakes by responding to its gates, not by implementing fixes.
+Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and `no-mistakes axi run --help` plus the `help` lines in each `axi` response are authoritative and version-matched to the installed binary.
+When starting no-mistakes, make `--intent` preserve all relevant content from this brief's `# Task` section plus every later accepted Firstmate requirement, clarification, constraint, exclusion, and supersession, carrying only each requirement's current accepted form; retain direct requirements instead of substituting a diff summary, and exclude generic operational, status, delivery, and other scaffold boilerplate unless it is task-specific.
+Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
+
+Two firstmate-specific rules layer on top of that guidance:
+- ask-user findings are never yours to answer: escalate to firstmate (rule 6) and stop.
+  Firstmate applies `ask-user-authority` and obtains any required captain decision.
+  When the decision comes back, feed it to the gate with `no-mistakes axi respond` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
+- NEVER pass `--yes` (or `-y`) to `no-mistakes axi run` or `no-mistakes axi respond`. It is banned fleet-wide.
+  It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
+
+Once no-mistakes reports the PR, read '/tmp/briefdemo/state/ship-alpha.meta' and turn its `harness=`, `model=`, and `effort=` fields into a trailing PR-body line `Built by: <harness>/<model> at <effort>` (an unset model or effort reads back as the literal `default`, matching how it was recorded); for example: `awk -F= '$1=="harness"{h=$2} $1=="model"{m=$2} $1=="effort"{e=$2} END{printf "Built by: %s/%s at %s", h, m, e}' '/tmp/briefdemo/state/ship-alpha.meta'`. Append that exact line, on its own line, to the PR body before you report done, where `<number>` is the trailing path segment of the PR url: `body=$(mktemp) && gh pr view <number> --json body -q .body > "$body"`, append the `Built by:` line to that file, then `gh-axi pr edit <number> --body-file "$body"`. Use a fresh `mktemp` path, never a fixed name like /tmp/pr-body.md: crewmates ship concurrently on one host, and a shared scratch file lets another task's body overwrite yours.
+After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append `done: PR {url} checks green`, follow it with `paused: awaiting merge of PR {url}`, and stop. You are finished.
+That second line declares a known external wait, so your idle pane is rechecked on a long cadence instead of being treated as a possible wedge.
+
+--- state/ship-alpha.meta, in the shape bin/fm-spawn.sh writes ---
+window=fm-ship-alpha
+endpoint_task_id=ship-alpha
+worktree=/tmp/wt/ship-alpha
+project=/tmp/proj
+harness=claude
+kind=ship
+mode=no-mistakes
+tasktmp=/tmp/tt
+model=claude-opus-5
+effort=high
+spawn_gen=1
+
+--- the awk recipe copied verbatim out of that brief, run against that meta ---
+Built by: claude/claude-opus-5 at high
+
+--- same recipe on a meta with no model/effort chosen at spawn ---
+harness=codex
+model=default
+effort=default
+Built by: codex/default at default
+
+--- local-only brief raises no PR, so it carries no Built-by instruction ---
+# Definition of done
+Delivery contract: mode=local-only
+This task ships **local-only**: no remote, no PR, no pipeline.
+The task is complete only when committed on your branch `fm/ship-local`. Do NOT push, do NOT open a PR, do NOT merge.
+Keep your branch a clean fast-forward onto the current default branch - if `main` has advanced, rebase onto it so the eventual merge stays a fast-forward.
+When it is implemented and committed, append `done: ready in branch fm/ship-local` to the status file and stop.
+The configured merge authority approves the ready branch, then firstmate merges it into local `main` through the guarded fast-forward path.

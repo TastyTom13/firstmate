@@ -1,0 +1,27 @@
+# Pending-close crash recovery carries the new --note pair (4-argument shape)
+
+=== backlog row before the crash ===
+## In flight
+## Queued
+
+=== teardown writes the pending-close record, then crashes before cleanup ===
+id=ship-crash
+data=/private/tmp/crashdemo/data
+spawn_gen=7
+cleanup_incomplete=0
+arg=--pr
+arg=https://github.com/o/r/pull/99
+arg=--note
+arg=model%3Dclaude-opus-5%20effort%3Dhigh
+
+=== next run replays the pending close ===
+replay result: closed
+
+=== backlog Done section after replay (note survived the crash) ===
+## Done
+- [x] ship-crash - survive a crash mid-close https://github.com/o/r/pull/99 (merged 2026-09-01)
+  model=claude-opus-5 effort=high
+
+=== scorecard reads that durable note ===
+MODEL                    EFFORT        TASKS  FIX-ROUNDS   ASK-USER
+claude-opus-5            high              1           0          0

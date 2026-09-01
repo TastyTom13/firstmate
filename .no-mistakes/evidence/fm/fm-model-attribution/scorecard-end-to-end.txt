@@ -1,0 +1,43 @@
+# Per-model scorecard, end to end (real tasks-axi closes -> real scorecard)
+
+$ tasks-axi done ship-alpha --pr https://github.com/o/r/pull/41 --note 'model=claude-opus-5 effort=high'
+$ tasks-axi done ship-beta --note 'local main model=claude-opus-5 effort=high'
+$ tasks-axi done scout-gamma --report data/scout-gamma/report.md --note 'model=claude-sonnet-5 effort=medium'
+  (these are exactly the argument shapes bin/fm-teardown.sh's backlog_done_args now builds)
+
+--- data/backlog.md written by tasks-axi ---
+# Backlog
+
+## In flight
+## Queued
+## Done
+- [x] scout-gamma - survey the scorecard sources data/scout-gamma/report.md (reported 2026-09-01)
+  model=claude-sonnet-5 effort=medium
+- [x] ship-beta - fix the bearings body excerpt (done 2026-09-01)
+  local main model=claude-opus-5 effort=high
+- [x] ship-alpha - add the model attribution note https://github.com/o/r/pull/41 (merged 2026-09-01)
+  model=claude-opus-5 effort=high
+- [x] ship-ancient - a pre-attribution Done row (done 2026-06-01)
+
+--- data/done-archive.md (configured [markdown].archive; ship-legacy has no note) ---
+# Done archive
+
+- [x] ship-delta - earlier attributed ship https://github.com/o/r/pull/12 (merged 2026-08-02)
+  model=claude-sonnet-5 effort=medium
+- [x] ship-legacy - closed before this contract existed (done 2026-07-01)
+
+--- state/ship-alpha.status (fix-round and ask-user proxy source) ---
+started work on the attribution note
+no-mistakes review fix round 1 applied
+no-mistakes review fix round 2 applied
+needs-decision: body excerpt shows the note instead of the title
+shipped
+
+$ FM_HOME=/private/tmp/scdemo bin/fm-model-scorecard.sh
+MODEL                    EFFORT        TASKS  FIX-ROUNDS   ASK-USER
+claude-opus-5            high              2           3          2
+claude-sonnet-5          medium            2           0          0
+
+Reading: opus-5/high = ship-alpha + ship-beta, 3 fix rounds, 2 ask-user escalations.
+sonnet-5/medium = scout-gamma + archived ship-delta. Unattributed rows
+(ship-ancient, ship-legacy) are silently skipped, not errors.

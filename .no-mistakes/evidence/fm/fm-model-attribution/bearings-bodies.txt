@@ -1,0 +1,35 @@
+# Bearings board: the attribution note must not replace a Done row's body
+
+$ FM_HOME=/private/tmp/scdemo bin/fm-bearings-snapshot.sh --fields bodies --all-landed
+schema: fm-bearings.v1
+home: tmp/scdemo
+generated: "2026-09-01T10:31:32Z"
+prs: "not_requested (run: /bearings include PRs)"
+in_flight: []
+secondmates: []
+secondmate_reconcile: []
+decisions_open: []
+landed[4]{id,what,artifact,owner}:
+  ship-beta,fix the bearings body excerpt,"-",(main)
+  ship-alpha,add the model attribution note,"https://github.com/o/r/pull/41",(main)
+  scout-gamma,survey the scorecard sources,data/scout-gamma/report.md,(main)
+  ship-ancient,a pre-attribution Done row,"-",(main)
+gates: []
+reports: []
+recorded_prs: []
+bodies[4]{id,body}:
+  scout-gamma,"- [x] scout-gamma - survey the scorecard sources data/scout-gamma/report.md (reported 2026-09-01)"
+  ship-beta,"- [x] ship-beta - fix the bearings body excerpt (done 2026-09-01)"
+  ship-alpha,"- [x] ship-alpha - add the model attribution note https://github.com/o/r/pull/41 (merged 2026-09-01)"
+  ship-ancient,"- [x] ship-ancient - a pre-attribution Done row (done 2026-06-01)"
+omitted[6]{surface,reveal}:
+  task paths,"--fields paths"
+  watch/steer actions,"--fields actions"
+  healthy endpoint detail,"--fields endpoints"
+  full scout-report inventory,"--all-reports"
+  superseded or prose-deferred queued items,"--all-queued"
+  live PR discovery + checks,"--include-prs"
+
+Each 'bodies' row shows the task title and PR link (the .raw fallback),
+not 'model=claude-opus-5 effort=high', even though that note is the row's
+only body line in data/backlog.md above.
