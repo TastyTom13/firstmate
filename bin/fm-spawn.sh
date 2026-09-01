@@ -45,9 +45,11 @@
 #   key delivery, never through an env file or a plaintext copy. No new profile
 #   field: the dispatch rule's existing model string (docs/free-tier-routing.md)
 #   is exactly the pi --model syntax this already matches. A missing/unblessed
-#   launcher or an absent vault key refuses the spawn outright (bounded probe,
-#   never a silent fallback to a paid pool); see free_lane_preflight below and
-#   docs/free-tier-routing.md.
+#   launcher, an absent vault key, or an unreadable lane table refuses the spawn
+#   outright (bounded probe, never a silent fallback to a paid pool); see
+#   free_lane_preflight below and docs/free-tier-routing.md. A raw launch
+#   command (the unverified-adapter escape hatch) is exempt: it carries no
+#   placeholder for the wrap, so that path is left exactly as it was.
 #   --backend <name> is the explicit runtime session-provider backend for this
 #   exact task only (docs/configuration.md "Runtime backend" owns when that flag
 #   is authorized). Without it, the script resolves FM_BACKEND, then

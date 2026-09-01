@@ -283,6 +283,60 @@ exec "$@"'
   pass "a secondmate pinned to a free-lane model is wrapped through the blessed launcher"
 }
 
+# The lane table has a single owner (bin/fm-free-lane-run.sh --list). If that
+# sibling cannot be read at all, a pi spawn cannot know whether its --model is
+# a free lane, so it must refuse rather than launch unwrapped with no key.
+# Driving that needs fm-spawn's OWN sibling lookup to fail, so this case runs
+# fm-spawn from a mirrored root whose bin/ is symlinks to the real ones except
+# for a fm-free-lane-run.sh stand-in that fails.
+make_broken_lane_table_root() {
+  local case_dir=$1 mirror entry
+  mirror="$case_dir/root"
+  mkdir -p "$mirror/bin"
+  for entry in "$ROOT"/* "$ROOT"/.[!.]*; do
+    [ -e "$entry" ] || continue
+    [ "$(basename "$entry")" != bin ] || continue
+    ln -s "$entry" "$mirror/$(basename "$entry")"
+  done
+  for entry in "$ROOT"/bin/*; do
+    [ "$(basename "$entry")" != fm-free-lane-run.sh ] || continue
+    ln -s "$entry" "$mirror/bin/$(basename "$entry")"
+  done
+  cat > "$mirror/bin/fm-free-lane-run.sh" <<'SH'
+#!/usr/bin/env bash
+echo "error: lane table unavailable" >&2
+exit 9
+SH
+  chmod +x "$mirror/bin/fm-free-lane-run.sh"
+  printf '%s\n' "$mirror"
+}
+
+test_unreadable_lane_table_refuses_instead_of_launching_unwrapped() {
+  local rec id mirror out status
+  id=free-lane-broken-table-z1
+  rec=$(make_case broken-table "$id")
+  read_case_record "$rec"
+  mirror=$(make_broken_lane_table_root "$CASE_DIR")
+  write_launcher_stub "$HOME_DIR" 'shift 3
+exec "$@"'
+
+  : > "$LAUNCH_LOG"
+  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$HOME_DIR" \
+    FM_STATE_OVERRIDE="$HOME_DIR/state" FM_DATA_OVERRIDE="$HOME_DIR/data" \
+    FM_PROJECTS_OVERRIDE="$HOME_DIR/projects" FM_CONFIG_OVERRIDE="$HOME_DIR/config" \
+    FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$WT_DIR" TMUX="${TMUX:-fake,1,0}" \
+    FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" PATH="$FAKEBIN_DIR:$PATH" \
+    "$mirror/bin/fm-spawn.sh" "$id" "$PROJ_DIR" --model groq/openai/gpt-oss-120b --effort low \
+    --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  expect_code 1 "$status" "an unreadable lane table should refuse the spawn"
+  assert_contains "$out" "cannot read the free-tier lane table" \
+    "the refusal did not explain the lane table could not be read"
+  [ ! -s "$LAUNCH_LOG" ] || fail "a spawn whose lane table could not be read still sent a launch command"
+
+  pass "an unreadable lane table refuses instead of launching a possible free-lane model unwrapped"
+}
+
 test_paid_pi_model_is_completely_unaffected
 test_free_lane_model_with_no_launcher_refuses_before_launch
 test_free_lane_model_with_a_malformed_launcher_refuses
@@ -291,3 +345,4 @@ test_unblessed_launcher_times_out_and_refuses
 test_blessed_launcher_with_key_present_wraps_the_real_launch
 test_secondmate_pinned_to_a_free_lane_model_is_wrapped
 test_raw_launch_command_is_left_alone
+test_unreadable_lane_table_refuses_instead_of_launching_unwrapped
