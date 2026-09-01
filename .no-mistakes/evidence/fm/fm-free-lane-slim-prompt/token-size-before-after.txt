@@ -1,0 +1,10 @@
+Request size a free lane sends to the provider, measured against a local mock
+OpenAI-compatible endpoint (no key, no network), counting Groq's chars/4 estimate.
+'before' = plain pi as the lane used to invoke it; 'after' = through the runner.
+
+pi 0.84.3, cwd = firstmate repo (has AGENTS.md), one-line prompt: 'hi'
+
+before: prompt chars=79795  estimated tokens (chars/4)=19949  tools=4
+after: prompt chars=335  estimated tokens (chars/4)=84  tools=0
+
+Groq free tier cap: 8000 tokens/minute

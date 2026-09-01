@@ -1,0 +1,4 @@
+ok - the lane request offers no tools, while the same pi offers read,bash,edit,write,fm_free_lane_live_probe without the flags
+ok - the lane request carries no AGENTS.md content, while the same pi loads it without the flag
+ok - the lane request carries the runner's own system prompt, not pi's default
+# verified against pi 0.84.3
