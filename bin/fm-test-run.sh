@@ -153,7 +153,7 @@ CHANGED_DEFAULT_TIMEOUT_SECS=900
 
 # How many separate-runner shards the portable serial remainder splits into.
 # One owner: CI lane names carry this count and are refused when they disagree.
-PORTABLE_SERIAL_SHARDS=4
+PORTABLE_SERIAL_SHARDS=6
 
 # Balance hint for a portable-serial script with no measured duration, close to
 # the measured per-script mean so a newly added test neither starves nor
@@ -539,7 +539,7 @@ tests/fm-documentation-audiences.test.sh 722
 tests/fm-extension-binding.test.sh 7367
 tests/fm-fleet-snapshot-view.test.sh 7622
 tests/fm-fleet-sync.test.sh 37578
-tests/fm-free-lane-run.test.sh 491
+tests/fm-free-lane-run.test.sh 559
 tests/fm-free-tier-guard.test.sh 912
 tests/fm-gate-refuse.test.sh 4759
 tests/fm-gitignore-config.test.sh 59
