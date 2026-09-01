@@ -6,7 +6,8 @@
 // Prints one JSON document:
 //   { stats:[{n,label}], fuel:{hidden,cells:[{tone,name,pct,fill,meta}]},
 //     charted:[{title,sub,badges,pickable}], underway:[title], landed:[title],
-//     parkedIdeas:[{title,sub}], ideaCapture:{submitted,cleared,limitText,queued} }
+//     parkedIdeas:[{title,sub}], ideaCapture:{submitted,cleared,limitText,queued},
+//     submits:{decision,dispatch} (only with FM_BOARD_DRIVE_SUBMITS=1) }
 import { readFileSync } from "node:fs";
 
 const html = readFileSync(process.argv[2], "utf8");
@@ -32,6 +33,13 @@ class Node {
         this.className = this.className.split(/\s+/).filter((x) => x && x !== c).join(" ");
       },
       contains: (c) => this.className.split(/\s+/).includes(c),
+      toggle: (c, on) => {
+        const has = this.className.split(/\s+/).includes(c);
+        const want = on === undefined ? !has : on === true;
+        if (want && !has) this.classList.add(c);
+        if (!want && has) this.classList.remove(c);
+        return want;
+      },
     };
   }
   get textContent() {
@@ -99,6 +107,22 @@ globalThis.window = process.env.FM_BOARD_NO_LAVISH === "1" ? {} : {
   },
 };
 globalThis.TextEncoder = TextEncoder;
+// Enough of FormData for the decision form: named inputs, radios only when checked.
+globalThis.FormData = class {
+  constructor(form) {
+    this.values = new Map();
+    const walk = (n) => {
+      for (const c of n.children) {
+        if (c.tagName === "input" && c.name && (c.type !== "radio" || c.checked)) {
+          this.values.set(c.name, c.value);
+        }
+        walk(c);
+      }
+    };
+    walk(form);
+  }
+  get(k) { return this.values.has(k) ? this.values.get(k) : null; }
+};
 // Deferred UI resets are captured, not scheduled, so the harness exits at once.
 globalThis.setTimeout = (fn) => fn && 0;
 
@@ -197,7 +221,44 @@ for (const text of process.argv.slice(3)) {
 }
 ideaCapture.queued = queued;
 
+// FM_BOARD_DRIVE_SUBMITS=1 also answers the first Captain's Call card and presses
+// Dispatch, so the two other submit paths can be asserted the same way.
+const submits = {};
+if (process.env.FM_BOARD_DRIVE_SUBMITS === "1") {
+  const descendants = (n) => n.children.flatMap((c) => [c, ...descendants(c)]);
+  const form = descendants(byId.get("bb-call") || new Node("div")).find((c) => c.tagName === "form");
+  if (form) {
+    const note = descendants(form).find((c) => c.tagName === "input" && c.name === "note");
+    const limit = descendants(form).find((c) => c.className.includes("bb-limit"));
+    if (note) note.value = "hold until the vendor replies";
+    const before = queued.length;
+    form.dispatch("submit", { preventDefault() {} });
+    const card = form.parentNode?.parentNode;
+    submits.decision = {
+      queued: queued.slice(before),
+      queuedTick: card ? card.classList.contains("is-queued") : null,
+      limitText: limit?.textContent ?? "",
+      keptNote: note?.value ?? "",
+    };
+  }
+  const pick = descendants(byId.get("bb-charted") || new Node("div"))
+    .find((c) => c.className.includes("bb-pick") && !c.className.includes("spacer"));
+  const barBtn = byId.get("bb-dispatch-btn");
+  if (pick && barBtn) {
+    pick.checked = true;
+    pick.dispatch("change", {});
+    const before = queued.length;
+    barBtn.dispatch("click", {});
+    submits.dispatch = {
+      queued: queued.slice(before),
+      queuedTick: (byId.get("bb-dispatch") || new Node("div")).classList.contains("is-queued"),
+      barText: (byId.get("bb-dispatch-count") || new Node("div")).textContent,
+      stillPicked: pick.checked === true,
+    };
+  }
+}
+
 process.stdout.write(JSON.stringify({
   stats, fuel, charted, empty, more, underway, landed,
-  parkedIdeas, parkedIdeasEmpty, ideaCapture, error: errorText,
+  parkedIdeas, parkedIdeasEmpty, ideaCapture, submits, error: errorText,
 }) + "\n");

@@ -60,6 +60,26 @@ render_pools() {  # <home> <pools-json|->
     || fail "the built board could not be rendered"
 }
 
+# Build a board carrying one answerable decision card and one dispatchable row,
+# then answer the card and press Dispatch, and return what the board did.
+render_submits() {  # <home>
+  local home=$1 data="$1/submits-payload.json"
+  jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
+    prs_live:false,
+    captains_call:[{key:"decide-vendor", type:"decision", repo:"sample",
+                    title:"Pick a vendor", about:"two quotes are in",
+                    options:[{value:"acme", label:"Acme"}], allow_freeform:true}],
+    underway:[], landed:[],
+    charted:[{id:"queued-a", repo:"sample", title:"Queued work", reason:"",
+              dispatchable:true}]}' > "$data"
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  FM_BOARD_DRIVE_SUBMITS=1 node "$HARNESS" "$home/.lavish/bearings-board.html" \
+    || fail "the built board could not be rendered"
+}
+
 charted_next_count() {  # <render-json>
   printf '%s' "$1" | jq -r '.stats[] | select(.label == "charted next") | .n'
 }
@@ -348,6 +368,41 @@ test_ordinary_idea_text_reaches_the_queue_untouched() {
   pass "ordinary idea text, including a parenthesised URL, is queued verbatim"
 }
 
+test_an_answer_and_a_dispatch_queue_when_the_bridge_is_live() {
+  local home out
+  home=$(make_home submits-live)
+  out=$(render_submits "$home")
+  printf '%s' "$out" | jq -e '
+    .error == ""
+      and (.submits.decision.queued | length) == 1
+      and .submits.decision.queued[0].key == "decide-vendor"
+      and .submits.decision.queuedTick == true
+      and .submits.decision.limitText == ""
+      and (.submits.dispatch.queued | length) == 1
+      and .submits.dispatch.queued[0].key == "dispatch.charted"
+      and .submits.dispatch.queuedTick == true
+  ' >/dev/null || fail "a live board did not queue the answer and the dispatch: $out"
+  pass "with a live connection an answer and a dispatch both queue and confirm"
+}
+
+test_a_board_with_no_live_connection_refuses_answers_and_dispatch() {
+  local home out
+  home=$(make_home submits-nobridge)
+  out=$(FM_BOARD_NO_LAVISH=1 render_submits "$home")
+  printf '%s' "$out" | jq -e '
+    .error == ""
+      and (.submits.decision.queued | length) == 0
+      and .submits.decision.queuedTick == false
+      and (.submits.decision.limitText | test("no live connection"))
+      and .submits.decision.keptNote == "hold until the vendor replies"
+      and (.submits.dispatch.queued | length) == 0
+      and .submits.dispatch.queuedTick == false
+      and (.submits.dispatch.barText | test("no live connection"))
+      and .submits.dispatch.stillPicked == true
+  ' >/dev/null || fail "an unqueueable answer or dispatch was falsely confirmed: $out"
+  pass "with no live connection an answer and a dispatch are refused, not faked"
+}
+
 test_a_board_with_no_live_connection_keeps_the_idea_and_says_so() {
   local home out
   home=$(make_home ideas-nobridge)
@@ -443,3 +498,5 @@ test_tag_shaped_text_cannot_be_smuggled_into_a_parked_idea
 test_ordinary_idea_text_reaches_the_queue_untouched
 test_unicode_whitespace_cannot_hide_a_metadata_tag
 test_a_board_with_no_live_connection_keeps_the_idea_and_says_so
+test_an_answer_and_a_dispatch_queue_when_the_bridge_is_live
+test_a_board_with_no_live_connection_refuses_answers_and_dispatch
