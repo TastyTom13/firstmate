@@ -1,0 +1,9 @@
+$ FM_BEARINGS_GATES=1 bin/fm-bearings-snapshot.sh --json | jq "{gates: [.gates[]|{id,title}]}"
+{
+  "gates": [
+    {
+      "id": "real-gate",
+      "title": "Real gated work"
+    }
+  ]
+}

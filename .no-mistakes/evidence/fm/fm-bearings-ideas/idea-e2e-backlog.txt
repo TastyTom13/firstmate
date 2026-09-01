@@ -1,0 +1,15 @@
+$ cat data/backlog.md   # after filing the captured idea
+## In flight
+
+## Queued
+- [ ] real-gate - Real gated work (repo: firstmate) (kind: ship) (hold: upstream release pending) (hold-kind: external)
+
+- [ ] idea-try-lavish-https-ht-ml-app-for-the-cd - Idea: try lavish (https://ht-ml.app) for the review page, kind - idea (kind: idea) (since 2026-09-01)
+## Done
+
+$ tasks-axi list --state queued --kind idea   # what the composer reads for parked_ideas
+count: 1
+tasks[1]{id,state,kind,repo,title}:
+  idea-try-lavish-https-ht-ml-app-for-the-cd,queued,idea,"-","Idea: try lavish (https://ht-ml.app) for the review page, kind - idea"
+help[1]:
+  - Run `tasks-axi show <id>` for full notes on a task
