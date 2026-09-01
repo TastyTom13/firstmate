@@ -979,6 +979,37 @@ test_superseded_queued_item_dropped_by_default() {
   pass "superseded queued items are dropped by default and restored with --all-queued"
 }
 
+# Parked ideas have their own board surface, so they must never enter gates and
+# must never spend the bounded gates budget that real queued work needs.
+test_parked_ideas_never_enter_gates_or_spend_its_budget() {
+  local home fakebin json
+  home=$(make_home parked-ideas)
+  mkdir -p "$home/data"
+  cat > "$home/data/backlog.md" <<'EOF'
+## In flight
+
+## Queued
+- [ ] real-gate - Real gated work (repo: firstmate) (kind: ship) (hold: upstream release pending) (hold-kind: external)
+- [ ] idea-one - Idea: batch the merges (repo: firstmate) (kind: idea)
+- [ ] idea-two - Idea: repaint the hull (kind: idea)
+
+## Done
+EOF
+  fakebin=$(make_fakebin "$home")
+  json=$(FM_BEARINGS_GATES=1 run "$home" "$fakebin" --json)
+  printf '%s' "$json" | jq -e '
+    ([.gates[].id] | index("idea-one") | not)
+      and ([.gates[].id] | index("idea-two") | not)
+      and ([.gates[].id] | index("real-gate") != null)
+      and ([.omitted[].surface] | map(select(startswith("gates showing"))) | length) == 0
+  ' >/dev/null || fail "parked ideas leaked into gates or its bounded count: $json"
+  json=$(run "$home" "$fakebin" --json --all-queued)
+  printf '%s' "$json" | jq -e '
+    ([.gates[].id] | index("idea-one") | not) and ([.gates[].id] | index("idea-two") | not)
+  ' >/dev/null || fail "--all-queued must not reveal parked ideas as gated work: $json"
+  pass "parked ideas stay out of gates and never spend its bounded budget"
+}
+
 # The collapsed captain-call contract: any due, unblocked captain-held task is
 # Captain's Call whatever its kind; a date-deferred hold is a dated gate until
 # due; a prose-deferred hold leaves the default views with a disclosure; and
@@ -1985,6 +2016,7 @@ test_partial_github_failure_degrades
 test_perl_fallback_bounds_github_call
 test_section_caps_and_expansion_flags
 test_collapsed_captain_call_deferral_and_landed
+test_parked_ideas_never_enter_gates_or_spend_its_budget
 test_pr_repository_cap_and_expansion
 test_per_repository_pr_cap_is_disclosed
 test_projection_and_toon_fail_closed

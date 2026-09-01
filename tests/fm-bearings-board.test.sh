@@ -449,6 +449,43 @@ test_pools_are_optional_and_validated_when_present() {
   pass "pools are optional, and a present pools array is validated field by field"
 }
 
+test_parked_ideas_are_optional_and_validated_when_present() {
+  local home data rc out
+  home=$(make_home ideas)
+  data="$home/payload.json"
+
+  # Omitting parked_ideas keeps a payload valid, the same additive contract as pools.
+  write_valid_payload "$data"
+  run_board "$home" build "$data" >/dev/null \
+    || fail "a payload without parked_ideas was refused"
+  extract_payload "$home/.lavish/bearings-board.html" | jq -e 'has("parked_ideas") | not' >/dev/null \
+    || fail "the board invented a parked_ideas field the payload never carried"
+
+  write_valid_payload "$data"
+  jq '.parked_ideas = [
+        {"id":"idea-abc123","title":"Try a dark theme","repo":"sample"},
+        {"id":"idea-def456","title":"General fleet idea, no project yet","repo":null}
+      ]' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  run_board "$home" build "$data" >/dev/null || fail "a well-formed parked_ideas array was refused"
+  extract_payload "$home/.lavish/bearings-board.html" | jq -e '
+    (.parked_ideas | length) == 2 and .parked_ideas[1].repo == null
+  ' >/dev/null || fail "the built board did not carry the parked ideas it was given"
+
+  write_valid_payload "$data"
+  jq '.parked_ideas = [{"id":"idea-abc123","repo":"sample"}]' "$data" > "$data.tmp" \
+    && mv "$data.tmp" "$data"
+  set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
+  [ "$rc" -ne 0 ] || fail "a parked idea with no title was accepted: $out"
+
+  write_valid_payload "$data"
+  jq '.parked_ideas = [{"id":"idea-abc123","title":"No repo marker at all"}]' "$data" > "$data.tmp" \
+    && mv "$data.tmp" "$data"
+  set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
+  [ "$rc" -ne 0 ] || fail "a parked idea without an explicit repo marker was accepted: $out"
+
+  pass "parked ideas are optional, and a present parked_ideas array is validated field by field"
+}
+
 test_path_is_stable_and_home_scoped
 test_build_refuses_malformed_payloads_before_touching_the_board
 test_charted_kind_is_optional_and_accepts_both_values
@@ -458,3 +495,4 @@ test_build_does_not_bind_or_arm_when_session_start_fails
 test_rebuild_is_idempotent_and_does_not_double_arm
 test_build_refuses_a_template_without_exactly_one_slot
 test_pools_are_optional_and_validated_when_present
+test_parked_ideas_are_optional_and_validated_when_present

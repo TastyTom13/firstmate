@@ -43,6 +43,38 @@
 # board as an estimate so a measured-spend number is never read as the
 # provider's own remaining allowance.
 #
+# `parked_ideas` is the optional small list of captured-but-not-yet-scoped
+# ideas: one entry per queued idea-kind backlog task, each carrying `id`,
+# `title`, and `repo` (null when the idea names no project yet). Like `pools`,
+# the field is additive - a payload that omits it stays a valid
+# fm-bearings-board.v1 payload and the board simply renders no parked-ideas
+# list, so the schema version stays unchanged. The board's own idea-capture box
+# does not read this list; it only submits a new idea through the existing
+# answer channel (`idea.<unique-suffix>` in the fm-bearings-board.v1 answer
+# shape below).
+#
+# `idea` is the optional boolean marker an Underway, Recently Landed, or
+# Charted Next item carries once a parked idea has been promoted to real work:
+# it means "this row's stored title still carries the literal `Idea: `
+# plumbing prefix", so the board strips that prefix when rendering the row.
+# The composer sets it from the task's own history and never by inspecting the
+# title text, which is what lets an ordinary task the captain deliberately
+# titled "Idea: ..." keep the exact title its backlog row has. Like the fields
+# above it is additive, and `parked_ideas` entries carry no marker because
+# every entry there is an idea by definition.
+#
+# THE IDEA-ANSWER SHAPE. A captured idea rides the same `window.lavish.
+# queuePrompt` "choice" mechanism as every other board answer
+# (bin/fm-procevent-lavish.sh's `answers` command), so it needs no schema
+# change to travel: its Context data is `{"question": "idea.<unique-suffix>",
+# "answer": "<idea text, <=512 bytes>"}`. The key is `idea.` followed by a
+# client-minted unique suffix (never a fixed key), because `answers` keeps only
+# the LAST submission for a repeated key, and every distinct idea must survive
+# even when several are queued in one board session. `bin/fm-bearings-board.sh`
+# does not consume idea answers itself; the receiving side is the bearings
+# skill's board-wake handling, which files each `idea.*` key as a queued
+# backlog task tagged `--kind idea` through the ordinary tasks-axi path.
+#
 # Every fleet row and Captain's Call item explicitly carries `repo`; the
 # composer fills it from the snapshot and task records wherever known, and uses
 # null or an empty string only as the deliberate genuinely-no-repo marker. In that exceptional case
@@ -87,6 +119,7 @@ validate_payload() {  # <data.json>
     def slug($max): type == "string" and test("^[A-Za-z0-9._-]{1," + ($max | tostring) + "}$");
     def repo_marker: has("repo") and (.repo == null or (.repo | type == "string"));
     def optional_string($name): (has($name) | not) or (.[$name] | type == "string");
+    def optional_bool($name): (has($name) | not) or (.[$name] | type == "boolean");
     def optional_https_url($name):
       (has($name) | not)
       or (.[$name]
@@ -118,11 +151,13 @@ validate_payload() {  # <data.json>
       and (if .type == "merge" then (.risk | nonempty_string) else true end);
     def underway_item:
       type == "object" and repo_marker and (.id | nonempty_string)
-      and (.state | nonempty_string) and (.doing | nonempty_string) and (.kind | nonempty_string);
+      and (.state | nonempty_string) and (.doing | nonempty_string) and (.kind | nonempty_string)
+      and optional_bool("idea");
     def landed_item:
       type == "object" and repo_marker and (.id | nonempty_string)
       and (.what | nonempty_string) and (.owner | nonempty_string)
-      and optional_https_url("pr_url");
+      and optional_https_url("pr_url")
+      and optional_bool("idea");
     def pool_item:
       type == "object"
       and (.provider | slug(64))
@@ -140,7 +175,11 @@ validate_payload() {  # <data.json>
       and (.title | nonempty_string) and (.reason | type == "string")
       and (.dispatchable | type == "boolean")
       and ((has("kind") | not) or (.kind == "queued" or .kind == "warning"))
-      and (if .kind == "warning" then .dispatchable == false else true end);
+      and (if .kind == "warning" then .dispatchable == false else true end)
+      and optional_bool("idea");
+    def idea_item:
+      type == "object" and repo_marker and (.id | slug(128))
+      and (.title | nonempty_string);
     type == "object"
     and (.schema == $schema)
     and (.home | nonempty_string)
@@ -156,6 +195,8 @@ validate_payload() {  # <data.json>
       or ((.charted_warning_more | type == "number") and (.charted_warning_more >= 0) and (.charted_warning_more | floor == .)))
     and ((has("pools") | not)
       or ((.pools | type) == "array" and ([.pools[] | pool_item] | all)))
+    and ((has("parked_ideas") | not)
+      or ((.parked_ideas | type) == "array" and ([.parked_ideas[] | idea_item] | all)))
     and ([.captains_call[] | call_item] | all)
     and ([.underway[] | underway_item] | all)
     and ([.landed[] | landed_item] | all)

@@ -2,10 +2,12 @@
 // shim and print what the renderer actually produced, so board behavior is
 // asserted through the real template rather than by reading its source.
 //
-// Usage: node board-render-harness.mjs <built-board.html>
+// Usage: node board-render-harness.mjs <built-board.html> [idea-to-submit...]
 // Prints one JSON document:
 //   { stats:[{n,label}], fuel:{hidden,cells:[{tone,name,pct,fill,meta}]},
-//     charted:[{title,sub,badges,pickable}] }
+//     charted:[{title,sub,badges,pickable}], underway:[title], landed:[title],
+//     parkedIdeas:[{title,sub}], ideaCapture:{submitted,cleared,limitText,queued},
+//     submits:{decision,dispatch} (only with FM_BOARD_DRIVE_SUBMITS=1) }
 import { readFileSync } from "node:fs";
 
 const html = readFileSync(process.argv[2], "utf8");
@@ -24,9 +26,20 @@ class Node {
     this.type = "";
     this.value = "";
     this.checked = false;
+    this.listeners = {};
     this.classList = {
       add: (c) => { this.className = (this.className + " " + c).trim(); },
+      remove: (c) => {
+        this.className = this.className.split(/\s+/).filter((x) => x && x !== c).join(" ");
+      },
       contains: (c) => this.className.split(/\s+/).includes(c),
+      toggle: (c, on) => {
+        const has = this.className.split(/\s+/).includes(c);
+        const want = on === undefined ? !has : on === true;
+        if (want && !has) this.classList.add(c);
+        if (!want && has) this.classList.remove(c);
+        return want;
+      },
     };
   }
   get textContent() {
@@ -37,7 +50,10 @@ class Node {
   set textContent(v) { this._text = String(v); this.children = []; }
   appendChild(n) { n.parentNode = this; this.children.push(n); return n; }
   setAttribute(k, v) { this.attributes[k] = v; }
-  addEventListener() {}
+  addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
+  dispatch(type, ev) {
+    for (const fn of this.listeners[type] || []) fn.call(this, ev);
+  }
   querySelectorAll(sel) {
     const want = sel.replace(/^\./, "").replace(/:checked$/, "");
     const checkedOnly = sel.endsWith(":checked");
@@ -78,8 +94,37 @@ globalThis.document = {
     return byId.get(id);
   },
 };
-globalThis.window = {};
+// Stand in for the Lavish bridge the real board talks to, and record every
+// prompt the page queues so submissions can be asserted as observable output.
+const queued = [];
+// FM_BOARD_NO_LAVISH=1 stands in for an exported or file:// copy of the board,
+// where the host frame never injects the SDK.
+globalThis.window = process.env.FM_BOARD_NO_LAVISH === "1" ? {} : {
+  lavish: {
+    queuePrompt: (prompt, opts) => {
+      queued.push({ prompt, text: opts?.text ?? "", key: opts?.data?.question ?? "", answer: opts?.data?.answer ?? "" });
+    },
+  },
+};
 globalThis.TextEncoder = TextEncoder;
+// Enough of FormData for the decision form: named inputs, radios only when checked.
+globalThis.FormData = class {
+  constructor(form) {
+    this.values = new Map();
+    const walk = (n) => {
+      for (const c of n.children) {
+        if (c.tagName === "input" && c.name && (c.type !== "radio" || c.checked)) {
+          this.values.set(c.name, c.value);
+        }
+        walk(c);
+      }
+    };
+    walk(form);
+  }
+  get(k) { return this.values.has(k) ? this.values.get(k) : null; }
+};
+// Deferred UI resets are captured, not scheduled, so the harness exits at once.
+globalThis.setTimeout = (fn) => fn && 0;
 
 const script = html.slice(html.indexOf("<script>") + "<script>".length, html.lastIndexOf("</script>"));
 new Function(script)();
@@ -113,6 +158,17 @@ const fuel = {
   }),
 };
 
+// Underway and Recently Landed: the titles those two sections actually show.
+const titlesOf = (id) =>
+  (byId.get(id) || new Node("div")).children
+    .filter((r) => r.className.split(/\s+/).includes("bb-row"))
+    .map((row) =>
+      row.children
+        .find((c) => c.className.includes("bb-row__main"))
+        ?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "");
+const underway = titlesOf("bb-underway");
+const landed = titlesOf("bb-landed");
+
 const ch = byId.get("bb-charted") || new Node("div");
 const charted = ch.children
   .filter((r) => r.className.split(/\s+/).includes("bb-row"))
@@ -134,4 +190,75 @@ const errorText = [...byId.entries()]
 const empty = ch.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
 const more = ch.children.filter((c) => c.className.includes("bb-morechip")).map((c) => c.textContent);
 
-process.stdout.write(JSON.stringify({ stats, fuel, charted, empty, more, error: errorText }) + "\n");
+// Parked ideas: the small list of already-captured ideas from the payload.
+const piNode = byId.get("bb-parked-ideas") || new Node("div");
+const parkedIdeas = piNode.children
+  .filter((r) => r.className.split(/\s+/).includes("bb-row"))
+  .map((row) => {
+    const main = row.children.find((c) => c.className.includes("bb-row__main"));
+    return {
+      title: main?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "",
+      sub: main?.children.find((c) => c.className.includes("bb-row__sub"))?.textContent ?? "",
+    };
+  });
+const parkedIdeasEmpty = piNode.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
+
+// Drive the capture box itself: every extra argument is one idea typed into the
+// form and submitted, in order, so the queued prompts show what the real
+// handler does with repeated submissions.
+const ideaForm = byId.get("bb-idea-form");
+const ideaInput = byId.get("bb-idea-input");
+const ideaLimit = byId.get("bb-idea-limit");
+const ideaCapture = { submitted: 0, queued: [], limitText: "" };
+for (const text of process.argv.slice(3)) {
+  ideaInput.value = text;
+  ideaForm.dispatch("submit", { preventDefault() {} });
+  ideaCapture.submitted += 1;
+  ideaCapture.limitText = ideaLimit.textContent;
+  ideaCapture.cleared = ideaInput.value === "";
+  ideaCapture.kept = ideaInput.value;
+  ideaCapture.queuedTick = ideaForm.classList.contains("is-queued");
+}
+ideaCapture.queued = queued;
+
+// FM_BOARD_DRIVE_SUBMITS=1 also answers the first Captain's Call card and presses
+// Dispatch, so the two other submit paths can be asserted the same way.
+const submits = {};
+if (process.env.FM_BOARD_DRIVE_SUBMITS === "1") {
+  const descendants = (n) => n.children.flatMap((c) => [c, ...descendants(c)]);
+  const form = descendants(byId.get("bb-call") || new Node("div")).find((c) => c.tagName === "form");
+  if (form) {
+    const note = descendants(form).find((c) => c.tagName === "input" && c.name === "note");
+    const limit = descendants(form).find((c) => c.className.includes("bb-limit"));
+    if (note) note.value = "hold until the vendor replies";
+    const before = queued.length;
+    form.dispatch("submit", { preventDefault() {} });
+    const card = form.parentNode?.parentNode;
+    submits.decision = {
+      queued: queued.slice(before),
+      queuedTick: card ? card.classList.contains("is-queued") : null,
+      limitText: limit?.textContent ?? "",
+      keptNote: note?.value ?? "",
+    };
+  }
+  const pick = descendants(byId.get("bb-charted") || new Node("div"))
+    .find((c) => c.className.includes("bb-pick") && !c.className.includes("spacer"));
+  const barBtn = byId.get("bb-dispatch-btn");
+  if (pick && barBtn) {
+    pick.checked = true;
+    pick.dispatch("change", {});
+    const before = queued.length;
+    barBtn.dispatch("click", {});
+    submits.dispatch = {
+      queued: queued.slice(before),
+      queuedTick: (byId.get("bb-dispatch") || new Node("div")).classList.contains("is-queued"),
+      barText: (byId.get("bb-dispatch-count") || new Node("div")).textContent,
+      stillPicked: pick.checked === true,
+    };
+  }
+}
+
+process.stdout.write(JSON.stringify({
+  stats, fuel, charted, empty, more, underway, landed,
+  parkedIdeas, parkedIdeasEmpty, ideaCapture, submits, error: errorText,
+}) + "\n");

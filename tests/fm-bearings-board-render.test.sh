@@ -60,6 +60,26 @@ render_pools() {  # <home> <pools-json|->
     || fail "the built board could not be rendered"
 }
 
+# Build a board carrying one answerable decision card and one dispatchable row,
+# then answer the card and press Dispatch, and return what the board did.
+render_submits() {  # <home>
+  local home=$1 data="$1/submits-payload.json"
+  jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
+    prs_live:false,
+    captains_call:[{key:"decide-vendor", type:"decision", repo:"sample",
+                    title:"Pick a vendor", about:"two quotes are in",
+                    options:[{value:"acme", label:"Acme"}], allow_freeform:true}],
+    underway:[], landed:[],
+    charted:[{id:"queued-a", repo:"sample", title:"Queued work", reason:"",
+              dispatchable:true}]}' > "$data"
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  FM_BOARD_DRIVE_SUBMITS=1 node "$HARNESS" "$home/.lavish/bearings-board.html" \
+    || fail "the built board could not be rendered"
+}
+
 charted_next_count() {  # <render-json>
   printf '%s' "$1" | jq -r '.stats[] | select(.label == "charted next") | .n'
 }
@@ -221,6 +241,280 @@ test_an_estimated_reading_says_it_is_an_estimate() {
   pass "an estimated reading is labelled an estimate on the gauge"
 }
 
+# Build a board carrying <parked-ideas-json|-> and return what the renderer produced.
+render_ideas() {  # <home> <parked-ideas-json|-> [idea-typed-into-the-box...]
+  local home=$1 ideas=$2 data="$1/ideas-payload.json"
+  shift 2
+  if [ "$ideas" = "-" ]; then
+    jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
+      prs_live:false, captains_call:[], underway:[], landed:[], charted:[]}' > "$data"
+  else
+    jq -n --argjson ideas "$ideas" '{schema:"fm-bearings-board.v1", home:"render-home",
+      generated:"2026-08-31T00:00Z", prs_live:false, captains_call:[], underway:[],
+      landed:[], charted:[], parked_ideas:$ideas}' > "$data"
+  fi
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  node "$HARNESS" "$home/.lavish/bearings-board.html" "$@" \
+    || fail "the built board could not be rendered"
+}
+
+test_a_board_without_parked_ideas_shows_the_empty_state() {
+  local home out
+  home=$(make_home ideas-absent)
+  out=$(render_ideas "$home" -)
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.parkedIdeas | length) == 0
+      and (.parkedIdeasEmpty | length) == 1
+      and (.parkedIdeasEmpty[0] | test("No ideas parked yet"))
+  ' >/dev/null || fail "a board with no parked ideas did not render the empty state: $out"
+  pass "a board built without parked ideas shows the parked-ideas empty state"
+}
+
+test_parked_ideas_render_title_and_repo() {
+  local home out
+  home=$(make_home ideas-present)
+  out=$(render_ideas "$home" '[
+    {"id":"idea-a","title":"Try a dark theme","repo":"sample"},
+    {"id":"idea-b","title":"General fleet idea","repo":null}
+  ]')
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.parkedIdeas | length) == 2
+      and (.parkedIdeasEmpty | length) == 0
+      and (.parkedIdeas[0].title == "Try a dark theme" and .parkedIdeas[0].sub == "sample")
+      and (.parkedIdeas[1].title == "General fleet idea" and .parkedIdeas[1].sub == "")
+  ' >/dev/null || fail "the built board did not render both parked ideas correctly: $out"
+  pass "parked ideas render their title, and their repo only when known"
+}
+
+test_an_unmarked_row_keeps_the_title_its_backlog_row_has() {
+  local home out data
+  home=$(make_home ideas-unmarked); data="$home/unmarked-payload.json"
+  jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
+    prs_live:false, captains_call:[],
+    underway:[{id:"ship-b", state:"working", doing:"Idea: capture box for the board",
+               kind:"ship", repo:"sample"}],
+    landed:[{id:"ship-c", what:"Idea: capture box shipped", owner:"(main)", repo:"sample"}],
+    charted:[{id:"ship-a", title:"Idea: capture box for the board", repo:"sample",
+              reason:"waiting on review", dispatchable:true}]}' > "$data"
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  out=$(node "$HARNESS" "$home/.lavish/bearings-board.html") \
+    || fail "the built board could not be rendered"
+  printf '%s' "$out" | jq -e '
+    .error == "" and .charted[0].title == "Idea: capture box for the board"
+      and .underway == ["Idea: capture box for the board"]
+      and .landed == ["Idea: capture box shipped"]
+  ' >/dev/null || fail "an ordinary task lost the title its backlog row has: $out"
+  pass "a row not marked as an idea keeps its exact stored title"
+}
+
+test_tag_shaped_text_cannot_be_smuggled_into_a_parked_idea() {
+  local home out
+  home=$(make_home ideas-tags)
+  out=$(render_ideas "$home" - \
+    "use (hold-kind: captain) (hold: pick one) for the parser" \
+    "blocked-by: vendor and more words here" \
+    "park it (since 2026-01-01) please")
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.ideaCapture.queued | length) == 3
+      and ([.ideaCapture.queued[].answer] | map(test("\\((hold-kind|hold-until|hold|kind|repo|priority):")) | any | not)
+      and ([.ideaCapture.queued[].answer] | map(test("blocked-by:")) | any | not)
+      and ([.ideaCapture.queued[].answer] | map(test("\\((since|merged|reported|done)[ ]")) | any | not)
+      and (.ideaCapture.queued[0].answer | test("hold-kind") and test("for the parser"))
+      and (.ideaCapture.queued[1].answer | test("vendor and more words here"))
+      and (.ideaCapture.queued[2].answer | test("2026-01-01") and test("please"))
+  ' >/dev/null || fail "a queued idea still carried backlog metadata shapes: $out"
+  pass "a captured idea cannot smuggle backlog metadata tags or a blocker into its title"
+}
+
+# The backlog reader treats a comma plus ANY Unicode whitespace as a tag anchor,
+# so a cleaner that matches only some space characters would let a pasted one
+# carry a real tag straight through.
+test_unicode_whitespace_cannot_hide_a_metadata_tag() {
+  local home out sp tag
+  # U+00A0 (no-break space) and U+0085 (next line) both carry the Unicode
+  # White_Space property, so the backlog reader's [[:space:]] accepts either in
+  # front of a metadata key even though neither is an ASCII space.
+  for tag in a0 85; do
+    if [ "$tag" = a0 ]; then
+      sp=$(printf '%b' '\0302\0240')
+    else
+      sp=$(printf '%b' '\0302\0205')
+    fi
+    home=$(make_home "ideas-uws-$tag")
+    out=$(render_ideas "$home" - \
+      "parser rethink,${sp}hold-kind: captain,${sp}hold: pick one" \
+      "park it (since${sp}2026-01-01) please")
+    printf '%s' "$out" | jq -e '
+      .error == "" and (.ideaCapture.queued | length) == 2
+        and ([.ideaCapture.queued[].answer] | map(test("(hold-kind|hold):")) | any | not)
+        and (.ideaCapture.queued[1].answer | test("\\(since[[:space:]]") | not)
+        and (.ideaCapture.queued[0].answer | test("pick one"))
+        and (.ideaCapture.queued[1].answer | test("2026-01-01"))
+    ' >/dev/null || fail "unicode whitespace U+00$tag carried a metadata tag through: $out"
+  done
+  pass "unicode whitespace before a key cannot hide a backlog metadata tag"
+}
+
+# The full round trip: type an idea into the real capture box, file it with the
+# real tasks-axi the way the skill prescribes, read the stored row back, and
+# render it as a parked idea. The captain's words must come back unshortened.
+test_a_captured_idea_survives_the_round_trip_word_for_word() {
+  local home out typed queued backlog id stored ideas
+  command -v tasks-axi >/dev/null 2>&1 || { echo "skip: tasks-axi not found"; return 0; }
+  home=$(make_home ideas-roundtrip)
+  backlog="$home/data/backlog.md"
+  printf '## In flight\n\n## Queued\n\n## Done\n' > "$backlog"
+  ideas='[]'
+  for typed in \
+    "try lavish (https://ht-ml.app) for the review page" \
+    "check the plan in data/ship-a/report.md" \
+    "stop testing on local main"; do
+    out=$(render_ideas "$home" - "$typed")
+    queued=$(printf '%s' "$out" | jq -r '.ideaCapture.queued[-1].answer')
+    [ "$queued" = "$typed" ] || fail "the capture box changed ordinary text: $queued"
+    id=$(tasks-axi add "Idea: $queued" --kind idea --mint --queue --file "$backlog" \
+      | sed -n 's/^ok: added \([^ ]*\) .*/\1/p')
+    [ -n "$id" ] || fail "tasks-axi did not file the idea"
+    stored=$(tasks-axi show "$id" --file "$backlog" | sed -n 's/^  title: "\(.*\)"$/\1/p')
+    ideas=$(jq -c --arg id "$id" --arg title "$stored" '. + [{id:$id, title:$title, repo:null}]' <<<"$ideas")
+  done
+  out=$(render_ideas "$home" "$ideas")
+  printf '%s' "$out" | jq -e '
+    .error == "" and [.parkedIdeas[].title] == [
+      "try lavish (https://ht-ml.app) for the review page",
+      "check the plan in data/ship-a/report.md",
+      "stop testing on local main"
+    ]
+  ' >/dev/null || fail "a parked idea came back shortened: $out"
+  pass "a captured idea comes back on the board word for word"
+}
+
+test_ordinary_idea_text_reaches_the_queue_untouched() {
+  local home out
+  home=$(make_home ideas-plain)
+  out=$(render_ideas "$home" - "try lavish (https://ht-ml.app) for the review page")
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.ideaCapture.queued | length) == 1
+      and .ideaCapture.queued[0].answer == "try lavish (https://ht-ml.app) for the review page"
+  ' >/dev/null || fail "ordinary idea text was rewritten: $out"
+  pass "ordinary idea text, including a parenthesised URL, is queued verbatim"
+}
+
+test_an_answer_and_a_dispatch_queue_when_the_bridge_is_live() {
+  local home out
+  home=$(make_home submits-live)
+  out=$(render_submits "$home")
+  printf '%s' "$out" | jq -e '
+    .error == ""
+      and (.submits.decision.queued | length) == 1
+      and .submits.decision.queued[0].key == "decide-vendor"
+      and .submits.decision.queuedTick == true
+      and .submits.decision.limitText == ""
+      and (.submits.dispatch.queued | length) == 1
+      and .submits.dispatch.queued[0].key == "dispatch.charted"
+      and .submits.dispatch.queuedTick == true
+  ' >/dev/null || fail "a live board did not queue the answer and the dispatch: $out"
+  pass "with a live connection an answer and a dispatch both queue and confirm"
+}
+
+test_a_board_with_no_live_connection_refuses_answers_and_dispatch() {
+  local home out
+  home=$(make_home submits-nobridge)
+  out=$(FM_BOARD_NO_LAVISH=1 render_submits "$home")
+  printf '%s' "$out" | jq -e '
+    .error == ""
+      and (.submits.decision.queued | length) == 0
+      and .submits.decision.queuedTick == false
+      and (.submits.decision.limitText | test("no live connection"))
+      and .submits.decision.keptNote == "hold until the vendor replies"
+      and (.submits.dispatch.queued | length) == 0
+      and .submits.dispatch.queuedTick == false
+      and (.submits.dispatch.barText | test("no live connection"))
+      and .submits.dispatch.stillPicked == true
+  ' >/dev/null || fail "an unqueueable answer or dispatch was falsely confirmed: $out"
+  pass "with no live connection an answer and a dispatch are refused, not faked"
+}
+
+test_a_board_with_no_live_connection_keeps_the_idea_and_says_so() {
+  local home out
+  home=$(make_home ideas-nobridge)
+  out=$(FM_BOARD_NO_LAVISH=1 render_ideas "$home" - "Buy a bigger anchor")
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.ideaCapture.queued | length) == 0
+      and .ideaCapture.kept == "Buy a bigger anchor"
+      and .ideaCapture.queuedTick == false
+      and (.ideaCapture.limitText | test("no live connection"))
+  ' >/dev/null || fail "an unqueueable idea was lost or falsely confirmed: $out"
+  pass "with no live connection the idea stays in the box and the board says why"
+}
+
+test_the_stored_idea_prefix_never_reaches_the_captain() {
+  local home out
+  home=$(make_home ideas-prefix)
+  out=$(render_ideas "$home" '[{"id":"idea-a","title":"Idea: batch the merges","repo":"sample"}]')
+  printf '%s' "$out" | jq -e '
+    .error == "" and .parkedIdeas[0].title == "batch the merges"
+  ' >/dev/null || fail "the parked idea still showed its plumbing prefix: $out"
+  pass "a parked idea renders without the stored Idea: prefix"
+}
+
+test_a_promoted_idea_row_drops_the_prefix_too() {
+  local home out data
+  home=$(make_home ideas-promoted); data="$home/promoted-payload.json"
+  jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
+    prs_live:false, captains_call:[],
+    underway:[{id:"idea-b", state:"working", doing:"Idea: repaint the hull",
+               kind:"ship", repo:"sample", idea:true}],
+    landed:[{id:"idea-c", what:"Idea: scrub the deck", owner:"(main)", repo:"sample",
+             idea:true}],
+    charted:[{id:"idea-a", title:"Idea: batch the merges", repo:"sample",
+              reason:"waiting on review", dispatchable:true, idea:true}]}' > "$data"
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  out=$(node "$HARNESS" "$home/.lavish/bearings-board.html") \
+    || fail "the built board could not be rendered"
+  printf '%s' "$out" | jq -e '
+    .error == "" and .charted[0].title == "batch the merges" and .charted[0].pickable == true
+      and .underway == ["repaint the hull"] and .landed == ["scrub the deck"]
+  ' >/dev/null || fail "a promoted idea kept its plumbing prefix on the board: $out"
+  pass "a promoted idea drops the stored Idea: prefix in charted, underway, and landed"
+}
+
+test_two_captured_ideas_queue_two_distinct_answers() {
+  local home out
+  home=$(make_home ideas-capture)
+  out=$(render_ideas "$home" - "Buy a bigger anchor" "Repaint the hull")
+  printf '%s' "$out" | jq -e '
+    .error == "" and .ideaCapture.submitted == 2 and .ideaCapture.cleared == true
+      and (.ideaCapture.queued | length) == 2
+      and (.ideaCapture.queued | map(.key) | all(startswith("idea.")))
+      and (.ideaCapture.queued | map(.key) | unique | length) == 2
+      and .ideaCapture.queued[0].answer == "Buy a bigger anchor"
+      and .ideaCapture.queued[1].answer == "Repaint the hull"
+  ' >/dev/null || fail "two submitted ideas did not queue two distinct idea answers: $out"
+  pass "two captured ideas queue two distinct idea.* answers"
+}
+
+test_an_over_long_idea_is_refused_instead_of_queued() {
+  local home out long
+  home=$(make_home ideas-toolong)
+  long=$(printf 'x%.0s' $(seq 1 600))
+  out=$(render_ideas "$home" - "$long")
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.ideaCapture.queued | length) == 0
+      and (.ideaCapture.limitText | test("too long"))
+  ' >/dev/null || fail "an over-long idea was not refused: $out"
+  pass "an idea over the answer-size limit is refused instead of queued"
+}
+
 test_a_warning_row_reads_as_a_repair_not_as_queued_work
 test_warnings_are_excluded_from_the_charted_next_count
 test_a_board_of_only_warnings_still_reports_nothing_queued
@@ -231,3 +525,17 @@ test_a_board_without_pools_shows_no_gauge_at_all
 test_an_unreadable_pool_says_so_instead_of_showing_a_bar
 test_a_nearly_spent_pool_reads_differently_from_a_healthy_one
 test_an_estimated_reading_says_it_is_an_estimate
+test_a_board_without_parked_ideas_shows_the_empty_state
+test_parked_ideas_render_title_and_repo
+test_two_captured_ideas_queue_two_distinct_answers
+test_an_over_long_idea_is_refused_instead_of_queued
+test_the_stored_idea_prefix_never_reaches_the_captain
+test_a_promoted_idea_row_drops_the_prefix_too
+test_an_unmarked_row_keeps_the_title_its_backlog_row_has
+test_tag_shaped_text_cannot_be_smuggled_into_a_parked_idea
+test_ordinary_idea_text_reaches_the_queue_untouched
+test_a_captured_idea_survives_the_round_trip_word_for_word
+test_unicode_whitespace_cannot_hide_a_metadata_tag
+test_a_board_with_no_live_connection_keeps_the_idea_and_says_so
+test_an_answer_and_a_dispatch_queue_when_the_bridge_is_live
+test_a_board_with_no_live_connection_refuses_answers_and_dispatch

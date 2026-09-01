@@ -115,7 +115,9 @@ Default fields: schema, home, generated, prs, in_flight{id,kind,state,doing},
   secondmates{id,state,doing,provenance,freshness,age_seconds,contradiction,reason},
   secondmate_reconcile{id,spawn_gen,host,kind,ids},
   decisions_open{id,key,verb,summary,owner}, landed{id,what,artifact,owner},
-  gates{id,title,blocked_by,reason,owner}, reports{id,path}, recorded_prs{id,url},
+  gates{id,title,blocked_by,reason,owner} (never kind=idea: parked ideas are their
+    own board surface and never consume this bounded queued-work budget),
+  reports{id,path}, recorded_prs{id,url},
   unhealthy_endpoints{...} (only when non-empty), omitted{surface,reveal}.
 landed merges this home's Done with registered secondmate homes' Done, bounded by
   a per-home cap (FM_BEARINGS_LANDED_PER_HOME) and an overall cap (FM_BEARINGS_LANDED),
@@ -421,6 +423,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
              (.state == "queued" or
               (.state == "in_flight" and .current_role == "held" and ($working_ids | index($record.id) | not))))
          | select(.captain_actionable != true)
+         | select(.kind != "idea")
          | select(($all_queued == 1) or (.deferred_marker != true)
                   or ((.hold_until // null) != null and .hold_until > $today))
          | {id, title:(.title | trunc(60)),
@@ -432,6 +435,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
          | select($m.provenance.selected == "structured-home")
          | $m.queued[]?
          | select(.captain_actionable != true)
+         | select(.kind != "idea")
          | select(($all_queued == 1) or (.deferred_marker != true)
                   or ((.hold_until // null) != null and .hold_until > $today))
          | {id,title:(.title | trunc(60)),

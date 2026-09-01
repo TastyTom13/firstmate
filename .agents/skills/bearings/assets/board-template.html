@@ -302,6 +302,11 @@ a { color: inherit; text-decoration: none; }
 
 .bb-foot { display: flex; justify-content: flex-end; border-top: 1px solid var(--border-default); padding-top: 14px; }
 
+/* ---- Park an Idea (idea-capture box) ---- */
+.bb-idea { display: flex; align-items: center; gap: 10px; padding: 14px 18px; flex-wrap: wrap; }
+.bb-idea .bb-freeform { flex: 1 1 260px; }
+.bb-idea .bb-limit { flex: 1 0 100%; }
+
 @media (max-width: 900px) {
   .bb-cols { grid-template-columns: 1fr; }
 }
@@ -376,6 +381,26 @@ a { color: inherit; text-decoration: none; }
     </div>
   </section>
   </div>
+
+  <section class="bb-section">
+    <div class="bb-section__head">
+      <span class="fm-sign fm-sign--eyebrow">
+        <svg class="fm-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.6.6 1.28 1.4 1.41 2.5"/></svg>
+        Park an Idea
+      </span>
+      <span class="fm-sign fm-sign--muted" id="bb-idea-sub"></span>
+    </div>
+    <div class="fm-card">
+      <form class="bb-idea" id="bb-idea-form">
+        <input type="text" name="idea" id="bb-idea-input" class="bb-freeform"
+          placeholder="jot an idea for later, captain…" maxlength="512" />
+        <button type="submit" class="fm-btn fm-btn--sm fm-btn--primary">Park it</button>
+        <span class="bb-queued" id="bb-idea-queued">queued</span>
+        <span class="bb-limit" id="bb-idea-limit" role="alert"></span>
+      </form>
+      <div class="bb-rows" id="bb-parked-ideas"></div>
+    </div>
+  </section>
 
   <div class="bb-cols">
     <section class="bb-section">
@@ -462,6 +487,15 @@ __FM_BEARINGS_BOARD_DATA__
   }
 
   try {
+  /* An idea's stored task title carries a literal "Idea: " prefix so the
+     tasks-axi positional can never start with "-"; that is plumbing, so no
+     captain-facing row ever shows it. Only a row the payload MARKS as an idea
+     is stripped, so an ordinary task the captain titled "Idea: ..." keeps the
+     title its backlog row actually has. */
+  function shownTitle(text, isIdea) {
+    var s = String(text == null ? "" : text);
+    return isIdea === true ? s.replace(/^Idea:[ \t]*/, "") : s;
+  }
   function el(tag, cls, text) {
     var n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -627,17 +661,20 @@ __FM_BEARINGS_BOARD_DATA__
         answerLimit.classList.add("is-visible");
         return;
       }
-      if (window.lavish && window.lavish.queuePrompt) {
-        /* close carries the composer-declared close mode: "release" frees a
-           captain-gated work item instead of completing a question task */
-        var ctxData = { question: item.key, answer: answer };
-        if (item.close) ctxData.close = item.close;
-        window.lavish.queuePrompt(
-          "Captain's Call answer - " + item.title + ": " + answer,
-          { tag: "choice", text: item.title + " -> " + answer, element: form,
-            data: ctxData }
-        );
+      if (!(window.lavish && window.lavish.queuePrompt)) {
+        answerLimit.textContent = "This board has no live connection, so the answer was not queued. Your pick is still here - answer again from the session board.";
+        answerLimit.classList.add("is-visible");
+        return;
       }
+      /* close carries the composer-declared close mode: "release" frees a
+         captain-gated work item instead of completing a question task */
+      var ctxData = { question: item.key, answer: answer };
+      if (item.close) ctxData.close = item.close;
+      window.lavish.queuePrompt(
+        "Captain's Call answer - " + item.title + ": " + answer,
+        { tag: "choice", text: item.title + " -> " + answer, element: form,
+          data: ctxData }
+      );
       card.classList.add("is-queued");
       /* deal the next card once this one is answered */
       setTimeout(function () { showCard(active < cards.length - 1 ? active + 1 : active); }, 450);
@@ -684,7 +721,7 @@ __FM_BEARINGS_BOARD_DATA__
     var row = el("div", "bb-row");
     row.appendChild(badge(t.state === "working" ? "online" : "info", t.state));
     var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", t.doing));
+    main.appendChild(el("div", "bb-row__title", shownTitle(t.doing, t.idea)));
     /* captain-facing rows name the repo; the internal task id shows only when
        no repo is known */
     main.appendChild(el("div", "bb-row__sub", t.kind + " · " + (t.repo || t.id)));
@@ -701,7 +738,7 @@ __FM_BEARINGS_BOARD_DATA__
     chk.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
     row.appendChild(chk);
     var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", t.what));
+    main.appendChild(el("div", "bb-row__title", shownTitle(t.what, t.idea)));
     main.appendChild(el("div", "bb-row__sub", (t.repo || t.id) + " · " + t.owner));
     row.appendChild(main);
     if (t.pr_url) {
@@ -710,6 +747,62 @@ __FM_BEARINGS_BOARD_DATA__
       row.appendChild(a);
     }
     ld.appendChild(row);
+  });
+
+  /* Park an Idea: the small parked-ideas list from queued idea-kind tasks,
+     plus the freeform capture box that queues a new one. */
+  var parkedIdeas = Array.isArray(data.parked_ideas) ? data.parked_ideas : [];
+  var pi = document.getElementById("bb-parked-ideas");
+  document.getElementById("bb-idea-sub").textContent =
+    parkedIdeas.length ? parkedIdeas.length + " parked" : "";
+  if (!parkedIdeas.length) pi.appendChild(el("div", "bb-empty", "No ideas parked yet."));
+  parkedIdeas.forEach(function (idea) {
+    var row = el("div", "bb-row");
+    var main = el("div", "bb-row__main");
+    main.appendChild(el("div", "bb-row__title", shownTitle(idea.title, true)));
+    if (idea.repo) main.appendChild(el("div", "bb-row__sub", idea.repo));
+    row.appendChild(main);
+    pi.appendChild(row);
+  });
+
+  var ideaForm = document.getElementById("bb-idea-form");
+  var ideaInput = document.getElementById("bb-idea-input");
+  var ideaLimit = document.getElementById("bb-idea-limit");
+  ideaForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    ideaLimit.classList.remove("is-visible");
+    /* a captured idea becomes a backlog TITLE, so break exactly the shapes the
+       backlog reader treats as metadata - and nothing else, so an ordinary
+       "(https://ht-ml.app)" survives untouched. Each rewrite mirrors one real
+       parse shape: "(key: value)" and ", key: value" tags, "(word value)"
+       tags, and an unanchored "blocked-by:" which the reader matches anywhere. */
+    var idea = ideaInput.value.trim()
+      .replace(/(\(|,\p{White_Space}*)(repo|kind|priority|hold-kind|hold-until|hold):/gu, "$1$2 -")
+      .replace(/(\(|,\p{White_Space}*)(since|merged|reported|done)(\p{White_Space})/gu, "$1$2-$3")
+      .replace(/blocked-by:/g, "blocked-by -");
+    if (!idea) return;
+    if (utf8ByteLength(idea) > 512) {
+      ideaLimit.textContent = "Idea is too long to queue (512 bytes maximum).";
+      ideaLimit.classList.add("is-visible");
+      return;
+    }
+    /* every idea needs its OWN key: the answer channel keeps only the last
+       submission for a repeated key, and each parked idea must survive even
+       when several are queued in one board session */
+    var key = "idea." + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+    if (!(window.lavish && window.lavish.queuePrompt)) {
+      ideaLimit.textContent = "This board has no live connection, so the idea was not queued. Keep the text and try again from the session board.";
+      ideaLimit.classList.add("is-visible");
+      return;
+    }
+    window.lavish.queuePrompt(
+      "Parked idea: " + idea,
+      { tag: "choice", text: "Idea -> " + idea, element: ideaForm,
+        data: { question: key, answer: idea } }
+    );
+    ideaForm.classList.add("is-queued");
+    ideaInput.value = "";
+    setTimeout(function () { ideaForm.classList.remove("is-queued"); }, 1600);
   });
 
   /* Charted Next + dispatch picker */
@@ -751,7 +844,7 @@ __FM_BEARINGS_BOARD_DATA__
       row.appendChild(el("span", "bb-pick-spacer"));
     }
     var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", t.title));
+    main.appendChild(el("div", "bb-row__title", shownTitle(t.title, t.idea)));
     /* second line keeps the title uncrowded in the half-width column */
     var chSub = t.repo || t.id;
     main.appendChild(el("div", "bb-row__sub", t.reason ? t.reason + " · " + chSub : chSub));
@@ -782,14 +875,16 @@ __FM_BEARINGS_BOARD_DATA__
         refreshBar("Selection is too long to queue (512 bytes maximum). ");
         return;
       }
-      if (window.lavish && window.lavish.queuePrompt) {
-        window.lavish.queuePrompt(
-          "Dispatch order - start this queued work now: " + ids.join(", "),
-          { tag: "choice", text: "Dispatch: " + ids.join(", "), element: bar,
-            queueKey: "dispatch.charted",
-            data: { question: "dispatch.charted", answer: dispatchAnswer } }
-        );
+      if (!(window.lavish && window.lavish.queuePrompt)) {
+        refreshBar("This board has no live connection, so nothing was dispatched. Your picks are still here. ");
+        return;
       }
+      window.lavish.queuePrompt(
+        "Dispatch order - start this queued work now: " + ids.join(", "),
+        { tag: "choice", text: "Dispatch: " + ids.join(", "), element: bar,
+          queueKey: "dispatch.charted",
+          data: { question: "dispatch.charted", answer: dispatchAnswer } }
+      );
       bar.classList.add("is-queued");
     });
   }
