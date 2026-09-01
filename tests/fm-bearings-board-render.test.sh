@@ -357,6 +357,40 @@ test_unicode_whitespace_cannot_hide_a_metadata_tag() {
   pass "unicode whitespace before a key cannot hide a backlog metadata tag"
 }
 
+# The full round trip: type an idea into the real capture box, file it with the
+# real tasks-axi the way the skill prescribes, read the stored row back, and
+# render it as a parked idea. The captain's words must come back unshortened.
+test_a_captured_idea_survives_the_round_trip_word_for_word() {
+  local home out typed queued backlog id stored ideas
+  command -v tasks-axi >/dev/null 2>&1 || { echo "skip: tasks-axi not found"; return 0; }
+  home=$(make_home ideas-roundtrip)
+  backlog="$home/data/backlog.md"
+  printf '## In flight\n\n## Queued\n\n## Done\n' > "$backlog"
+  ideas='[]'
+  for typed in \
+    "try lavish (https://ht-ml.app) for the review page" \
+    "check the plan in data/ship-a/report.md" \
+    "stop testing on local main"; do
+    out=$(render_ideas "$home" - "$typed")
+    queued=$(printf '%s' "$out" | jq -r '.ideaCapture.queued[-1].answer')
+    [ "$queued" = "$typed" ] || fail "the capture box changed ordinary text: $queued"
+    id=$(tasks-axi add "Idea: $queued" --kind idea --mint --queue --file "$backlog" \
+      | sed -n 's/^ok: added \([^ ]*\) .*/\1/p')
+    [ -n "$id" ] || fail "tasks-axi did not file the idea"
+    stored=$(tasks-axi show "$id" --file "$backlog" | sed -n 's/^  title: "\(.*\)"$/\1/p')
+    ideas=$(jq -c --arg id "$id" --arg title "$stored" '. + [{id:$id, title:$title, repo:null}]' <<<"$ideas")
+  done
+  out=$(render_ideas "$home" "$ideas")
+  printf '%s' "$out" | jq -e '
+    .error == "" and [.parkedIdeas[].title] == [
+      "try lavish (https://ht-ml.app) for the review page",
+      "check the plan in data/ship-a/report.md",
+      "stop testing on local main"
+    ]
+  ' >/dev/null || fail "a parked idea came back shortened: $out"
+  pass "a captured idea comes back on the board word for word"
+}
+
 test_ordinary_idea_text_reaches_the_queue_untouched() {
   local home out
   home=$(make_home ideas-plain)
@@ -496,6 +530,7 @@ test_a_promoted_idea_row_drops_the_prefix_too
 test_an_unmarked_row_keeps_the_title_its_backlog_row_has
 test_tag_shaped_text_cannot_be_smuggled_into_a_parked_idea
 test_ordinary_idea_text_reaches_the_queue_untouched
+test_a_captured_idea_survives_the_round_trip_word_for_word
 test_unicode_whitespace_cannot_hide_a_metadata_tag
 test_a_board_with_no_live_connection_keeps_the_idea_and_says_so
 test_an_answer_and_a_dispatch_queue_when_the_bridge_is_live
