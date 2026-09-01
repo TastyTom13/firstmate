@@ -538,10 +538,12 @@ fm_backlog_close_report_value_valid() {  # <value>
 # <value> is this task's attribution note as bin/fm-teardown.sh's
 # backlog_done_args percent-encodes it (fm_backlog_close_marker_stage below):
 # unreserved characters only, and every %XX escape must decode to a printable
-# byte, so a well-formed record can never smuggle a control byte, a shell
-# metacharacter, or a second backlog-note line past this validator into
-# `tasks-axi done` - decoding happens after validation, so an escape that
-# decodes to a control byte is rejected here in its encoded form.
+# byte, so a well-formed record can never smuggle a control byte or a second
+# backlog-note line past this validator into `tasks-axi done` - decoding
+# happens after validation, so an escape that decodes to a control byte is
+# rejected here in its encoded form. A decoded value may still contain shell
+# metacharacters; what neutralises those is that the replay passes the decoded
+# arguments on as an argv array and never evals them.
 fm_backlog_close_note_value_valid() {  # <value>
   local arg_value=$1 percent_tail percent_valid escape
   [ -n "$arg_value" ] && [ "${#arg_value}" -le 512 ] || return 1

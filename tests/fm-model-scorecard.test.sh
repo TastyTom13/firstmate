@@ -195,6 +195,34 @@ EOF
   pass "fm-model-scorecard.sh: ask-user proxy counts bare, keyed, and correlated needs-decision lines"
 }
 
+# Regression: tasks-axi resolves an absolute `archive` value as-is, so joining
+# it onto the home root silently dropped every archived task from the tally.
+test_absolute_archive_path_is_read_as_is() {
+  local home out
+  home="$TMP_ROOT/absolute-archive"
+  mkdir -p "$home/data" "$home/state" "$home/elsewhere"
+  cat > "$home/.tasks.toml" <<EOF
+archive = "$home/elsewhere/done.md"
+EOF
+  cat > "$home/data/backlog.md" <<'EOF'
+# Backlog
+
+## Done
+- [x] task-live - shipped a PR https://github.com/o/r/pull/11 (merged 2026-08-07)
+  model=claude-opus-5 effort=medium
+EOF
+  cat > "$home/elsewhere/done.md" <<'EOF'
+
+## Archived 2026-07-01
+- [x] task-filed-away - pruned into the archive https://github.com/o/r/pull/12 (merged 2026-07-01)
+  model=claude-opus-5 effort=medium
+EOF
+  out=$(FM_HOME="$home" "$SCORECARD")
+  echo "$out" | grep -E '^claude-opus-5 +medium +2 +0 +0$' >/dev/null \
+    || fail "an absolute .tasks.toml archive path was not read, so archived tasks went missing (got: $out)"
+  pass "fm-model-scorecard.sh: an absolute archive path in .tasks.toml is read as-is"
+}
+
 test_script_parses
 test_help_renders
 test_missing_backlog_is_refused
@@ -202,3 +230,4 @@ test_no_attributed_done_rows_is_a_clean_no_op
 test_tallies_every_note_shape_and_status_proxy
 test_note_after_body_lines_is_attributed
 test_ask_user_counts_every_needs_decision_shape
+test_absolute_archive_path_is_read_as_is

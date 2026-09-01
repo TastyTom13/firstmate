@@ -94,7 +94,10 @@ if [ -f "$TOML" ]; then
     | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)".*/\1/')
   [ -n "$toml_value" ] && ARCHIVE_REL=$toml_value
 fi
-ARCHIVE="$ROOT/$ARCHIVE_REL"
+case "$ARCHIVE_REL" in
+  /*) ARCHIVE=$ARCHIVE_REL ;;
+  *) ARCHIVE="$ROOT/$ARCHIVE_REL" ;;
+esac
 
 # Extract "<id> <model> <effort>" (space-separated) for every Done entry in
 # one backlog or archive file, deriving the id from the checkbox line and the
