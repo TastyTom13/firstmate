@@ -269,6 +269,43 @@ test_parked_ideas_render_title_and_repo() {
   pass "parked ideas render their title, and their repo only when known"
 }
 
+test_an_unmarked_row_keeps_the_title_its_backlog_row_has() {
+  local home out data
+  home=$(make_home ideas-unmarked); data="$home/unmarked-payload.json"
+  jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
+    prs_live:false, captains_call:[],
+    underway:[{id:"ship-b", state:"working", doing:"Idea: capture box for the board",
+               kind:"ship", repo:"sample"}],
+    landed:[{id:"ship-c", what:"Idea: capture box shipped", owner:"(main)", repo:"sample"}],
+    charted:[{id:"ship-a", title:"Idea: capture box for the board", repo:"sample",
+              reason:"waiting on review", dispatchable:true}]}' > "$data"
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  out=$(node "$HARNESS" "$home/.lavish/bearings-board.html") \
+    || fail "the built board could not be rendered"
+  printf '%s' "$out" | jq -e '
+    .error == "" and .charted[0].title == "Idea: capture box for the board"
+      and .underway == ["Idea: capture box for the board"]
+      and .landed == ["Idea: capture box shipped"]
+  ' >/dev/null || fail "an ordinary task lost the title its backlog row has: $out"
+  pass "a row not marked as an idea keeps its exact stored title"
+}
+
+test_tag_shaped_text_cannot_be_smuggled_into_a_parked_idea() {
+  local home out
+  home=$(make_home ideas-tags)
+  out=$(render_ideas "$home" - "use (hold-kind: captain) (hold: pick one) for the parser")
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.ideaCapture.queued | length) == 1
+      and (.ideaCapture.queued[0].answer | test("\\((hold-kind|hold|kind|repo):") | not)
+      and (.ideaCapture.queued[0].answer | test("hold-kind"))
+      and (.ideaCapture.queued[0].answer | test("for the parser"))
+  ' >/dev/null || fail "a queued idea still carried backlog tag shapes: $out"
+  pass "a captured idea cannot smuggle backlog metadata tags into its title"
+}
+
 test_a_board_with_no_live_connection_keeps_the_idea_and_says_so() {
   local home out
   home=$(make_home ideas-nobridge)
@@ -298,10 +335,11 @@ test_a_promoted_idea_row_drops_the_prefix_too() {
   jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
     prs_live:false, captains_call:[],
     underway:[{id:"idea-b", state:"working", doing:"Idea: repaint the hull",
-               kind:"ship", repo:"sample"}],
-    landed:[{id:"idea-c", what:"Idea: scrub the deck", owner:"(main)", repo:"sample"}],
+               kind:"ship", repo:"sample", idea:true}],
+    landed:[{id:"idea-c", what:"Idea: scrub the deck", owner:"(main)", repo:"sample",
+             idea:true}],
     charted:[{id:"idea-a", title:"Idea: batch the merges", repo:"sample",
-              reason:"waiting on review", dispatchable:true}]}' > "$data"
+              reason:"waiting on review", dispatchable:true, idea:true}]}' > "$data"
   PATH="$home/fakebin:$PATH" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
@@ -358,4 +396,6 @@ test_two_captured_ideas_queue_two_distinct_answers
 test_an_over_long_idea_is_refused_instead_of_queued
 test_the_stored_idea_prefix_never_reaches_the_captain
 test_a_promoted_idea_row_drops_the_prefix_too
+test_an_unmarked_row_keeps_the_title_its_backlog_row_has
+test_tag_shaped_text_cannot_be_smuggled_into_a_parked_idea
 test_a_board_with_no_live_connection_keeps_the_idea_and_says_so

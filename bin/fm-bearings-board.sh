@@ -108,6 +108,7 @@ validate_payload() {  # <data.json>
     def slug($max): type == "string" and test("^[A-Za-z0-9._-]{1," + ($max | tostring) + "}$");
     def repo_marker: has("repo") and (.repo == null or (.repo | type == "string"));
     def optional_string($name): (has($name) | not) or (.[$name] | type == "string");
+    def optional_bool($name): (has($name) | not) or (.[$name] | type == "boolean");
     def optional_https_url($name):
       (has($name) | not)
       or (.[$name]
@@ -139,11 +140,13 @@ validate_payload() {  # <data.json>
       and (if .type == "merge" then (.risk | nonempty_string) else true end);
     def underway_item:
       type == "object" and repo_marker and (.id | nonempty_string)
-      and (.state | nonempty_string) and (.doing | nonempty_string) and (.kind | nonempty_string);
+      and (.state | nonempty_string) and (.doing | nonempty_string) and (.kind | nonempty_string)
+      and optional_bool("idea");
     def landed_item:
       type == "object" and repo_marker and (.id | nonempty_string)
       and (.what | nonempty_string) and (.owner | nonempty_string)
-      and optional_https_url("pr_url");
+      and optional_https_url("pr_url")
+      and optional_bool("idea");
     def pool_item:
       type == "object"
       and (.provider | slug(64))
@@ -161,7 +164,8 @@ validate_payload() {  # <data.json>
       and (.title | nonempty_string) and (.reason | type == "string")
       and (.dispatchable | type == "boolean")
       and ((has("kind") | not) or (.kind == "queued" or .kind == "warning"))
-      and (if .kind == "warning" then .dispatchable == false else true end);
+      and (if .kind == "warning" then .dispatchable == false else true end)
+      and optional_bool("idea");
     def idea_item:
       type == "object" and repo_marker and (.id | slug(128))
       and (.title | nonempty_string);

@@ -489,9 +489,12 @@ __FM_BEARINGS_BOARD_DATA__
   try {
   /* An idea's stored task title carries a literal "Idea: " prefix so the
      tasks-axi positional can never start with "-"; that is plumbing, so no
-     captain-facing row ever shows it. */
-  function shownTitle(text) {
-    return String(text == null ? "" : text).replace(/^Idea:[ \t]*/, "");
+     captain-facing row ever shows it. Only a row the payload MARKS as an idea
+     is stripped, so an ordinary task the captain titled "Idea: ..." keeps the
+     title its backlog row actually has. */
+  function shownTitle(text, isIdea) {
+    var s = String(text == null ? "" : text);
+    return isIdea === true ? s.replace(/^Idea:[ \t]*/, "") : s;
   }
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -715,7 +718,7 @@ __FM_BEARINGS_BOARD_DATA__
     var row = el("div", "bb-row");
     row.appendChild(badge(t.state === "working" ? "online" : "info", t.state));
     var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", shownTitle(t.doing)));
+    main.appendChild(el("div", "bb-row__title", shownTitle(t.doing, t.idea)));
     /* captain-facing rows name the repo; the internal task id shows only when
        no repo is known */
     main.appendChild(el("div", "bb-row__sub", t.kind + " · " + (t.repo || t.id)));
@@ -732,7 +735,7 @@ __FM_BEARINGS_BOARD_DATA__
     chk.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
     row.appendChild(chk);
     var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", shownTitle(t.what)));
+    main.appendChild(el("div", "bb-row__title", shownTitle(t.what, t.idea)));
     main.appendChild(el("div", "bb-row__sub", (t.repo || t.id) + " · " + t.owner));
     row.appendChild(main);
     if (t.pr_url) {
@@ -753,7 +756,7 @@ __FM_BEARINGS_BOARD_DATA__
   parkedIdeas.forEach(function (idea) {
     var row = el("div", "bb-row");
     var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", shownTitle(idea.title)));
+    main.appendChild(el("div", "bb-row__title", shownTitle(idea.title, true)));
     if (idea.repo) main.appendChild(el("div", "bb-row__sub", idea.repo));
     row.appendChild(main);
     pi.appendChild(row);
@@ -765,7 +768,10 @@ __FM_BEARINGS_BOARD_DATA__
   ideaForm.addEventListener("submit", function (ev) {
     ev.preventDefault();
     ideaLimit.classList.remove("is-visible");
-    var idea = ideaInput.value.trim();
+    /* a captured idea becomes a backlog TITLE, and backlog rows carry their
+       metadata as "(key: value)" tags, so neutralise that shape here: nothing
+       typed in this box may steer how any reader classifies the task */
+    var idea = ideaInput.value.trim().replace(/([(,][ \t]*)([A-Za-z][A-Za-z-]*):/g, "$1$2 -");
     if (!idea) return;
     if (utf8ByteLength(idea) > 512) {
       ideaLimit.textContent = "Idea is too long to queue (512 bytes maximum).";
@@ -830,7 +836,7 @@ __FM_BEARINGS_BOARD_DATA__
       row.appendChild(el("span", "bb-pick-spacer"));
     }
     var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", shownTitle(t.title)));
+    main.appendChild(el("div", "bb-row__title", shownTitle(t.title, t.idea)));
     /* second line keeps the title uncrowded in the half-width column */
     var chSub = t.repo || t.id;
     main.appendChild(el("div", "bb-row__sub", t.reason ? t.reason + " · " + chSub : chSub));
