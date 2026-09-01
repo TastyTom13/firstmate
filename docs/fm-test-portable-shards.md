@@ -64,22 +64,21 @@ Each shard is still strictly serial in itself, and separate runners mean no two 
 `.github/workflows/ci.yml` derives the same `n` from `strategy.job-total` rather than a literal, so changing the shard count in either file without the other fails the lane loudly instead of leaving part of the required suite unrun.
 
 Assignment is longest-processing-time bin packing over per-script duration hints embedded in `bin/fm-test-run.sh`.
-The hints came from the `fm-test-timing-portable-serial-*` artifacts of green CI run [32491999845](https://github.com/kunchenguid/firstmate/actions/runs/32491999845) on 2026-08-21, where the lane ran 116 scripts in 2541548 ms of serial work.
-`tests/fm-tool-update-check.test.sh` did not exist on that run, so its 12846 ms hint comes from the shard 3 artifact of run [32461816719](https://github.com/kunchenguid/firstmate/actions/runs/32461816719), which is the first run that measured it.
+The hints came from the `fm-test-timing-portable-serial-*` artifacts of green CI run [33448875426](https://github.com/TastyTom13/firstmate/actions/runs/33448875426) on 2026-09-01, where the lane ran 142 scripts in 3718016 ms of serial work.
 A script with no hint gets the conservative `PORTABLE_SERIAL_DEFAULT_WEIGHT_MS` default.
 Hints only affect balance: the coverage guard keeps the partition complete and disjoint whatever they say, so a stale hint costs a slower shard rather than lost coverage.
-Balance is still worth keeping current, because enough unmeasured scripts let one shard carry more than twice another shard's real work and reach the job cap while another runner sits idle.
+Balance is still worth keeping current, because enough unmeasured or under-measured scripts let one shard carry substantially more real work than another and reach the job cap while another runner sits idle - this exact drift (hints last refreshed 2026-08-21 against a lane that had since grown from 116 to 143 scripts and about 42.6 min to about 62 min of real serial work) is what cancelled `portable-serial-3of4` at its 20-minute cap on green `main` with no PR code present.
 Refresh the hints whenever the serial lane gains scripts, rather than waiting for a shard to time out.
 
 | Lane | Script count | Estimated duration |
 |---|---:|---:|
-| `portable-serial-1of4` | 29 | 638602 ms (~638.6 s) |
-| `portable-serial-2of4` | 28 | 638594 ms (~638.6 s) |
-| `portable-serial-3of4` | 30 | 638607 ms (~638.6 s) |
-| `portable-serial-4of4` | 30 | 638591 ms (~638.6 s) |
-| imbalance | | 16 ms |
+| `portable-serial-1of4` | 36 | 934502 ms (~934.5 s) |
+| `portable-serial-2of4` | 36 | 934500 ms (~934.5 s) |
+| `portable-serial-3of4` | 35 | 934506 ms (~934.5 s) |
+| `portable-serial-4of4` | 36 | 934508 ms (~934.5 s) |
+| imbalance | | 8 ms |
 
-The single longest script, `tests/fm-pr-check-security.test.sh` at 250417 ms, is the floor for any shard count.
+The single longest script, `tests/fm-remote-secondmate-lifecycle-e2e.test.sh` at 212368 ms, is the floor for any shard count.
 
 Refresh the hints by downloading the per-shard timing artifacts from a green CI run, replacing the `portable_serial_weight_hints` table in `bin/fm-test-run.sh` with the measured `path`/`duration_ms` pairs, and updating the table above:
 
