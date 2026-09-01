@@ -1058,6 +1058,11 @@ const assistantComponents = [assistantTextOnly, assistantThinkingText, assistant
 let expanded = true;
 let editorText = "";
 let terminalInputHandler;
+// Pi invalidates the session_start ctx once session_shutdown completes; these two
+// stand in for that, counting any touch of the torn-down ctx that would have thrown
+// "Extension ctx is stale after session replacement or reload." in a live Pi.
+let ctxIsStale = false;
+let staleCtxCalls = 0;
 let workingVisible;
 let hiddenThinkingLabel = "unset";
 const statuses = new Map();
@@ -1066,7 +1071,10 @@ const entriesBefore = JSON.stringify(sessionEntries);
 const commandContext = {
   sessionManager: { getEntries: () => sessionEntries },
   ui: {
-    getEditorText: () => editorText,
+    getEditorText: () => {
+      if (ctxIsStale) staleCtxCalls += 1;
+      return editorText;
+    },
     getToolsExpanded: () => expanded,
     onTerminalInput(handler) {
       terminalInputHandler = handler;
@@ -1081,6 +1089,7 @@ const commandContext = {
       }
     },
     setStatus(key, value) {
+      if (ctxIsStale) staleCtxCalls += 1;
       statuses.set(key, value);
     },
     setToolsExpanded(value) {
@@ -1349,6 +1358,62 @@ const [originalResult, wrappedResult] = await Promise.all([
 if (JSON.stringify(wrappedResult) !== JSON.stringify(originalResult)) {
   throw new Error("calm wrapper changed built-in read execution or result data");
 }
+
+// A session replaced (/new, /resume, fork, reload) inside the one-macrotask window
+// the /export repaint defers into must not leave work pointing at the torn-down ctx,
+// and must not leave Calm latched in stock export rendering. Fresh rows are built for
+// each observation because mounted rows keep their last layout until Pi invalidates.
+const { FIRSTMATE_CALM_PRESENTATION_EVENT } = await import(
+  pathToFileURL(`${process.cwd()}/lib/fm-calm-visibility.ts`).href
+);
+const publishedPresentation = [];
+pi.events.on(FIRSTMATE_CALM_PRESENTATION_EVENT, (state) => publishedPresentation.push(state));
+const renderFreshGrepRow = () => {
+  const row = new ToolExecutionComponent(
+    "grep",
+    `shutdown-probe-${publishedPresentation.length}-${Math.random()}`,
+    { pattern: "alpha", path: "." },
+    { showImages: false },
+    tools.find((tool) => tool.name === "grep"),
+    renderUi,
+    process.cwd(),
+  );
+  row.markExecutionStarted();
+  row.setArgsComplete();
+  row.updateResult({ content: [{ type: "text", text: "sample.txt:1:alpha" }], details: {}, isError: false });
+  row.setExpanded(true);
+  return row.render(100);
+};
+await calmCommand.handler("", commandContext);
+await handlers.get("session_start")[0]({ reason: "startup" }, commandContext);
+if (renderFreshGrepRow().length !== 0) {
+  throw new Error("a fresh tool row was not Calm-hidden before the shutdown export check");
+}
+editorText = "/export shutdown.html";
+terminalInputHandler("\x1bs");
+editorText = "";
+if (renderFreshGrepRow().length === 0) {
+  throw new Error("submitting /export did not switch tool rows to stock export rendering");
+}
+if (publishedPresentation.at(-1)?.stockExportRendering !== true) {
+  throw new Error("submitting /export did not publish the stock-export presentation state");
+}
+await handlers.get("session_shutdown")[0]({ reason: "new" }, commandContext);
+if (terminalInputHandler !== undefined) {
+  throw new Error("session_shutdown left the terminal-input subscription registered");
+}
+if (publishedPresentation.at(-1)?.stockExportRendering !== false) {
+  throw new Error("session_shutdown left consumers latched in stock export rendering");
+}
+if (renderFreshGrepRow().length !== 0) {
+  throw new Error("tool rows stayed stock-rendered after session_shutdown ended the export window");
+}
+ctxIsStale = true;
+await new Promise((resolve) => setTimeout(resolve, 0));
+if (staleCtxCalls !== 0) {
+  throw new Error(`deferred export work touched the stale ctx ${staleCtxCalls} times after session_shutdown`);
+}
+ctxIsStale = false;
 JS
   status=$?
   out=$(cat "$output_file")

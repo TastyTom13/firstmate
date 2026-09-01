@@ -125,6 +125,28 @@ export default function (pi: ExtensionAPI) {
 
   let exportRendering = false;
   let removeTerminalInputHandler: (() => void) | undefined;
+  // The /export and /share submit handler defers its repaint by one macrotask
+  // (see the setTimeout below). That callback closes over the session_start ctx
+  // that registered it. If session_shutdown fires and the runtime tears down
+  // before the timeout runs, that ctx goes stale and touching it throws
+  // "Extension ctx is stale after session replacement or reload." Tracking the
+  // handle lets session_shutdown cancel it before that can happen, matching
+  // Pi's documented contract: do cleanup work in session_shutdown, not lazily
+  // at the top of the next session_start.
+  let pendingExportRepaintTimeout: ReturnType<typeof setTimeout> | undefined;
+  const cancelPendingExportRepaint = (): void => {
+    if (pendingExportRepaintTimeout === undefined) return;
+    clearTimeout(pendingExportRepaintTimeout);
+    pendingExportRepaintTimeout = undefined;
+    // Cancelling the repaint drops the redraw, not the state it was carrying:
+    // the stock-export window still has to close, or Calm and every extension
+    // that consumes the published presentation event stay latched in stock
+    // rendering until the next session_start. Only the ctx-touching part of the
+    // callback is unsafe here, so run the rest.
+    exportRendering = false;
+    setCalmStockExportRendering(false);
+    publishPresentationState();
+  };
   // One logical agent run, tracked from agent_start through agent_settled rather than
   // from turns or tool calls, so the boat never flickers between tool calls, automatic
   // continuations, retries, or compaction that stay inside the same run.
@@ -423,6 +445,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setHiddenThinkingLabel(calmPresentationIsActive() ? "" : undefined);
     ctx.ui.setStatus("firstmate-calm", undefined);
     removeTerminalInputHandler?.();
+    cancelPendingExportRepaint();
     removeTerminalInputHandler = ctx.ui.onTerminalInput((data) => {
       if (!getKeybindings().matches(data, "tui.input.submit")) return undefined;
 
@@ -438,7 +461,9 @@ export default function (pi: ExtensionAPI) {
       exportRendering = true;
       setCalmStockExportRendering(true);
       publishPresentationState();
-      setTimeout(() => {
+      cancelPendingExportRepaint();
+      pendingExportRepaintTimeout = setTimeout(() => {
+        pendingExportRepaintTimeout = undefined;
         exportRendering = false;
         setCalmStockExportRendering(false);
         publishPresentationState();
@@ -472,6 +497,13 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", (_event, ctx) => {
     agentRunActive = false;
     applyWorkingPresentation(ctx.ui);
+    // Tear down anything that would otherwise touch this ctx after it goes
+    // stale: cancel the deferred /export repaint and drop the terminal-input
+    // subscription here, during shutdown, rather than lazily at the top of
+    // the next session_start.
+    cancelPendingExportRepaint();
+    removeTerminalInputHandler?.();
+    removeTerminalInputHandler = undefined;
   });
 
   pi.registerCommand("calm", {
