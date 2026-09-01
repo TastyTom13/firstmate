@@ -1265,28 +1265,28 @@ free_lane_for_model() {
 # the deadline is treated as an unblessed launcher and killed, never treated
 # as success. This never falls back to a paid pool; it only refuses the spawn.
 free_lane_preflight() {
-  local lane=$1 launcher=$2 timeout=${3:-${FM_FREE_LANE_PREFLIGHT_TIMEOUT:-8}} errfile killmark shebang pid watchdog rc timed_out=0
-  if [ ! -x "$launcher" ]; then
-    echo "error: free-tier lane '$lane' selected but the blessed launcher is not installed or not executable: $launcher" >&2
-    echo "hint: run 'bin/fm-free-lane-run.sh --install-launcher' then 'av bless $launcher' (see docs/free-tier-routing.md)" >&2
+  local lane=$1 launcher_path=$2 timeout=${3:-${FM_FREE_LANE_PREFLIGHT_TIMEOUT:-8}} errfile killmark shebang pid watchdog rc timed_out=0
+  if [ ! -x "$launcher_path" ]; then
+    echo "error: free-tier lane '$lane' selected but the blessed launcher is not installed or not executable: $launcher_path" >&2
+    echo "hint: run 'bin/fm-free-lane-run.sh --install-launcher' then 'av bless $launcher_path' (see docs/free-tier-routing.md)" >&2
     return 1
   fi
   shebang=
-  read -r shebang < "$launcher" 2>/dev/null || true
+  read -r shebang < "$launcher_path" 2>/dev/null || true
   case "$shebang" in
     '#!'*'av inject '*)
       : # at least an av-inject launcher; fm-free-lane-run.sh's
         # install_launcher owns the exact key set named there.
       ;;
     *)
-      echo "error: $launcher does not look like a generated free-lane launcher (expected an 'av inject' shebang); refusing to spawn on it" >&2
+      echo "error: $launcher_path does not look like a generated free-lane launcher (expected an 'av inject' shebang); refusing to spawn on it" >&2
       echo "hint: regenerate it with 'bin/fm-free-lane-run.sh --install-launcher'" >&2
       return 1
       ;;
   esac
   errfile=$(mktemp) || return 1
   killmark="$errfile.timeout"
-  "$launcher" --exec "$lane" -- true </dev/null >/dev/null 2>"$errfile" &
+  "$launcher_path" --exec "$lane" -- true </dev/null >/dev/null 2>"$errfile" &
   pid=$!
   ( sleep "$timeout"; : > "$killmark"; kill -9 "$pid" 2>/dev/null ) &
   watchdog=$!
@@ -1297,13 +1297,13 @@ free_lane_preflight() {
   [ ! -e "$killmark" ] || timed_out=1
   rm -f "$killmark"
   if [ "$timed_out" -eq 1 ]; then
-    echo "error: free-tier lane '$lane' probe through $launcher did not return within ${timeout}s; the launcher is most likely unblessed and is waiting on an interactive approval nobody will answer" >&2
-    echo "hint: run 'av bless $launcher' once as the operator, then retry the spawn" >&2
+    echo "error: free-tier lane '$lane' probe through $launcher_path did not return within ${timeout}s; the launcher is most likely unblessed and is waiting on an interactive approval nobody will answer" >&2
+    echo "hint: run 'av bless $launcher_path' once as the operator, then retry the spawn" >&2
     rm -f "$errfile"
     return 1
   fi
   if [ "$rc" -ne 0 ]; then
-    echo "error: free-tier lane '$lane' preflight failed through $launcher (exit $rc):" >&2
+    echo "error: free-tier lane '$lane' preflight failed through $launcher_path (exit $rc):" >&2
     sed 's/^/  /' "$errfile" >&2
     rm -f "$errfile"
     return 1
