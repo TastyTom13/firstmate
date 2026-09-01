@@ -312,24 +312,29 @@ test_tag_shaped_text_cannot_be_smuggled_into_a_parked_idea() {
   pass "a captured idea cannot smuggle backlog metadata tags or a blocker into its title"
 }
 
-# The backlog reader treats a comma plus ANY whitespace as a tag anchor, and its
-# [[:space:]] covers U+00A0, so an ASCII-only cleaner would let a pasted
-# non-breaking space carry a real tag straight through.
-test_a_non_breaking_space_cannot_hide_a_metadata_tag() {
-  local home out nbsp
-  home=$(make_home ideas-nbsp)
-  nbsp=$(printf ' ')
-  out=$(render_ideas "$home" - \
-    "parser rethink,${nbsp}hold-kind: captain,${nbsp}hold: pick one" \
-    "park it (since${nbsp}2026-01-01) please")
-  printf '%s' "$out" | jq -e '
-    .error == "" and (.ideaCapture.queued | length) == 2
-      and ([.ideaCapture.queued[].answer] | map(test("(hold-kind|hold):")) | any | not)
-      and (.ideaCapture.queued[1].answer | test("\\(since\\s") | not)
-      and (.ideaCapture.queued[0].answer | test("pick one"))
-      and (.ideaCapture.queued[1].answer | test("2026-01-01"))
-  ' >/dev/null || fail "a non-breaking space carried a metadata tag through: $out"
-  pass "a non-breaking space before a key cannot hide a backlog metadata tag"
+# The backlog reader treats a comma plus ANY Unicode whitespace as a tag anchor,
+# so a cleaner that matches only some space characters would let a pasted one
+# carry a real tag straight through.
+test_unicode_whitespace_cannot_hide_a_metadata_tag() {
+  local home out sp tag
+  # U+00A0 (no-break space) and U+0085 (next line) both carry the Unicode
+  # White_Space property, so the backlog reader's [[:space:]] accepts either in
+  # front of a metadata key even though neither is an ASCII space.
+  for tag in a0 85; do
+    sp=$(printf "\\302\\2$( [ "$tag" = a0 ] && printf 40 || printf 05 )")
+    home=$(make_home "ideas-uws-$tag")
+    out=$(render_ideas "$home" - \
+      "parser rethink,${sp}hold-kind: captain,${sp}hold: pick one" \
+      "park it (since${sp}2026-01-01) please")
+    printf '%s' "$out" | jq -e '
+      .error == "" and (.ideaCapture.queued | length) == 2
+        and ([.ideaCapture.queued[].answer] | map(test("(hold-kind|hold):")) | any | not)
+        and (.ideaCapture.queued[1].answer | test("\\(since[[:space:]]") | not)
+        and (.ideaCapture.queued[0].answer | test("pick one"))
+        and (.ideaCapture.queued[1].answer | test("2026-01-01"))
+    ' >/dev/null || fail "unicode whitespace U+00$tag carried a metadata tag through: $out"
+  done
+  pass "unicode whitespace before a key cannot hide a backlog metadata tag"
 }
 
 test_ordinary_idea_text_reaches_the_queue_untouched() {
@@ -436,5 +441,5 @@ test_a_promoted_idea_row_drops_the_prefix_too
 test_an_unmarked_row_keeps_the_title_its_backlog_row_has
 test_tag_shaped_text_cannot_be_smuggled_into_a_parked_idea
 test_ordinary_idea_text_reaches_the_queue_untouched
-test_a_non_breaking_space_cannot_hide_a_metadata_tag
+test_unicode_whitespace_cannot_hide_a_metadata_tag
 test_a_board_with_no_live_connection_keeps_the_idea_and_says_so
