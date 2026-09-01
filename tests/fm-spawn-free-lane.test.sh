@@ -195,7 +195,7 @@ test_unblessed_launcher_times_out_and_refuses() {
   read_case_record "$rec"
   write_launcher_stub "$HOME_DIR" \
     'echo "automic vault: human approval required" >&2
-while :; do sleep 3600; done'
+exec sleep 3600'
 
   start=$(date +%s)
   out=$(FM_FREE_LANE_PREFLIGHT_TIMEOUT=2 \
@@ -236,6 +236,26 @@ exec "$@"'
   pass "a blessed launcher with its key present wraps the real pi launch through --exec"
 }
 
+test_raw_launch_command_is_left_alone() {
+  local rec id out status launch
+  id=free-lane-raw-launch-z1
+  rec=$(make_case raw-launch "$id")
+  read_case_record "$rec"
+  # No launcher installed: the raw-launch escape hatch must not be refused for
+  # a launcher it could never have used.
+
+  out=$(run_free_lane_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" "pi --resume" --model groq/openai/gpt-oss-120b --effort low)
+  status=$?
+  expect_code 0 "$status" "a raw launch command should spawn even with no free-lane launcher installed"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "pi --resume" "the raw launch command was not sent verbatim"
+  assert_not_contains "$launch" "free-lane-launcher" \
+    "a raw launch command must never be routed through the free-lane launcher"
+
+  pass "a raw launch command is neither wrapped nor refused by the free-lane path"
+}
+
 test_secondmate_pinned_to_a_free_lane_model_is_wrapped() {
   local rec id out status launch sm_home
   id=free-lane-secondmate-z1
@@ -270,3 +290,4 @@ test_free_lane_model_with_absent_vault_key_refuses_fast
 test_unblessed_launcher_times_out_and_refuses
 test_blessed_launcher_with_key_present_wraps_the_real_launch
 test_secondmate_pinned_to_a_free_lane_model_is_wrapped
+test_raw_launch_command_is_left_alone

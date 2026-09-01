@@ -1231,11 +1231,16 @@ resolve_pi_executable() {
 # provider matches a lane; returns 1 (silent) otherwise, which is the normal
 # case for every non-free-tier pi spawn and leaves this whole path a no-op.
 free_lane_for_model() {
-  local model=$1 provider list
+  local model=$1 provider list status
   [ -n "$model" ] && [ "$model" != default ] || return 1
   provider=${model%%/*}
   [ -n "$provider" ] || return 1
-  list=$("$SCRIPT_DIR/fm-free-lane-run.sh" --list 2>/dev/null) || return 1
+  list=$("$SCRIPT_DIR/fm-free-lane-run.sh" --list 2>/dev/null)
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "error: cannot read the free-tier lane table ('$SCRIPT_DIR/fm-free-lane-run.sh --list' exited $status), so '$model' cannot be classified; refusing rather than launching a possible free-lane model with no key" >&2
+    return 2
+  fi
   printf '%s\n' "$list" | awk -v p="$provider" '
     { split($3, pm, "/"); if (pm[1] == p) { print $1, $2; found=1; exit } }
     END { exit !found }
@@ -1401,6 +1406,7 @@ launch_template() {
 case "$ARG3" in
   *' '*)  # raw launch command (unverified-adapter escape hatch)
     LAUNCH=$ARG3
+    RAW_LAUNCH=1
     HARNESS=""
     for word in $LAUNCH; do
       case "$word" in [A-Za-z_]*=*) continue ;; *) HARNESS=$(basename "$word"); break ;; esac
@@ -1502,15 +1508,23 @@ fi
 # resolved, so a secondmate pinned to a free-lane model string is wrapped and
 # preflighted exactly like an explicit --model would be, instead of launching
 # unwrapped with no lane key.
-case "$HARNESS" in
-  pi|pi-signed)
+# A raw launch command carries no __FREELANE__ placeholder, so the wrap could
+# never be applied to it; that path stays exactly as it was before this wiring.
+case "${RAW_LAUNCH:-0}:$HARNESS" in
+  0:pi|0:pi-signed)
     FREE_LANE_WRAP=
-    FREE_LANE=$(free_lane_for_model "$MODEL") && {
-      FREE_LANE_NAME=${FREE_LANE% *}
-      FREE_LANE_LAUNCHER="$CONFIG/free-lane-launcher"
-      free_lane_preflight "$FREE_LANE_NAME" "$FREE_LANE_LAUNCHER" || exit 1
-      FREE_LANE_WRAP="$(shell_quote "$FREE_LANE_LAUNCHER") --exec $(shell_quote "$FREE_LANE_NAME") -- "
-    }
+    FREE_LANE_STATUS=0
+    FREE_LANE=$(free_lane_for_model "$MODEL") || FREE_LANE_STATUS=$?
+    case "$FREE_LANE_STATUS" in
+      0)
+        FREE_LANE_NAME=${FREE_LANE% *}
+        FREE_LANE_LAUNCHER="$CONFIG/free-lane-launcher"
+        free_lane_preflight "$FREE_LANE_NAME" "$FREE_LANE_LAUNCHER" || exit 1
+        FREE_LANE_WRAP="$(shell_quote "$FREE_LANE_LAUNCHER") --exec $(shell_quote "$FREE_LANE_NAME") -- "
+        ;;
+      1) ;;
+      *) exit 1 ;;
+    esac
     LAUNCH=${LAUNCH//__FREELANE__/$FREE_LANE_WRAP}
     ;;
 esac
