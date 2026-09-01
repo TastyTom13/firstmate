@@ -31,7 +31,9 @@ All four run on `pi`, because OpenCode is not installed on this machine (`comman
 The OpenCode block that earlier versions of this page carried has been removed rather than left unverified; add it back only after an installed OpenCode proves its own field names.
 
 Pi reads custom providers from `~/.pi/agent/models.json`, not from `settings.json`, and the field is `apiKey` with `$ENV_VAR` interpolation, not `apiKeyEnv`.
+Pi expands `$ENV_VAR` and `${ENV_VAR}` in `apiKey` and `headers` only, and never in `baseUrl`, which it passes to the vendor exactly as written.
 The block below was verified against pi 0.84.3: every model in it appears in `pi --list-models` under its provider, and three of the four answered a real generation.
+Those generations ran against an installed file whose Cloudflare `baseUrl` carried this home's own literal account identifier in place of the blank printed here, because a `baseUrl` still holding the blank cannot generate.
 The file is home-local machine state, so this page ships the block rather than the file.
 
 ```json
@@ -70,7 +72,7 @@ The file is home-local machine state, so this page ships the block rather than t
       ]
     },
     "cloudflare": {
-      "baseUrl": "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+      "baseUrl": "https://api.cloudflare.com/client/v4/accounts/<your-cloudflare-account-id>/ai/v1",
       "api": "openai-completions",
       "apiKey": "$CLOUDFLARE_API_KEY",
       "models": [
@@ -112,9 +114,9 @@ Groq's free tier allows 8,000 tokens per minute, so pi's default 65,536-token ou
 Keep the free lanes' `maxTokens` small; 4,000 on Groq and 8,000 elsewhere is what the smoke ran on.
 
 The Cloudflare entry is account-scoped: its `baseUrl` embeds the account identifier, and the OpenAI-compatible path is `/ai/v1` under that account.
-This page templates the account identifier as `${CLOUDFLARE_ACCOUNT_ID}` and never hardcodes a literal one, in the tracked block and in the installed home-local file alike.
-The cloudflare lane therefore requires `CLOUDFLARE_ACCOUNT_ID` in addition to `CLOUDFLARE_API_KEY`, and refuses with exit 3 naming that variable rather than dispatching against an empty account segment when it is absent.
-The account identifier is not a secret, so it lives in a home-local config file rather than in the vault; [`docs/configuration.md`](configuration.md) owns that file.
+This page prints `<your-cloudflare-account-id>` as an operator blank so no account identifier is published, and never as a variable reference, because pi does not expand variables in `baseUrl`.
+Type your own account identifier over that blank in your own home-local `models.json`; the installed file holds the literal value, which is correct and required.
+[`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh) guards against pasting the blank unchanged, and its header owns exactly what that guard reads and when it refuses.
 
 Pi ships its own built-in `groq` and `cerebras` catalogues, and `models.json` composes above them rather than replacing them, so both providers list more models than this block defines.
 The name `openrouter-free` is deliberate: pi already has a built-in `openrouter` provider, and a separate identifier keeps the free-model lane from being confused with the paid one.
@@ -128,8 +130,9 @@ No key value is ever written to a file, including this one.
 Routine lane invocations go through one stable launcher so the owner reviews it once instead of approving every call.
 
 [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh) is the single command shape for every lane; its header owns the exact flags, lane table, and exit codes.
-It is an ordinary portable script that reads every variable a lane declares from its own environment and refuses with exit 3 naming the missing one, so an unusable lane never dispatches.
-The cloudflare lane declares `CLOUDFLARE_ACCOUNT_ID` alongside its key, and because that identifier is not a secret the launcher never injects it: the script reads it from the home-local file owned by [`docs/configuration.md`](configuration.md) when it is not already exported.
+It is an ordinary portable script that reads each lane's key from its own environment and refuses with exit 3 when that variable is absent, so an unauthenticated lane never dispatches.
+Before the cloudflare lane only, it also refuses when the account segment of that provider's `baseUrl` is still an unfilled blank in the operator's own `models.json`.
+That check is deliberately non-fatal on any shape problem: an absent, unreadable, or malformed models file warns on stderr once and dispatches anyway, so a pi change can cost the guard but never the lane.
 
 `bin/fm-free-lane-run.sh --install-launcher` writes a home-local launcher to `config/free-lane-launcher` whose shebang is an `av inject` line naming exactly the four lane keys, resolving this machine's own `av` path.
 The owner then runs `av bless <that path>` once, and every later call runs without a further approval prompt.

@@ -7,16 +7,11 @@
 # preference order of docs/free-tier-providers.md. Each lane maps to the pi
 # provider and model registered in the operator's own ~/.pi/agent/models.json;
 # docs/free-tier-routing.md owns those provider entries.
-# The lane table is the single owner of what each lane needs: a lane declares
-# one or more required environment variables, and every one of them is checked
-# before dispatch. The cloudflare lane declares CLOUDFLARE_API_KEY and
-# CLOUDFLARE_ACCOUNT_ID, because its pi baseUrl is account-scoped and an absent
-# account id would otherwise dispatch against an empty account segment.
-# This script never reads, writes, or logs a secret value. It exits 3 naming
-# the specific missing variable when one of a lane's declared variables is
-# absent, so an unusable lane refuses instead of dispatching. The blessed
-# launcher installed by --install-launcher is what supplies the key variables;
-# see "Key delivery" below.
+# This script never reads, writes, or logs a secret value. It requires the
+# lane's key to be present in its own environment and exits 3 naming the
+# missing variable when it is not, so an unauthenticated lane refuses instead
+# of dispatching. The blessed launcher installed by --install-launcher is what
+# supplies those variables; see "Key delivery" below.
 #
 # Key delivery: routine invocations go through a home-local launcher whose
 # shebang is an `av inject` line naming exactly the four lane keys, so one
@@ -28,15 +23,23 @@
 # home-local and gitignored because its shebang carries a machine-specific
 # interpreter path; this tracked script stays portable and secret-free.
 #
-# A declared variable that is not a `*_API_KEY` is not a secret and is
-# deliberately outside the vault, so the launcher never injects it. It is read
-# instead from a home-local file in that same config directory, named after the
-# variable in lower case with underscores as dashes: CLOUDFLARE_ACCOUNT_ID
-# comes from `config/cloudflare-account-id` when it is not already exported.
-# config/ is gitignored, so no account identifier is ever committed.
+# Cloudflare mispaste guard: the cloudflare lane is account-scoped and pi does
+# not expand environment variables in `baseUrl`, only in `apiKey` and
+# `headers`, so the account identifier must be typed into the operator's own
+# models.json. Before dispatching that lane only, this script reads
+# ${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/models.json, which is the path pi
+# itself resolves, and inspects the account segment of the cloudflare
+# provider's baseUrl. An unfilled segment - empty, an unexpanded `$NAME` or
+# `${NAME}` reference, or an angle-bracket blank - exits 3 naming the file and
+# what to fill in, instead of dispatching to a URL Cloudflare will reject.
+# A shape or parse problem is deliberately NOT fatal: an absent, unreadable, or
+# malformed file, a missing cloudflare provider, a missing baseUrl, or an
+# absent jq all print one warning line to stderr and dispatch anyway, so a pi
+# change can cost this guard but can never brick the lane.
 #
-# Exit codes: 0 the lane ran, 2 usage error, 3 a variable the lane declares is
-# absent from the environment, otherwise pi's own exit code.
+# Exit codes: 0 the lane ran, 2 usage error, 3 the lane's key is absent from
+# the environment or its account segment is unfilled, otherwise pi's own exit
+# code.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,12 +47,12 @@ FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-$FM_ROOT}"
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 LAUNCHER="$CONFIG/free-lane-launcher"
+MODELS_FILE="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/models.json"
 
-# Single owner of the lane table: lane|env vars|pi provider|pi model.
-# The env-var field is a comma-separated list of every variable the lane needs.
+# Single owner of the lane table: lane|env var|pi provider|pi model.
 LANES='groq|GROQ_API_KEY|groq|openai/gpt-oss-120b
 cerebras|CEREBRAS_API_KEY|cerebras|gpt-oss-120b
-cloudflare|CLOUDFLARE_API_KEY,CLOUDFLARE_ACCOUNT_ID|cloudflare|@cf/openai/gpt-oss-120b
+cloudflare|CLOUDFLARE_API_KEY|cloudflare|@cf/openai/gpt-oss-120b
 openrouter|OPENROUTER_API_KEY|openrouter-free|minimax/minimax-m3:free'
 
 usage() {
@@ -60,10 +63,8 @@ lane_row() {
   printf '%s\n' "$LANES" | awk -F'|' -v lane="$1" '$1 == lane { print; exit }'
 }
 
-# Only the vault-held key variables belong in the launcher's inject list.
 lane_keys() {
-  printf '%s\n' "$LANES" \
-    | awk -F'|' '{ n = split($2, v, ","); for (i = 1; i <= n; i++) if (v[i] ~ /_API_KEY$/) printf "+%s ", v[i] }'
+  printf '%s\n' "$LANES" | awk -F'|' '{ printf "+%s ", $2 }'
 }
 
 install_launcher() {
@@ -93,6 +94,33 @@ install_launcher() {
   echo "next (owner, once): av bless $LAUNCHER"
 }
 
+# Refuses only an account segment that is plainly still a blank; every other
+# problem warns and lets the dispatch through.
+check_cloudflare_account() {
+  local base_url account rest
+  if [ ! -r "$MODELS_FILE" ] || ! command -v jq >/dev/null 2>&1; then
+    echo "warning: cannot check the cloudflare account id in $MODELS_FILE; dispatching anyway" >&2
+    return 0
+  fi
+  base_url=$(jq -r '.providers.cloudflare.baseUrl // empty' "$MODELS_FILE" 2>/dev/null) || base_url=''
+  case $base_url in
+    */accounts/*) ;;
+    *)
+      echo "warning: no cloudflare provider baseUrl with an account segment in $MODELS_FILE; dispatching anyway" >&2
+      return 0
+      ;;
+  esac
+  rest=${base_url#*/accounts/}
+  account=${rest%%/*}
+  case $account in
+    ''|'$'*|'<'*)
+      echo "error: the cloudflare provider in $MODELS_FILE still has an unfilled account segment" >&2
+      echo "hint: pi does not expand variables in baseUrl; type your own Cloudflare account id into that file" >&2
+      exit 3
+      ;;
+  esac
+}
+
 [ "$#" -gt 0 ] || { usage; exit 2; }
 
 case $1 in
@@ -101,7 +129,7 @@ case $1 in
     exit 2
     ;;
   --list)
-    printf '%s\n' "$LANES" | awk -F'|' '{ gsub(/,/, " ", $2); printf "%-11s %-40s %s/%s\n", $1, $2, $3, $4 }'
+    printf '%s\n' "$LANES" | awk -F'|' '{ printf "%-11s %-16s %s/%s\n", $1, $2, $3, $4 }'
     exit 0
     ;;
   --install-launcher)
@@ -123,36 +151,16 @@ shift
 ROW=$(lane_row "$LANE")
 [ -n "$ROW" ] || { echo "error: unknown lane '$LANE'; run --list" >&2; exit 2; }
 
-ENV_VARS=$(printf '%s' "$ROW" | cut -d'|' -f2)
+ENV_VAR=$(printf '%s' "$ROW" | cut -d'|' -f2)
 PROVIDER=$(printf '%s' "$ROW" | cut -d'|' -f3)
 MODEL=$(printf '%s' "$ROW" | cut -d'|' -f4)
 
-IFS=',' read -r -a LANE_VARS <<< "$ENV_VARS"
-for VAR in "${LANE_VARS[@]}"; do
-  LOCAL_FILE="$CONFIG/$(printf '%s' "$VAR" | tr 'A-Z_' 'a-z-')"
-  case $VAR in
-    *_API_KEY) ;;
-    *)
-      if [ -z "${!VAR:-}" ] && [ -r "$LOCAL_FILE" ]; then
-        LOCAL_VALUE=$(head -n 1 "$LOCAL_FILE" | tr -d '[:space:]')
-        if [ -n "$LOCAL_VALUE" ]; then
-          export "$VAR=$LOCAL_VALUE"
-        fi
-      fi
-      ;;
-  esac
-  if [ -z "${!VAR:-}" ]; then
-    echo "error: lane '$LANE' needs $VAR in the environment" >&2
-    case $VAR in
-      *_API_KEY)
-        echo "hint: run through the blessed launcher ($LAUNCHER); see --install-launcher" >&2
-        ;;
-      *)
-        echo "hint: $VAR is not a secret; put its value in $LOCAL_FILE" >&2
-        ;;
-    esac
-    exit 3
-  fi
-done
+if [ -z "${!ENV_VAR:-}" ]; then
+  echo "error: lane '$LANE' needs $ENV_VAR in the environment" >&2
+  echo "hint: run through the blessed launcher ($LAUNCHER); see --install-launcher" >&2
+  exit 3
+fi
+
+[ "$LANE" != cloudflare ] || check_cloudflare_account
 
 exec pi --provider "$PROVIDER" --model "$MODEL" "$@"
