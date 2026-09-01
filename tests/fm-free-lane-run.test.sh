@@ -9,7 +9,9 @@
 # provider baseUrl is still an unfilled blank, while every shape problem in
 # that models file warns and dispatches anyway.
 # The lane pi starts sees only the invoked lane's own key, never the other
-# three, and the generated launcher records variable names rather than values.
+# three, it carries the FM_FREE_LANE_ACTIVE marker, a lane invocation that
+# already sees that marker refuses with exit 4, and the generated launcher
+# records variable names rather than values.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -26,7 +28,7 @@ make_fakebin() {
   cat > "$dir/pi" <<'FAKE'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "$FM_TEST_PI_ARGS"
-env | grep -E '^(GROQ|CEREBRAS|CLOUDFLARE|OPENROUTER)_API_KEY=' \
+env | grep -E '^(GROQ|CEREBRAS|CLOUDFLARE|OPENROUTER)_API_KEY=|^FM_FREE_LANE_ACTIVE=' \
   > "$FM_TEST_PI_ARGS.env" || : > "$FM_TEST_PI_ARGS.env"
 FAKE
   chmod +x "$dir/pi"
@@ -185,10 +187,10 @@ test_install_launcher_refuses_an_unexpressible_av_path() {
 
 
 test_launcher_works_from_a_root_whose_path_has_a_space() {
-  local dir root args
+  local dir root args installed
   dir="$TMP_ROOT/launcher-spaced-root"
   root="$dir/fm home"
-  mkdir -p "$root/bin" "$dir/config" "$dir/avbin" "$dir/bin"
+  mkdir -p "$root/bin" "$root/config" "$dir/avbin" "$dir/bin"
   cp "$RUNNER" "$root/bin/fm-free-lane-run.sh"
   chmod +x "$root/bin/fm-free-lane-run.sh"
   : > "$dir/avbin/av"
@@ -196,21 +198,25 @@ test_launcher_works_from_a_root_whose_path_has_a_space() {
   make_fakebin "$dir/bin"
   export FM_TEST_PI_ARGS="$dir/pi-args.txt"
 
-  FM_CONFIG_OVERRIDE="$dir/config" "$root/bin/fm-free-lane-run.sh" \
-    --install-launcher --av "$dir/avbin/av" >/dev/null 2>&1 \
+  installed=$(FM_CONFIG_OVERRIDE="$root/config" "$root/bin/fm-free-lane-run.sh" \
+    --install-launcher --av "$dir/avbin/av" 2>&1) \
     || fail "--install-launcher did not exit 0 from a root path containing a space"
 
   # The generated launcher is run through bash so the test exercises its own
   # body, not the machine's av interpreter.
   GROQ_API_KEY=not-a-real-value PATH="$dir/bin:$PATH" \
-    bash "$dir/config/free-lane-launcher" groq -p "hi" >/dev/null 2>&1 \
+    bash "$root/config/free-lane-launcher" groq -p "hi" >/dev/null 2>&1 \
     || fail "the generated launcher could not reach a runner under a spaced path"
 
   args=$(cat "$FM_TEST_PI_ARGS")
   assert_contains "$args" "openai/gpt-oss-120b" \
     "the launcher did not dispatch the groq lane's model"
 
+  assert_contains "$installed" "av bless '$root/config/free-lane-launcher'" \
+    "the printed av bless command did not quote a launcher path containing a space"
+
   unset FM_TEST_PI_ARGS
+
   pass "a generated launcher works when the firstmate root path contains a space"
 }
 
@@ -353,6 +359,8 @@ test_pi_sees_only_the_invoked_lanes_own_key() {
 
     seen=$(cat "$FM_TEST_PI_ARGS.env")
     assert_contains "$seen" "$keep=" "the $lane lane did not pass its own key to pi"
+    assert_contains "$seen" "FM_FREE_LANE_ACTIVE=" \
+      "the $lane lane did not mark its session as already inside a lane"
     for other in GROQ_API_KEY CEREBRAS_API_KEY CLOUDFLARE_API_KEY OPENROUTER_API_KEY; do
       if [ "$other" != "$keep" ]; then
         assert_not_contains "$seen" "$other=" \
@@ -363,6 +371,37 @@ test_pi_sees_only_the_invoked_lanes_own_key() {
 
   unset FM_TEST_PI_ARGS
   pass "pi sees the invoked lane's own key and none of the other three"
+}
+
+test_a_lane_session_may_not_start_another_lane() {
+  local dir status err lane
+  dir="$TMP_ROOT/reentry"
+  make_fakebin "$dir/bin"
+  export FM_TEST_PI_ARGS="$dir/pi-args.txt"
+  write_models "$dir/pi" "https://api.cloudflare.com/client/v4/accounts/abc123/ai/v1"
+  err="$dir/err.txt"
+
+  for lane in groq groq cloudflare; do
+    rm -f "$FM_TEST_PI_ARGS"
+    status=0
+    FM_FREE_LANE_ACTIVE=1 GROQ_API_KEY=sentinel-groq-5e \
+      CLOUDFLARE_API_KEY=sentinel-cloudflare-6f PI_CODING_AGENT_DIR="$dir/pi" \
+      PATH="$dir/bin:$PATH" "$RUNNER" "$lane" -p "hi" >/dev/null 2>"$err" || status=$?
+
+    expect_code 4 "$status" "re-entering the $lane lane did not refuse with exit 4"
+    [ ! -e "$FM_TEST_PI_ARGS" ] \
+      || fail "a refused re-entry into the $lane lane still launched pi"
+  done
+  assert_contains "$(cat "$err")" "free-tier lane" \
+    "the refusal did not say a lane may not start another lane"
+
+  rm -f "$FM_TEST_PI_ARGS"
+  GROQ_API_KEY=sentinel-groq-5e PI_CODING_AGENT_DIR="$dir/pi" PATH="$dir/bin:$PATH" \
+    "$RUNNER" groq -p "hi" >/dev/null 2>&1 \
+    || fail "a first lane invocation was refused, so the guard is permanently on"
+
+  unset FM_TEST_PI_ARGS
+  pass "a lane session refuses to start another lane, and a first invocation still runs"
 }
 
 test_list_names_every_lane_and_its_variable
@@ -377,3 +416,4 @@ test_cloudflare_refuses_an_unfilled_account_segment
 test_cloudflare_shape_problems_warn_and_still_dispatch
 test_the_account_guard_is_scoped_to_the_cloudflare_lane
 test_pi_sees_only_the_invoked_lanes_own_key
+test_a_lane_session_may_not_start_another_lane
