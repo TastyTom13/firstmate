@@ -133,6 +133,7 @@ That launcher is the only path that delivers a lane key today, which is why a sp
 
 [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh) is the single command shape for every lane; its header owns the exact flags, lane table, and exit codes.
 A lane invocation is text-only: it runs with no built-in tools, no extension-registered tools, and no `AGENTS.md`/`CLAUDE.md` project context, so a lane cannot read the repository it is pointed at.
+That restriction is what keeps a lane under the per-minute budget above: pi otherwise attaches its own coding-agent prompt, its tool definitions, and the full auto-discovered `AGENTS.md`/`CLAUDE.md` of the working directory, which made a one-line prompt cost 31,264 tokens and drew a Groq `413` refusal before this runner sent a slim prompt instead.
 Two of those defaults are overridable per call, and they are not the same thing: `--system-prompt` after the lane name replaces the slim prompt text, and `--tools`/`-t` after the lane name re-enables named built-in tools that `--no-builtin-tools` switched off.
 `--tools` cannot bring back an extension's tool, because `--no-extensions` stops that extension loading at all, so there is no registered name for the allowlist to match.
 The extension restriction blocks automatic discovery only, so the one way back for an extension's tool is naming that extension file explicitly with `-e <path>` after the lane name.
