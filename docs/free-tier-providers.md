@@ -247,7 +247,8 @@ Amber: a convenience layer over already-vetted providers, adding neither indepen
 ## What a stacked pool actually buys
 
 On paper, adding every recommended vendor gives roughly 1,000 Groq requests a day, 1M Cerebras tokens a day, 10,000 Cloudflare neurons a day, and 50 to 1,000 OpenRouter requests a day.
-What 2026-09-01 actually bought was three of those four: Scaleway has no free tier to add, and the Cerebras account refuses every completion.
+What 2026-09-01 actually bought was three of those four lanes: the Cerebras account refuses every completion.
+Scaleway, which an earlier version of this line counted, has no free tier to add at all.
 That is a real pool for mechanical work and nowhere near a replacement for a judgement lane.
 The binding constraint is not the token count.
 It is that a written promise not to train on your input stays rare, and the Summary table above is the current list of who makes one.
