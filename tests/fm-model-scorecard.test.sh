@@ -143,8 +143,62 @@ EOF
   pass "fm-model-scorecard.sh: tallies tasks, fix-rounds, and ask-user findings per model/effort across every note shape and the archive"
 }
 
+# Regression: tasks-axi appends the close note to the END of the task body, so
+# a Done entry with body text renders as bullet / body lines / note. The note
+# must still be found, not only when it is the line right after the checkbox.
+test_note_after_body_lines_is_attributed() {
+  local home out
+  home="$TMP_ROOT/note-after-body"
+  mkdir -p "$home/data" "$home/state"
+  cat > "$home/data/backlog.md" <<'EOF'
+# Backlog
+
+## Done
+- [x] task-bodied - shipped a PR https://github.com/o/r/pull/9 (merged 2026-08-05)
+  Intent: ship it
+
+  More body text, including a mention of model= in prose.
+  model=claude-opus-5 effort=xhigh
+- [x] task-plain - landed locally (done 2026-08-05)
+  model=claude-opus-5 effort=xhigh
+EOF
+  out=$(FM_HOME="$home" "$SCORECARD")
+  echo "$out" | grep -E '^claude-opus-5 +xhigh +2 +0 +0$' >/dev/null \
+    || fail "a Done entry whose note follows body lines was not attributed (got: $out)"
+  pass "fm-model-scorecard.sh: an attribution note after body lines is still tallied"
+}
+
+# Regression: bin/fm-classify-lib.sh documents keyed and correlated
+# needs-decision shapes alongside the bare one; all three are ask-user
+# escalations and must be counted.
+test_ask_user_counts_every_needs_decision_shape() {
+  local home out
+  home="$TMP_ROOT/ask-user-shapes"
+  mkdir -p "$home/data" "$home/state"
+  cat > "$home/data/backlog.md" <<'EOF'
+# Backlog
+
+## Done
+- [x] task-shapes - shipped a PR https://github.com/o/r/pull/10 (merged 2026-08-06)
+  model=claude-sonnet-5 effort=high
+EOF
+  cat > "$home/state/task-shapes.status" <<'EOF'
+working: setup complete
+needs-decision [key=a]: which one?
+needs-decision: [key=b] other?
+needs-decision corr=0123456789abcdef [key=c]: third?
+working: not a needs-decision line
+EOF
+  out=$(FM_HOME="$home" "$SCORECARD")
+  echo "$out" | grep -E '^claude-sonnet-5 +high +1 +0 +3$' >/dev/null \
+    || fail "the ask-user proxy did not count every documented needs-decision shape (got: $out)"
+  pass "fm-model-scorecard.sh: ask-user proxy counts bare, keyed, and correlated needs-decision lines"
+}
+
 test_script_parses
 test_help_renders
 test_missing_backlog_is_refused
 test_no_attributed_done_rows_is_a_clean_no_op
 test_tallies_every_note_shape_and_status_proxy
+test_note_after_body_lines_is_attributed
+test_ask_user_counts_every_needs_decision_shape

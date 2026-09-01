@@ -11,7 +11,8 @@
 #               status verb marks a no-mistakes fix-review round on its own;
 #               this undercounts a task whose fix rounds a status line never
 #               narrated, and is never treated as an exact figure.
-#   ask-user  - a count of `needs-decision:` status lines, the exact verb the
+#   ask-user  - a count of status lines opening with the `needs-decision`
+#               verb (bare, keyed, or correlated), the exact verb the
 #               generated brief's Definition of done uses to escalate an
 #               ask-user finding (bin/fm-dod-lib.sh, AGENTS.md section 7's
 #               ask-user rule). A rare non-ask-user product decision also
@@ -90,29 +91,41 @@ ARCHIVE="$ROOT/$ARCHIVE_REL"
 
 # Extract "<id> <model> <effort>" (space-separated) for every Done entry in
 # one backlog or archive file, deriving the id from the checkbox line and the
-# note from the indented text line right after it. A Done entry with no
-# attribution note (an older row from before this contract, or a hand-edited
-# one) is silently skipped: it predates model tracking, not a parse failure.
+# note from that entry's body. tasks-axi appends the close note to the END of
+# the task body, so the note is the last note-shaped line among the entry's
+# continuation lines (indented or blank) up to the next bullet, heading, or
+# unindented line. A Done entry with no attribution note (an older row from
+# before this contract, or a hand-edited one) is silently skipped: it predates
+# model tracking, not a parse failure.
 extract_done_ids() {
   awk '
-    /^- \[x\] [^ ]+ - / {
-      id = $3
-      next
-    }
-    id != "" && /model=[^ ]+ effort=[^ ]+/ {
-      line = $0
-      sub(/^[[:space:]]*/, "", line)
-      model = line
-      sub(/.*model=/, "", model)
-      sub(/ .*/, "", model)
-      effort = line
-      sub(/.*effort=/, "", effort)
-      sub(/[[:space:]].*/, "", effort)
-      if (model != "" && effort != "") print id, model, effort
+    function flush(  model, effort) {
+      if (id != "" && note != "") {
+        model = note
+        sub(/.*model=/, "", model)
+        sub(/[[:space:]].*/, "", model)
+        effort = note
+        sub(/.*effort=/, "", effort)
+        sub(/[[:space:]].*/, "", effort)
+        if (model != "" && effort != "") print id, model, effort
+      }
       id = ""
+      note = ""
+    }
+    /^- \[[ xX]\] / {
+      flush()
+      if ($0 ~ /^- \[x\] [^ ]+ - /) id = $3
       next
     }
-    { id = "" }
+    /^[^[:space:]]/ {
+      flush()
+      next
+    }
+    id != "" && /model=[^[:space:]]+ effort=[^[:space:]]+/ {
+      note = $0
+      next
+    }
+    END { flush() }
   ' "$1"
 }
 
@@ -137,7 +150,7 @@ while IFS=' ' read -r id model effort; do
   ask_user=0
   if [ -f "$status" ]; then
     fix_rounds=$(grep -i 'fix' "$status" 2>/dev/null | grep -ci 'round' || true)
-    ask_user=$(grep -c '^needs-decision: ' "$status" 2>/dev/null || true)
+    ask_user=$(grep -cE '^needs-decision([[:space:]]|:)' "$status" 2>/dev/null || true)
   fi
   printf '%s\t%s\t%s\t%s\n' "$model" "$effort" "${fix_rounds:-0}" "${ask_user:-0}"
 done < "$TMP_ROWS" | awk -F'\t' '
