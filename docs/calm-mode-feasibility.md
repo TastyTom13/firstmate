@@ -193,6 +193,7 @@ The session-start nudge already originates as a non-displayed custom message, so
 Legacy Calm custom entries and messages remain in existing session artifacts, and their presentation entry still uses the supported zero-height renderer while active.
 Toggling Calm cycles tool expansion and restores its original value, which rebuilds controllable rows and leaves final `Ctrl+O` state unchanged.
 Returning from stock export rendering instead invalidates only the tool rows Calm currently presents: Pi 0.83.0 made every expansion change emit its own status line, and Pi coalesces consecutive status lines, so an expansion cycle there overwrote the `Session exported to:` confirmation the export had just printed.
+The `/export` and `/share` repaint is deferred by one macrotask, so `session_shutdown` cancels it, closes the stock-export window for every consumer of the published presentation state, and drops the terminal-input subscription, because Pi invalidates the `session_start` ctx that deferred work closes over; that cleanup belongs in `session_shutdown` rather than at the top of the next `session_start`, and `tests/fm-calm-pi-extension.test.sh` pins it.
 Exported and shared HTML retain genuine user prompts, genuine assistant responses, current operational user messages, ordinary tool rendering, and the complete session artifact.
 Serialized session data and Pi 0.81.1's sidebar tree also retain legacy hidden operational custom messages.
 
