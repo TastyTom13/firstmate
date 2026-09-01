@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+# Behavior tests for fm-spawn.sh's free-tier lane wiring (fm-free-lane-spawn-wiring).
+#
+# A dispatch profile routes a whole pi crewmate through a free-tier lane by
+# naming that lane's own provider/model as --model - no new profile field, the
+# same string docs/free-tier-routing.md's dispatch rule already ships. These
+# tests drive the real spawn path (real worktree, fake tmux capturing the
+# literal launch command).
+#
+# The launcher itself is a hand-written stand-in, not a real generated
+# `av inject` launcher: that shape is already covered by
+# tests/fm-free-lane-run.test.sh, and a generated launcher's shebang line
+# embeds an absolute interpreter path plus all four lane keys, which this
+# machine's kernel silently mis-execs (falls back to running the launcher's
+# BODY as a literal shell script, skipping the interpreter entirely, no
+# error) once that line crosses a length this suite's own tmp-root prefix
+# reliably exceeds - verified empirically, not documented, and not worth
+# chasing here. What these tests exist to prove is fm-spawn's OWN behavior:
+# detecting a free-lane model, bounding the wait, surfacing the probe's
+# stderr, and wrapping the real launch command - so each stand-in just needs
+# fm-spawn's static "looks like a launcher" shape (a "#!" line naming
+# "av inject") and the exact observable behavior (fast success, fast
+# failure, or a hang) that behavior is under test.
+set -u
+
+# shellcheck source=tests/fixtures.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
+
+TMP_ROOT=$(fm_test_tmproot fm-spawn-free-lane)
+
+# A minimal pi standing in for the real binary: answers --help (for the
+# regular-TUI probe) and otherwise just exits 0. It is never actually
+# executed by these tests - fm-spawn only builds and logs the launch command
+# via the fake tmux, it does not run it.
+make_fake_pi() {
+  local fakebin=$1
+  cat > "$fakebin/pi" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --help ]; then
+  printf '%s\n' 'Pi 0.84.0' 'Options: --help --tui-mode <mode>'
+fi
+exit 0
+SH
+  chmod +x "$fakebin/pi"
+}
+
+# fm_test_make_spawn_fakebin already installs the spawn-world tmux; add pi.
+make_free_lane_fakebin() {
+  local dir=$1 fakebin
+  fakebin=$(fm_test_make_spawn_fakebin "$dir")
+  make_fake_pi "$fakebin"
+  printf '%s\n' "$fakebin"
+}
+
+make_case() {
+  local name=$1 id=$2 case_dir home proj wt fakebin launchlog
+  case_dir="$TMP_ROOT/$name"
+  home="$case_dir/home"
+  proj="$case_dir/project"
+  wt="$case_dir/wt"
+  launchlog="$case_dir/launch.log"
+  fakebin=$(make_free_lane_fakebin "$case_dir/fake")
+  fm_test_spawn_home "$home" pi
+  fm_git_worktree "$proj" "$wt" "wt-$name"
+  fm_test_spawn_brief "$home" "$id"
+  printf '%s\n' "$case_dir|$home|$proj|$wt|$fakebin|$launchlog"
+}
+
+read_case_record() {
+  # shellcheck disable=SC2034  # CASE_DIR is part of the shared record shape; unused by these tests
+  IFS='|' read -r CASE_DIR HOME_DIR PROJ_DIR WT_DIR FAKEBIN_DIR LAUNCH_LOG <<EOF
+$1
+EOF
+}
+
+# Writes a launcher stand-in at HOME_DIR/config/free-lane-launcher whose
+# shebang line satisfies fm-spawn.sh's static shape check (a "#!" line naming
+# "av inject") and whose body is the caller's own script, so the free-lane
+# preflight probe exercises exactly the behavior under test.
+write_launcher_stub() {
+  local home=$1 body=$2
+  mkdir -p "$home/config"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf '# av inject +GROQ_API_KEY +CEREBRAS_API_KEY +CLOUDFLARE_API_KEY +OPENROUTER_API_KEY -- /bin/bash\n'
+    printf '%s\n' "$body"
+  } > "$home/config/free-lane-launcher"
+  chmod +x "$home/config/free-lane-launcher"
+}
+
+run_free_lane_spawn() {
+  local home=$1 wt=$2 fakebin=$3 launchlog=$4
+  shift 4
+  : > "$launchlog"
+  FM_FAKE_LAUNCH_LOG="$launchlog" \
+    fm_test_run_spawn "$home" "$wt" "$fakebin" "$@" --mode no-mistakes --yolo off
+}
+
+test_paid_pi_model_is_completely_unaffected() {
+  local rec id out status launch
+  id=free-lane-paid-z1
+  rec=$(make_case paid "$id")
+  read_case_record "$rec"
+
+  out=$(run_free_lane_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --model openai-codex/gpt-5.6-sol --effort max)
+  status=$?
+  expect_code 0 "$status" "an ordinary paid pi model spawn should succeed"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "FM_PI_HARNESS=pi '$FAKEBIN_DIR/pi' --tui-mode regular --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e" \
+    "a paid model's launch command must be byte-identical to the pre-existing pi shape"
+  assert_not_contains "$launch" "free-lane-launcher" \
+    "a paid model must never be routed through the free-lane launcher"
+  assert_not_contains "$launch" "  " \
+    "a paid model launch must not carry a stray double space from the free-lane placeholder"
+
+  pass "a paid pi model spawns exactly as before, with no free-lane probing at all"
+}
+
+test_free_lane_model_with_no_launcher_refuses_before_launch() {
+  local rec id out status
+  id=free-lane-no-launcher-z1
+  rec=$(make_case no-launcher "$id")
+  read_case_record "$rec"
+  # No launcher installed at HOME_DIR/config/free-lane-launcher.
+
+  out=$(run_free_lane_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --model groq/openai/gpt-oss-120b --effort low)
+  status=$?
+  expect_code 1 "$status" "a free-lane model with no launcher installed should refuse"
+  assert_contains "$out" "not installed" "the refusal did not explain the launcher is missing"
+  [ ! -s "$LAUNCH_LOG" ] || fail "a spawn refused for a missing launcher still sent a launch command"
+
+  pass "a free-lane model refuses before any launch command when the launcher is not installed"
+}
+
+test_free_lane_model_with_a_malformed_launcher_refuses() {
+  local rec id out status
+  id=free-lane-malformed-z1
+  rec=$(make_case malformed "$id")
+  read_case_record "$rec"
+  mkdir -p "$HOME_DIR/config"
+  printf '#!/usr/bin/env bash\necho not a real launcher\n' > "$HOME_DIR/config/free-lane-launcher"
+  chmod +x "$HOME_DIR/config/free-lane-launcher"
+
+  out=$(run_free_lane_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --model groq/openai/gpt-oss-120b --effort low)
+  status=$?
+  expect_code 1 "$status" "a launcher whose shebang is not an av inject line should refuse"
+  assert_contains "$out" "does not look like a generated free-lane launcher" \
+    "the refusal did not explain the launcher's shape is wrong"
+  [ ! -s "$LAUNCH_LOG" ] || fail "a spawn refused for a malformed launcher still sent a launch command"
+
+  pass "a launcher that is not shaped like a generated av-inject launcher refuses"
+}
+
+test_free_lane_model_with_absent_vault_key_refuses_fast() {
+  local rec id out status
+  id=free-lane-absent-key-z1
+  rec=$(make_case absent-key "$id")
+  read_case_record "$rec"
+  write_launcher_stub "$HOME_DIR" \
+    'echo "error: lane '"'"'groq'"'"' needs GROQ_API_KEY in the environment" >&2
+exit 3'
+
+  out=$(FM_FREE_LANE_PREFLIGHT_TIMEOUT=3 \
+    run_free_lane_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --model groq/openai/gpt-oss-120b --effort low)
+  status=$?
+  expect_code 1 "$status" "a free-lane model with an absent vault key should refuse"
+  assert_contains "$out" "GROQ_API_KEY" "the refusal did not name the missing key"
+  [ ! -s "$LAUNCH_LOG" ] || fail "a spawn refused for an absent vault key still sent a launch command"
+
+  pass "a free-lane model refuses fast, naming the missing vault key, when it is absent from the vault"
+}
+
+test_unblessed_launcher_times_out_and_refuses() {
+  local rec id out status start end elapsed
+  id=free-lane-unblessed-z1
+  rec=$(make_case unblessed "$id")
+  read_case_record "$rec"
+  write_launcher_stub "$HOME_DIR" \
+    'echo "automic vault: human approval required" >&2
+while :; do sleep 3600; done'
+
+  start=$(date +%s)
+  out=$(FM_FREE_LANE_PREFLIGHT_TIMEOUT=2 \
+    run_free_lane_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --model groq/openai/gpt-oss-120b --effort low)
+  status=$?
+  end=$(date +%s)
+  elapsed=$((end - start))
+
+  expect_code 1 "$status" "an unblessed launcher should refuse the spawn"
+  assert_contains "$out" "av bless" "the refusal did not point at the av bless remedy"
+  [ "$elapsed" -lt 8 ] || fail "the bounded probe did not bound the wait (took ${elapsed}s)"
+  [ ! -s "$LAUNCH_LOG" ] || fail "a spawn refused for an unblessed launcher still sent a launch command"
+
+  pass "an unblessed launcher refuses within the bounded probe window instead of hanging the spawn"
+}
+
+test_blessed_launcher_with_key_present_wraps_the_real_launch() {
+  local rec id out status launch
+  id=free-lane-success-z1
+  rec=$(make_case success "$id")
+  read_case_record "$rec"
+  write_launcher_stub "$HOME_DIR" 'shift 3
+exec "$@"'
+
+  out=$(FM_FREE_LANE_PREFLIGHT_TIMEOUT=3 \
+    run_free_lane_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --model groq/openai/gpt-oss-120b --effort low)
+  status=$?
+  expect_code 0 "$status" "a blessed launcher with its key present should spawn"
+
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "$HOME_DIR/config/free-lane-launcher' --exec 'groq' -- '$FAKEBIN_DIR/pi'" \
+    "the real pi launch was not wrapped through the blessed launcher's --exec mode"
+  assert_contains "$launch" "--model 'groq/openai/gpt-oss-120b'" \
+    "the wrapped launch did not carry the lane's model"
+
+  pass "a blessed launcher with its key present wraps the real pi launch through --exec"
+}
+
+test_paid_pi_model_is_completely_unaffected
+test_free_lane_model_with_no_launcher_refuses_before_launch
+test_free_lane_model_with_a_malformed_launcher_refuses
+test_free_lane_model_with_absent_vault_key_refuses_fast
+test_unblessed_launcher_times_out_and_refuses
+test_blessed_launcher_with_key_present_wraps_the_real_launch

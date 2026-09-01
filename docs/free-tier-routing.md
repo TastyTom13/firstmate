@@ -27,7 +27,7 @@ Any page offering free frontier tokens without qualification is showing a revoke
 ## Provider entries
 
 Four lanes are installed: Groq, Cloudflare Workers AI, and OpenRouter are live, and Cerebras is registered but currently refused by its own account.
-Live here means live through the launcher; a spawned crewmate does not yet reach these lanes, as the dispatch rule section below explains.
+Live here means live through the launcher, whether that is a hand-run one-shot call or a spawned worker (the "Spawning a worker on a lane" section below explains the latter).
 All four run on `pi`, because OpenCode is not installed on this machine (`command -v opencode` finds nothing as of 2026-09-01) and an uninstalled harness cannot be verified.
 The OpenCode block that earlier versions of this page carried has been removed rather than left unverified; add it back only after an installed OpenCode proves its own field names.
 
@@ -129,7 +129,8 @@ Cerebras passes it and still returns `402 payment_required` on every chat comple
 
 No key value is ever written to a file, including this one.
 Routine lane invocations go through one stable launcher so the owner reviews it once instead of approving every call.
-That launcher is the only path that delivers a lane key today, which is why a spawned crewmate cannot use a lane until `fm-free-lane-spawn-wiring` lands.
+That launcher is the only path that delivers a lane key: never through an env file, never through a plaintext copy.
+A spawned worker reaches it the same way a hand-run call does - see "Spawning a worker on a lane" below.
 
 [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh) is the single command shape for every lane; its header owns the exact flags, lane table, and exit codes.
 A lane invocation is text-only: it runs with no built-in tools, no extension-registered tools, and no `AGENTS.md`/`CLAUDE.md` project context, so a lane cannot read the repository it is pointed at.
@@ -153,16 +154,30 @@ The owner then runs `av bless <that path>` once, and every later call runs witho
 The launcher is home-local and gitignored because its shebang carries a machine-specific interpreter path, which is also why the portable script cannot carry that shebang itself.
 Re-run `--install-launcher` and `av bless` after moving or reinstalling the firstmate home, because the launcher records an absolute path to the tracked script.
 
+## Spawning a worker on a lane
+
+`bin/fm-spawn.sh` wires a whole pi crewmate through a free-tier lane instead of only a hand-run one-shot call, closing the gap the dispatch rule below used to warn about.
+No new profile field: `--harness pi` (or `pi-signed`) with a `--model` whose provider segment (the text before the first `/`) matches a lane in `bin/fm-free-lane-run.sh`'s own table - `groq`, `cerebras`, `cloudflare`, `openrouter-free` - is enough, and that is exactly the `model` string the dispatch rule's `use` array already carries.
+A paid pi model is completely unaffected: the provider segment simply does not match any lane, and the spawn proceeds exactly as it did before this wiring existed.
+
+Key delivery for a spawned worker rides the same blessed launcher as a hand-run call, never an env file and never a plaintext copy: `fm-spawn` runs the worker's real pi process through `<launcher> --exec <lane> -- <pi ...>`, a launcher mode that narrows the environment to that one lane's key and carries the same re-entry guard as every other lane invocation (`bin/fm-free-lane-run.sh`'s header owns the exact mechanics).
+Unlike a hand-run one-shot call, this worker keeps pi's normal tools, brief, and turn-end wiring - it is a full agentic worker on the free-tier key, not the slim text-only shape `--no-builtin-tools`/`--no-context-files`/`--no-extensions` produce.
+That is exactly why the scope in the dispatch rule's `when` clause is load-bearing here, not optional flavor text.
+
+Every failure mode refuses the spawn outright rather than falling back to a paid pool: a launcher that is not installed, executable, or shaped like a generated `av inject` launcher; a vault key absent for the selected lane; or a launcher that is not yet blessed.
+That last case is a genuine constraint worth understanding: `av`'s own blessing prompt is interactive, and an unblessed launcher's shebang blocks on a "human approval required" prompt instead of exiting - there is no query to ask `av` "is this blessed" without risking that same block.
+`fm-spawn` handles it with a bounded background probe (a few seconds) through the exact same launcher path a real launch would use; a probe still running past that bound is treated as unblessed and killed rather than ever treated as success.
+The practical requirement this leaves standing: an operator bless the launcher (`av bless <path>`, printed by `--install-launcher`) before this dispatch rule is used for real, exactly as for a hand-run call.
+
 ## Dispatch rule
 
-Read this before installing the rule: the free-tier lanes are launcher-only today.
-They work when a lane is invoked by hand through [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh) or the blessed launcher, and only then.
-A crewmate spawned on this rule does not inherit the lane keys, because the spawn path launches the `pi` binary directly and knows nothing about the launcher.
-Selecting this rule today therefore produces a worker whose free-tier model is unavailable in its own pane, so the rule must not be relied on for real dispatch yet.
-The follow-up task `fm-free-lane-spawn-wiring` is the work that closes that gap; install the rule now only to have it ready, not to route real work through it.
+Since `fm-free-lane-spawn-wiring` landed, this rule routes a whole spawned pi worker through a lane, not only a hand-run one-shot call: `bin/fm-spawn.sh` detects a free-lane model by its provider segment (the text before the first `/` in `--model`, matched against `bin/fm-free-lane-run.sh`'s own lane table) and wires the worker's pi process through the blessed launcher for key delivery, exactly as "Spawning a worker on a lane" below describes.
+No new profile field is needed: the `model` string in the `use` array below is already the exact `--model` syntax `fm-spawn` reads, unchanged from before this wiring landed.
 
-Scope the brief accordingly: a lane is text-only and cannot read the repository, so any fixture shape, module signature, or existing test style the generated boilerplate must match has to be quoted into the brief itself.
-The lane returns text for the dispatching agent to place; it is not a worker that opens files in the repo.
+Scope the brief accordingly, and it matters MORE now than when this rule was one-shot-only: a spawned worker on this rule gets pi's normal tools, brief, and turn-end wiring - it is a full agentic worker, not a text-only call - so the boilerplate-only, no-design-judgement scope in the `when` clause below is the thing keeping it safe, not any lack of tool access.
+The `bin/fm-free-tier-guard.sh` check below is a mechanical backstop for that scope, never a replacement for reading the brief.
+The captain's standing rule holds regardless of which form dispatches the lane: free lanes carry only low-judgement bulk work in a registered non-core repo, never work that is important, complex, security-sensitive, or judgement-heavy.
+A hand-run one-shot call through [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh)'s default form (not the `--exec` worker path) is still text-only regardless: no built-in tools, no extension tools, no `AGENTS.md`/`CLAUDE.md` context, so any fixture shape, module signature, or existing test style the generated boilerplate must match has to be quoted into the brief itself; that call form returns text for the dispatching agent to place, it is not a worker that opens files in the repo.
 
 `config/crew-dispatch.json` is home-local and gitignored, so this repository ships the rule text rather than the file.
 Add this object to the `rules` array of the home's own `config/crew-dispatch.json`, keeping it ahead of the general cheap-model rule so the narrower condition is matched first.
@@ -188,7 +203,7 @@ Add this object to the `rules` array of the home's own `config/crew-dispatch.jso
       "effort": "low"
     }
   ],
-  "why": "Free-tier relief for the highest-volume, lowest-judgement task class. Candidates are in survey-preference order from docs/free-tier-providers.md: Groq first (Services Agreement forbids training on inputs account-wide, no free-tier carve-out), Cloudflare Workers AI second (published no-training term), OpenRouter last for breadth (non-logging upstreams only by default). Cerebras is deliberately absent: its account returned 402 payment_required on every chat completion on 2026-09-01 despite a live key, so it is held out until the account clears. Never select this profile without a passing bin/fm-free-tier-guard.sh check. Routine invocations go through the blessed launcher at config/free-lane-launcher, never ad-hoc av inject. TEXT-ONLY LANE: the runner dispatches pi with no built-in tools, no extension tools, and no AGENTS.md/CLAUDE.md context, so the lane cannot read a single file in the repo it is named for; every fixture shape, module signature, or existing test style the output must match has to be quoted into the brief itself. LAUNCHER-ONLY UNTIL fm-free-lane-spawn-wiring LANDS: the spawn path launches pi directly and does not deliver the lane keys, so a crewmate spawned on this profile will not have a working free-tier model in its pane. See docs/free-tier-routing.md."
+  "why": "Free-tier relief for the highest-volume, lowest-judgement task class. Candidates are in survey-preference order from docs/free-tier-providers.md: Groq first (Services Agreement forbids training on inputs account-wide, no free-tier carve-out), Cloudflare Workers AI second (published no-training term), OpenRouter last for breadth (non-logging upstreams only by default). Cerebras is deliberately absent: its account returned 402 payment_required on every chat completion on 2026-09-01 despite a live key, so it is held out until the account clears. Never select this profile without a passing bin/fm-free-tier-guard.sh check. A worker spawned on this profile is a full agentic pi worker, not a text-only call: bin/fm-spawn.sh routes it through the blessed launcher at config/free-lane-launcher for key delivery (never an env file, never ad-hoc av inject), refusing the spawn outright rather than falling back to a paid pool if the launcher is missing, unblessed, or the vault key is absent. That means the boilerplate-only, no-design-judgement scope in this rule's own when clause is the actual safety boundary, not any lack of tool access. See docs/free-tier-routing.md."
 }
 ```
 

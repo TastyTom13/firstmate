@@ -38,6 +38,16 @@
 #   axes chosen by firstmate at intake. They are only threaded into harnesses whose
 #   installed CLIs were verified to support that axis; unsupported axes are omitted
 #   from that harness's launch rather than guessed.
+#   Free-tier lane wiring: for --harness pi/pi-signed, a --model whose provider
+#   segment (before the first '/') matches a lane in bin/fm-free-lane-run.sh's
+#   own table (groq, cerebras, cloudflare, openrouter-free) routes the whole
+#   worker through that lane's blessed launcher (config/free-lane-launcher) for
+#   key delivery, never through an env file or a plaintext copy. No new profile
+#   field: the dispatch rule's existing model string (docs/free-tier-routing.md)
+#   is exactly the pi --model syntax this already matches. A missing/unblessed
+#   launcher or an absent vault key refuses the spawn outright (bounded probe,
+#   never a silent fallback to a paid pool); see free_lane_preflight below and
+#   docs/free-tier-routing.md.
 #   --backend <name> is the explicit runtime session-provider backend for this
 #   exact task only (docs/configuration.md "Runtime backend" owns when that flag
 #   is authorized). Without it, the script resolves FM_BACKEND, then
@@ -1207,6 +1217,93 @@ resolve_pi_executable() {
   esac
 }
 
+# Free-tier lane wiring (fm-free-lane-spawn-wiring): a dispatch profile routes a
+# whole pi crewmate through a free-tier lane by naming that lane's own
+# provider/model as --model, exactly the pi --model syntax it would use
+# anyway (docs/free-tier-routing.md's dispatch rule already ships these
+# strings, e.g. "groq/openai/gpt-oss-120b"). No new profile field: the
+# provider segment before the first '/' is looked up against
+# bin/fm-free-lane-run.sh's own lane table (single owner, queried via
+# --list), so a paid pi model never collides unless a home deliberately names
+# a provider identically to a dedicated free-tier one.
+#
+# free_lane_for_model prints "<lane> <env-var>" and returns 0 when MODEL's
+# provider matches a lane; returns 1 (silent) otherwise, which is the normal
+# case for every non-free-tier pi spawn and leaves this whole path a no-op.
+free_lane_for_model() {
+  local model=$1 provider list
+  [ -n "$model" ] && [ "$model" != default ] || return 1
+  provider=${model%%/*}
+  [ -n "$provider" ] || return 1
+  list=$("$SCRIPT_DIR/fm-free-lane-run.sh" --list 2>/dev/null) || return 1
+  printf '%s\n' "$list" | awk -v p="$provider" '
+    { split($3, pm, "/"); if (pm[1] == p) { print $1, $2; found=1; exit } }
+    END { exit !found }
+  '
+}
+
+# Fail-closed preflight for a free-tier lane worker spawn. Verifies the
+# blessed launcher exists and is executable, then exercises the SAME
+# validation path a real launch would (lane lookup, key-presence check,
+# cloudflare account guard, environment narrowing) through
+# `fm-free-lane-run.sh --exec <lane> -- true`, run through the launcher.
+#
+# The launcher's shebang is an `av inject` line: an UNBLESSED launcher makes
+# `av` block on an interactive "human approval required" prompt rather than
+# exiting (verified empirically against the installed av binary) - there is
+# no non-interactive query for blessing status, so this cannot be told apart
+# from "working" except by racing a bounded wait. A bounded background probe
+# is therefore the only safe fail-closed check: a fast exit (0 or nonzero)
+# is a real result: proceed or refuse with that stderr. Still running past
+# the deadline is treated as an unblessed launcher and killed, never treated
+# as success. This never falls back to a paid pool; it only refuses the spawn.
+free_lane_preflight() {
+  local lane=$1 launcher=$2 timeout=${3:-${FM_FREE_LANE_PREFLIGHT_TIMEOUT:-8}} errfile pid watchdog rc timed_out=0
+  if [ ! -x "$launcher" ]; then
+    echo "error: free-tier lane '$lane' selected but the blessed launcher is not installed or not executable: $launcher" >&2
+    echo "hint: run 'bin/fm-free-lane-run.sh --install-launcher' then 'av bless $launcher' (see docs/free-tier-routing.md)" >&2
+    return 1
+  fi
+  case "$(head -c 512 -- "$launcher" 2>/dev/null)" in
+    '#!'*'av inject '*)
+      : # at least an av-inject launcher; fm-free-lane-run.sh's
+        # install_launcher owns the exact key set named there.
+      ;;
+    *)
+      echo "error: $launcher does not look like a generated free-lane launcher (expected an 'av inject' shebang); refusing to spawn on it" >&2
+      echo "hint: regenerate it with 'bin/fm-free-lane-run.sh --install-launcher'" >&2
+      return 1
+      ;;
+  esac
+  errfile=$(mktemp) || return 1
+  "$launcher" --exec "$lane" -- true >/dev/null 2>"$errfile" &
+  pid=$!
+  ( sleep "$timeout"; kill -9 "$pid" 2>/dev/null ) &
+  watchdog=$!
+  wait "$pid" 2>/dev/null
+  rc=$?
+  if kill -0 "$watchdog" 2>/dev/null; then
+    kill "$watchdog" 2>/dev/null
+    wait "$watchdog" 2>/dev/null || true
+  else
+    timed_out=1
+  fi
+  if [ "$timed_out" -eq 1 ]; then
+    echo "error: free-tier lane '$lane' probe through $launcher did not return within ${timeout}s; the launcher is most likely unblessed and is waiting on an interactive approval nobody will answer" >&2
+    echo "hint: run 'av bless $launcher' once as the operator, then retry the spawn" >&2
+    rm -f "$errfile"
+    return 1
+  fi
+  if [ "$rc" -ne 0 ]; then
+    echo "error: free-tier lane '$lane' preflight failed through $launcher (exit $rc):" >&2
+    sed 's/^/  /' "$errfile" >&2
+    rm -f "$errfile"
+    return 1
+  fi
+  rm -f "$errfile"
+  return 0
+}
+
 # Pi's CLI surface is version-dependent, so probe the resolved executable's help
 # before composing the optional regular-TUI flag. An absent or inconclusive probe
 # omits the flag so older Pi versions can still spawn.
@@ -1241,7 +1338,7 @@ launch_template() {
       ;;
     opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     pi|pi-signed)
-      printf '%s' '__PIBIN____PITUIMODE__'
+      printf '%s' '__FREELANE____PIBIN____PITUIMODE__'
       if [ "$kind" = secondmate ]; then
         printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PITURNEND__ -e __PIWATCH__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
       else
@@ -1359,6 +1456,14 @@ case "$HARNESS" in
     fi
     LAUNCH=${LAUNCH//__PITUIMODE__/$PI_TUI_MODE}
     LAUNCH="FM_PI_HARNESS=$HARNESS $LAUNCH"
+    FREE_LANE_WRAP=
+    FREE_LANE=$(free_lane_for_model "$MODEL") && {
+      FREE_LANE_NAME=${FREE_LANE% *}
+      FREE_LANE_LAUNCHER="$CONFIG/free-lane-launcher"
+      free_lane_preflight "$FREE_LANE_NAME" "$FREE_LANE_LAUNCHER" || exit 1
+      FREE_LANE_WRAP="$(shell_quote "$FREE_LANE_LAUNCHER") --exec $(shell_quote "$FREE_LANE_NAME") -- "
+    }
+    LAUNCH=${LAUNCH//__FREELANE__/$FREE_LANE_WRAP}
     ;;
   cursor)
     # `cursor` is not the CLI name, and the legacy alias `agent` is far too
