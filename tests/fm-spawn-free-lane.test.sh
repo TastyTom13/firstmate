@@ -73,16 +73,30 @@ $1
 EOF
 }
 
+# A stand-in for the real `av` binary, used as the launcher stand-ins'
+# shebang interpreter so their FIRST line genuinely names "av inject", the
+# way a generated launcher's does. Darwin hands the whole shebang tail to the
+# interpreter as one argument, so dropping $1 leaves the launcher path and
+# its own arguments, which is all these stand-ins need to run.
+make_fake_av() {
+  cat > "$TMP_ROOT/av" <<'SH'
+#!/usr/bin/env bash
+shift
+exec /bin/bash "$@"
+SH
+  chmod +x "$TMP_ROOT/av"
+}
+
 # Writes a launcher stand-in at HOME_DIR/config/free-lane-launcher whose
 # shebang line satisfies fm-spawn.sh's static shape check (a "#!" line naming
 # "av inject") and whose body is the caller's own script, so the free-lane
 # preflight probe exercises exactly the behavior under test.
 write_launcher_stub() {
   local home=$1 body=$2
+  make_fake_av
   mkdir -p "$home/config"
   {
-    printf '#!/usr/bin/env bash\n'
-    printf '# av inject +GROQ_API_KEY +CEREBRAS_API_KEY +CLOUDFLARE_API_KEY +OPENROUTER_API_KEY -- /bin/bash\n'
+    printf '#!%s inject +GROQ_API_KEY -- /bin/bash\n' "$TMP_ROOT/av"
     printf '%s\n' "$body"
   } > "$home/config/free-lane-launcher"
   chmod +x "$home/config/free-lane-launcher"
@@ -222,9 +236,37 @@ exec "$@"'
   pass "a blessed launcher with its key present wraps the real pi launch through --exec"
 }
 
+test_secondmate_pinned_to_a_free_lane_model_is_wrapped() {
+  local rec id out status launch sm_home
+  id=free-lane-secondmate-z1
+  rec=$(make_case secondmate "$id")
+  read_case_record "$rec"
+  printf 'pi groq/openai/gpt-oss-120b low\n' > "$HOME_DIR/config/secondmate-harness"
+  write_launcher_stub "$HOME_DIR" 'shift 3
+exec "$@"'
+  sm_home="$CASE_DIR/sm"
+  mkdir -p "$sm_home/bin" "$sm_home/data"
+  printf '# Firstmate\n' > "$sm_home/AGENTS.md"
+  printf '%s\n' "$id" > "$sm_home/.fm-secondmate-home"
+  printf 'charter for %s\n' "$id" > "$sm_home/data/charter.md"
+
+  : > "$LAUNCH_LOG"
+  out=$(FM_FREE_LANE_PREFLIGHT_TIMEOUT=3 FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" \
+    fm_test_run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$sm_home" --secondmate)
+  status=$?
+  expect_code 0 "$status" "a secondmate pinned to a free-lane model should spawn"
+
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "$HOME_DIR/config/free-lane-launcher' --exec 'groq' -- " \
+    "a secondmate's pinned free-lane model was launched without the blessed launcher wrap"
+
+  pass "a secondmate pinned to a free-lane model is wrapped through the blessed launcher"
+}
+
 test_paid_pi_model_is_completely_unaffected
 test_free_lane_model_with_no_launcher_refuses_before_launch
 test_free_lane_model_with_a_malformed_launcher_refuses
 test_free_lane_model_with_absent_vault_key_refuses_fast
 test_unblessed_launcher_times_out_and_refuses
 test_blessed_launcher_with_key_present_wraps_the_real_launch
+test_secondmate_pinned_to_a_free_lane_model_is_wrapped

@@ -1258,13 +1258,15 @@ free_lane_for_model() {
 # the deadline is treated as an unblessed launcher and killed, never treated
 # as success. This never falls back to a paid pool; it only refuses the spawn.
 free_lane_preflight() {
-  local lane=$1 launcher=$2 timeout=${3:-${FM_FREE_LANE_PREFLIGHT_TIMEOUT:-8}} errfile pid watchdog rc timed_out=0
+  local lane=$1 launcher=$2 timeout=${3:-${FM_FREE_LANE_PREFLIGHT_TIMEOUT:-8}} errfile killmark shebang pid watchdog rc timed_out=0
   if [ ! -x "$launcher" ]; then
     echo "error: free-tier lane '$lane' selected but the blessed launcher is not installed or not executable: $launcher" >&2
     echo "hint: run 'bin/fm-free-lane-run.sh --install-launcher' then 'av bless $launcher' (see docs/free-tier-routing.md)" >&2
     return 1
   fi
-  case "$(head -c 512 -- "$launcher" 2>/dev/null)" in
+  shebang=
+  read -r shebang < "$launcher" 2>/dev/null || true
+  case "$shebang" in
     '#!'*'av inject '*)
       : # at least an av-inject launcher; fm-free-lane-run.sh's
         # install_launcher owns the exact key set named there.
@@ -1276,18 +1278,17 @@ free_lane_preflight() {
       ;;
   esac
   errfile=$(mktemp) || return 1
-  "$launcher" --exec "$lane" -- true >/dev/null 2>"$errfile" &
+  killmark="$errfile.timeout"
+  "$launcher" --exec "$lane" -- true </dev/null >/dev/null 2>"$errfile" &
   pid=$!
-  ( sleep "$timeout"; kill -9 "$pid" 2>/dev/null ) &
+  ( sleep "$timeout"; : > "$killmark"; kill -9 "$pid" 2>/dev/null ) &
   watchdog=$!
   wait "$pid" 2>/dev/null
   rc=$?
-  if kill -0 "$watchdog" 2>/dev/null; then
-    kill "$watchdog" 2>/dev/null
-    wait "$watchdog" 2>/dev/null || true
-  else
-    timed_out=1
-  fi
+  kill "$watchdog" 2>/dev/null
+  wait "$watchdog" 2>/dev/null || true
+  [ ! -e "$killmark" ] || timed_out=1
+  rm -f "$killmark"
   if [ "$timed_out" -eq 1 ]; then
     echo "error: free-tier lane '$lane' probe through $launcher did not return within ${timeout}s; the launcher is most likely unblessed and is waiting on an interactive approval nobody will answer" >&2
     echo "hint: run 'av bless $launcher' once as the operator, then retry the spawn" >&2
@@ -1456,14 +1457,6 @@ case "$HARNESS" in
     fi
     LAUNCH=${LAUNCH//__PITUIMODE__/$PI_TUI_MODE}
     LAUNCH="FM_PI_HARNESS=$HARNESS $LAUNCH"
-    FREE_LANE_WRAP=
-    FREE_LANE=$(free_lane_for_model "$MODEL") && {
-      FREE_LANE_NAME=${FREE_LANE% *}
-      FREE_LANE_LAUNCHER="$CONFIG/free-lane-launcher"
-      free_lane_preflight "$FREE_LANE_NAME" "$FREE_LANE_LAUNCHER" || exit 1
-      FREE_LANE_WRAP="$(shell_quote "$FREE_LANE_LAUNCHER") --exec $(shell_quote "$FREE_LANE_NAME") -- "
-    }
-    LAUNCH=${LAUNCH//__FREELANE__/$FREE_LANE_WRAP}
     ;;
   cursor)
     # `cursor` is not the CLI name, and the legacy alias `agent` is far too
@@ -1504,6 +1497,23 @@ if [ "$KIND" = secondmate ] && [ -z "$ARG3" ]; then
     fi
   fi
 fi
+
+# Free-lane detection runs only after the secondmate model pin above has been
+# resolved, so a secondmate pinned to a free-lane model string is wrapped and
+# preflighted exactly like an explicit --model would be, instead of launching
+# unwrapped with no lane key.
+case "$HARNESS" in
+  pi|pi-signed)
+    FREE_LANE_WRAP=
+    FREE_LANE=$(free_lane_for_model "$MODEL") && {
+      FREE_LANE_NAME=${FREE_LANE% *}
+      FREE_LANE_LAUNCHER="$CONFIG/free-lane-launcher"
+      free_lane_preflight "$FREE_LANE_NAME" "$FREE_LANE_LAUNCHER" || exit 1
+      FREE_LANE_WRAP="$(shell_quote "$FREE_LANE_LAUNCHER") --exec $(shell_quote "$FREE_LANE_NAME") -- "
+    }
+    LAUNCH=${LAUNCH//__FREELANE__/$FREE_LANE_WRAP}
+    ;;
+esac
 
 secondmate_registry_value() {
   secondmate_registry_field "$DATA/secondmates.md" "$1" "$2"
