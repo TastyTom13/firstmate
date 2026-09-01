@@ -133,7 +133,7 @@ extract_done_ids() {
     }
     /^- \[[ xX]\] / {
       flush()
-      if ($0 ~ /^- \[x\] [^ ]+ - /) id = $3
+      if ($0 ~ /^- \[[xX]\] [^ ]+ - /) id = $3
       next
     }
     /^[^[:space:]]/ {

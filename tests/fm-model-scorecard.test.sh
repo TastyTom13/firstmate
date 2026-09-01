@@ -282,6 +282,28 @@ EOF
   pass "fm-model-scorecard.sh: the no-op message names only the files it read"
 }
 
+# Regression: bin/fm-fleet-snapshot.sh treats `- [X]` as a Done row too, so a
+# hand-edited or foreign-written uppercase checkbox must not silently drop a
+# task from the tally.
+test_uppercase_checkbox_done_rows_are_tallied() {
+  local home out
+  home="$TMP_ROOT/uppercase-checkbox"
+  mkdir -p "$home/data" "$home/state"
+  cat > "$home/data/backlog.md" <<'EOF'
+# Backlog
+
+## Done
+- [X] task-upper - hand-edited close https://github.com/o/r/pull/15 (merged 2026-08-08)
+  model=claude-sonnet-5 effort=low
+- [x] task-lower - shipped https://github.com/o/r/pull/16 (merged 2026-08-08)
+  model=claude-sonnet-5 effort=low
+EOF
+  out=$(FM_HOME="$home" "$SCORECARD")
+  echo "$out" | grep -E '^claude-sonnet-5 +low +2 +0 +0$' >/dev/null \
+    || fail "an uppercase [X] Done row was dropped from the tally (got: $out)"
+  pass "fm-model-scorecard.sh: an uppercase [X] Done row is tallied like a lowercase one"
+}
+
 test_script_parses
 test_help_renders
 test_missing_backlog_is_refused
@@ -292,3 +314,4 @@ test_ask_user_counts_every_needs_decision_shape
 test_absolute_archive_path_is_read_as_is
 test_archive_key_outside_markdown_table_is_ignored
 test_no_op_message_names_only_files_it_read
+test_uppercase_checkbox_done_rows_are_tallied

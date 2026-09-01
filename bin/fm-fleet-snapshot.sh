@@ -411,7 +411,11 @@ backlog_json() {  # [<backlog-path>] - defaults to this home's $BACKLOG
        end)
     | .records |= map(
         if (.body_lines | length) > 0 then
-          .body_excerpt = ((.body_lines | join(" "))[:240])
+          (.body_lines
+           | map(select((test("^(local main )?model=\\S+ effort=\\S+$")) | not))) as $described
+          | if ($described | length) > 0 then
+              .body_excerpt = (($described | join(" "))[:240])
+            else . end
         else . end)
     | .records as $records
     | (reduce ($records[] | select(.structured)) as $record ({};
