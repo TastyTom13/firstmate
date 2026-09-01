@@ -133,7 +133,9 @@ That launcher is the only path that delivers a lane key today, which is why a sp
 
 [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh) is the single command shape for every lane; its header owns the exact flags, lane table, and exit codes.
 A lane invocation is text-only: it runs with no built-in tools, no extension-registered tools, and no `AGENTS.md`/`CLAUDE.md` project context, so a lane cannot read the repository it is pointed at.
-A caller can pass its own `--system-prompt` or `--tools` after the lane name to override those two, but there is no per-call override for the context-file and extension restriction; a call that needs either should not use this runner.
+A caller can pass its own `--system-prompt` or `--tools` after the lane name to override those two.
+The extension restriction blocks automatic discovery only, so a caller that needs one specific extension can still name it explicitly with `-e <path>` after the lane name.
+There is no per-call override for the context-file restriction; a call that genuinely needs `AGENTS.md`/`CLAUDE.md` content should not use this runner.
 It is an ordinary portable script that reads each lane's key from its own environment and refuses with exit 3 when that variable is absent, so an unauthenticated lane never dispatches.
 Before the cloudflare lane only, it also refuses when the account segment of that provider's `baseUrl` is still an unfilled blank in the operator's own `models.json`.
 That check is deliberately non-fatal on any shape problem: an absent, unreadable, or malformed models file warns on stderr once and dispatches anyway, so a pi change can cost the guard but never the lane.
