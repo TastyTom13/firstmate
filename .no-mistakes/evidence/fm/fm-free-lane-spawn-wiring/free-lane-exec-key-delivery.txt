@@ -1,0 +1,18 @@
+=== fm-free-lane-run.sh --exec: the worker-spawn key delivery, run for real ===
+
+$ GROQ_API_KEY=... CEREBRAS_API_KEY=... OPENROUTER_API_KEY=... fm-free-lane-run.sh --exec groq -- env-probe
+GROQ_API_KEY=groq-secret
+CEREBRAS_API_KEY=<absent>
+OPENROUTER_API_KEY=<absent>
+CLOUDFLARE_API_KEY=<absent>
+FM_FREE_LANE_ACTIVE=1
+
+$ (inside a lane) fm-free-lane-run.sh --exec groq -- true    # re-entry guard
+error: a free-tier lane may not start another free-tier lane
+hint: FM_FREE_LANE_ACTIVE marks this process tree as already inside a lane
+exit: 4
+
+$ fm-free-lane-run.sh --exec groq -- true   # with no key in the environment
+error: lane 'groq' needs GROQ_API_KEY in the environment
+hint: run through the blessed launcher (/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M1EP5SQDN02D9TKSR1DKNBQQ/config/free-lane-launcher); see --install-launcher
+exit: 3

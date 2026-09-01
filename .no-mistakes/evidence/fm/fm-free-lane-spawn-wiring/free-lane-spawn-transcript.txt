@@ -1,0 +1,31 @@
+
+=== 1. paid pi model (--model openai-codex/gpt-5.6-sol): unchanged, no lane ===
+$ fm-spawn.sh ev-paid-z1 <project> --model openai-codex/gpt-5.6-sol --effort max
+exit: 0
+launch command sent to the pane:
+FM_PI_HARNESS=pi '/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-free-lane-evidence.Ny9O3i/paid/fake/fakebin/pi' --tui-mode regular --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e '/var/f
+
+=== 2. free-lane model, no blessed launcher installed: refuses, launches nothing ===
+$ fm-spawn.sh ev-nolauncher-z1 <project> --model groq/openai/gpt-oss-120b --effort low
+exit: 1
+error: free-tier lane 'groq' selected but the blessed launcher is not installed or not executable: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-free-lane-evidence.Ny9O3i/nolauncher/home/config/free-lane-launcher
+hint: run 'bin/fm-free-lane-run.sh --install-launcher' then 'av bless /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-free-lane-evidence.Ny9O3i/nolauncher/home/config/free-lane-launcher' (see docs/free-tier-routing.md)
+launch commands sent: 0
+
+=== 3. free-lane model, vault key absent: refuses fast, names the key ===
+exit: 1
+error: free-tier lane 'groq' preflight failed through /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-free-lane-evidence.Ny9O3i/nokey/home/config/free-lane-launcher (exit 3):
+  error: lane 'groq' needs GROQ_API_KEY in the environment
+launch commands sent: 0
+
+=== 4. free-lane model, UNBLESSED launcher (hangs on approval): bounded probe refuses ===
+exit: 1  (refused after 2s, bound was 2s)
+error: free-tier lane 'groq' probe through /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-free-lane-evidence.Ny9O3i/unblessed/home/config/free-lane-launcher did not return within 2s; the launcher is most likely unblessed and is waiting on an interactive approval nobody will answer
+hint: run 'av bless /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-free-lane-evidence.Ny9O3i/unblessed/home/config/free-lane-launcher' once as the operator, then retry the spawn
+launch commands sent: 0
+
+=== 5. free-lane model, blessed launcher + key present: real worker wrapped through --exec ===
+$ fm-spawn.sh ev-ok-z1 <project> --model groq/openai/gpt-oss-120b --effort low
+exit: 0
+launch command sent to the pane:
+FM_PI_HARNESS=pi '/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-free-lane-evidence.Ny9O3i/ok/home/config/free-lane-launcher' --exec 'groq' -- '/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-free-lane-evidence.Ny9O3i/ok/fake/fakebin/pi' --tui-mode regular --model 'groq/openai/gpt-oss-120b' --thinking 'low' 
