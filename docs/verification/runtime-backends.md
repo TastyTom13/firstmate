@@ -974,6 +974,29 @@ Refresh this harness-dependent proof before accepting a cursor upgrade:
 FM_HARNESS_LIVENESS_DRIFT=1 bin/fm-test-run.sh tests/fm-harness-liveness-drift-live-e2e.test.sh
 ```
 
+## Free-tier lane pi flags
+
+The free-tier lane runner ([`bin/fm-free-lane-run.sh`](../../bin/fm-free-lane-run.sh), [docs/free-tier-routing.md](../free-tier-routing.md)) keeps a lane call inside Groq's 8,000-token-per-minute cap with four flags Pi owns: `--system-prompt`, `--no-builtin-tools`, `--no-context-files`, and `--no-extensions`.
+Pi offers a flag it does not recognise to its extensions before rejecting it, so a rename can change what the runner asks for without changing what it exits.
+The portable regression in `tests/fm-free-lane-run.test.sh` pins the dispatched argv against a fake pi and cannot see that.
+Refresh the live proof after every Pi upgrade with:
+
+```sh
+FM_FREE_LANE_SLIM_LIVE_E2E=1 bin/fm-test-run.sh tests/fm-free-lane-slim-prompt-live-e2e.test.sh
+```
+
+The guard reads no credentials and makes no provider call: it generates its own `PI_CODING_AGENT_DIR` whose single provider has a loopback `baseUrl` served by a local mock, and asserts on the request the real pi assembled.
+It first records a baseline run of the same pi in the same directory with none of the flags, and fails rather than passing vacuously if that baseline no longer shows built-in tools, an extension-registered tool, and the working directory's `AGENTS.md`.
+
+Observed 2026-09-01 against pi 0.84.3 on macOS 26.5.2 arm64:
+
+```text
+ok - the lane request offers no tools, while the same pi offers read,bash,edit,write,fm_free_lane_live_probe without the flags
+ok - the lane request carries no AGENTS.md content, while the same pi loads it without the flag
+ok - the lane request carries the runner's own system prompt, not pi's default
+# verified against pi 0.84.3
+```
+
 ## Pi supervision branch
 
 The supervision-branch extension (`.pi/extensions/fm-branch-supervision.ts`, [docs/pi-supervision-branch.md](../pi-supervision-branch.md)) builds its persistent second session through the Pi SDK surface: `createAgentSession` (including its `model`, `modelRuntime`, and `thinkingLevel` options), `DefaultResourceLoader` with `extensionFactories`, `SessionManager`, `createBashToolDefinition` with a `spawnHook`, `sendCustomMessage`, the `before_provider_request` hook, the command context's model registry for picker candidates, a fresh `ModelRuntime` for isolated-branch resolution, and Pi's own `getSupportedThinkingLevels`/`clampThinkingLevel` plus its `getThinkingLevel` and `thinking_level_select` extension surface for effort.

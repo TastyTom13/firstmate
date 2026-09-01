@@ -68,19 +68,20 @@ Assignment is longest-processing-time bin packing over per-script duration hints
 The hints came from the `fm-test-timing-portable-serial-*` artifacts of green CI run [33448875426](https://github.com/TastyTom13/firstmate/actions/runs/33448875426) on 2026-09-01, where the lane ran 142 scripts in 3718016 ms of serial work.
 `tests/fm-free-lane-run.test.sh` did not exist on that run, so its 559 ms hint comes from the shard 1 artifact of run [33494080823](https://github.com/TastyTom13/firstmate/actions/runs/33494080823), which is the first run that measured it.
 A script with no hint gets the conservative `PORTABLE_SERIAL_DEFAULT_WEIGHT_MS` default.
+`tests/fm-free-lane-slim-prompt-live-e2e.test.sh` is unmeasured and carries that default, which overstates its real cost because it self-skips unless `FM_FREE_LANE_SLIM_LIVE_E2E=1` is set.
 Hints only affect balance: the coverage guard keeps the partition complete and disjoint whatever they say, so a stale hint costs a slower shard rather than lost coverage.
 Balance is still worth keeping current, because enough unmeasured or under-measured scripts let one shard carry substantially more real work than another and reach the job cap while another runner sits idle - this exact drift (hints last refreshed 2026-08-21 against a lane that had since grown from 116 to 143 scripts and about 42.6 min to about 62 min of real serial work) is what cancelled `portable-serial-3of4` at its 20-minute cap on green `main` with no PR code present.
 Refresh the hints whenever the serial lane gains scripts, rather than waiting for a shard to time out.
 
 | Lane | Script count | Estimated duration |
 |---|---:|---:|
-| `portable-serial-1of6` | 22 | 623098 ms (~623.1 s) |
-| `portable-serial-2of6` | 25 | 623098 ms (~623.1 s) |
-| `portable-serial-3of6` | 25 | 623094 ms (~623.1 s) |
-| `portable-serial-4of6` | 23 | 623093 ms (~623.1 s) |
-| `portable-serial-5of6` | 25 | 623098 ms (~623.1 s) |
-| `portable-serial-6of6` | 24 | 623094 ms (~623.1 s) |
-| imbalance | | 5 ms |
+| `portable-serial-1of6` | 23 | 629757 ms (~629.8 s) |
+| `portable-serial-2of6` | 25 | 629770 ms (~629.8 s) |
+| `portable-serial-3of6` | 24 | 629757 ms (~629.8 s) |
+| `portable-serial-4of6` | 24 | 629752 ms (~629.8 s) |
+| `portable-serial-5of6` | 26 | 629769 ms (~629.8 s) |
+| `portable-serial-6of6` | 24 | 629770 ms (~629.8 s) |
+| imbalance | | 18 ms |
 
 The single longest script, `tests/fm-watch-triage.test.sh` at 247587 ms, is the floor for any shard count.
 

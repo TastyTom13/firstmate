@@ -132,6 +132,13 @@ Routine lane invocations go through one stable launcher so the owner reviews it 
 That launcher is the only path that delivers a lane key today, which is why a spawned crewmate cannot use a lane until `fm-free-lane-spawn-wiring` lands.
 
 [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh) is the single command shape for every lane; its header owns the exact flags, lane table, and exit codes.
+A lane invocation is text-only: it runs with no built-in tools, no extension-registered tools, and no `AGENTS.md`/`CLAUDE.md` project context, so a lane cannot read the repository it is pointed at.
+That restriction is what keeps a lane under the per-minute budget above: pi otherwise attaches its own coding-agent prompt, its tool definitions, and the full auto-discovered `AGENTS.md`/`CLAUDE.md` of the working directory, which made a one-line prompt cost 31,264 tokens and drew a Groq `413` refusal before this runner sent a slim prompt instead.
+Two of those defaults are overridable per call, and they are not the same thing: `--system-prompt` after the lane name replaces the slim prompt text, and `--tools`/`-t` after the lane name re-enables named built-in tools that `--no-builtin-tools` switched off.
+`--tools` cannot bring back an extension's tool, because `--no-extensions` stops that extension loading at all, so there is no registered name for the allowlist to match.
+The extension restriction blocks automatic discovery only, so the one way back for an extension's tool is naming that extension file explicitly with `-e <path>` after the lane name.
+There is no per-call override for the context-file restriction; a call that genuinely needs `AGENTS.md`/`CLAUDE.md` content should not use this runner.
+Those four pi flags are the whole saving, so [`docs/verification/runtime-backends.md`](verification/runtime-backends.md#free-tier-lane-pi-flags) owns the opt-in live guard that reproves them against the installed pi after an upgrade.
 It is an ordinary portable script that reads each lane's key from its own environment and refuses with exit 3 when that variable is absent, so an unauthenticated lane never dispatches.
 Before the cloudflare lane only, it also refuses when the account segment of that provider's `baseUrl` is still an unfilled blank in the operator's own `models.json`.
 That check is deliberately non-fatal on any shape problem: an absent, unreadable, or malformed models file warns on stderr once and dispatches anyway, so a pi change can cost the guard but never the lane.
@@ -153,6 +160,9 @@ They work when a lane is invoked by hand through [`bin/fm-free-lane-run.sh`](../
 A crewmate spawned on this rule does not inherit the lane keys, because the spawn path launches the `pi` binary directly and knows nothing about the launcher.
 Selecting this rule today therefore produces a worker whose free-tier model is unavailable in its own pane, so the rule must not be relied on for real dispatch yet.
 The follow-up task `fm-free-lane-spawn-wiring` is the work that closes that gap; install the rule now only to have it ready, not to route real work through it.
+
+Scope the brief accordingly: a lane is text-only and cannot read the repository, so any fixture shape, module signature, or existing test style the generated boilerplate must match has to be quoted into the brief itself.
+The lane returns text for the dispatching agent to place; it is not a worker that opens files in the repo.
 
 `config/crew-dispatch.json` is home-local and gitignored, so this repository ships the rule text rather than the file.
 Add this object to the `rules` array of the home's own `config/crew-dispatch.json`, keeping it ahead of the general cheap-model rule so the narrower condition is matched first.
@@ -178,7 +188,7 @@ Add this object to the `rules` array of the home's own `config/crew-dispatch.jso
       "effort": "low"
     }
   ],
-  "why": "Free-tier relief for the highest-volume, lowest-judgement task class. Candidates are in survey-preference order from docs/free-tier-providers.md: Groq first (Services Agreement forbids training on inputs account-wide, no free-tier carve-out), Cloudflare Workers AI second (published no-training term), OpenRouter last for breadth (non-logging upstreams only by default). Cerebras is deliberately absent: its account returned 402 payment_required on every chat completion on 2026-09-01 despite a live key, so it is held out until the account clears. Never select this profile without a passing bin/fm-free-tier-guard.sh check. Routine invocations go through the blessed launcher at config/free-lane-launcher, never ad-hoc av inject. LAUNCHER-ONLY UNTIL fm-free-lane-spawn-wiring LANDS: the spawn path launches pi directly and does not deliver the lane keys, so a crewmate spawned on this profile will not have a working free-tier model in its pane. See docs/free-tier-routing.md."
+  "why": "Free-tier relief for the highest-volume, lowest-judgement task class. Candidates are in survey-preference order from docs/free-tier-providers.md: Groq first (Services Agreement forbids training on inputs account-wide, no free-tier carve-out), Cloudflare Workers AI second (published no-training term), OpenRouter last for breadth (non-logging upstreams only by default). Cerebras is deliberately absent: its account returned 402 payment_required on every chat completion on 2026-09-01 despite a live key, so it is held out until the account clears. Never select this profile without a passing bin/fm-free-tier-guard.sh check. Routine invocations go through the blessed launcher at config/free-lane-launcher, never ad-hoc av inject. TEXT-ONLY LANE: the runner dispatches pi with no built-in tools, no extension tools, and no AGENTS.md/CLAUDE.md context, so the lane cannot read a single file in the repo it is named for; every fixture shape, module signature, or existing test style the output must match has to be quoted into the brief itself. LAUNCHER-ONLY UNTIL fm-free-lane-spawn-wiring LANDS: the spawn path launches pi directly and does not deliver the lane keys, so a crewmate spawned on this profile will not have a working free-tier model in its pane. See docs/free-tier-routing.md."
 }
 ```
 

@@ -12,6 +12,15 @@
 # three, it carries the FM_FREE_LANE_ACTIVE marker, a lane invocation that
 # already sees that marker refuses with exit 4, and the generated launcher
 # records variable names rather than values.
+# Every lane dispatch also passes a slim --system-prompt, --no-builtin-tools,
+# --no-context-files, and --no-extensions to pi instead of its default
+# coding-agent prompt, tool set, AGENTS.md/CLAUDE.md auto-discovery, and
+# extension discovery, and a caller can still override the default system
+# prompt with its own flag, because the runner's own flags always precede the
+# caller's and pi takes the last occurrence.
+# A fake pi accepts whatever argv it is handed, so that those four flags still
+# mean what the runner assumes is proven separately against the real binary by
+# tests/fm-free-lane-slim-prompt-live-e2e.test.sh.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -41,6 +50,21 @@ write_models() {
   mkdir -p "$agent_dir"
   printf '{"providers":{"cloudflare":{"baseUrl":"%s","api":"openai-completions"}}}\n' \
     "$base_url" > "$agent_dir/models.json"
+}
+
+# Resolves a repeated flag the way pi itself does, taking the last
+# occurrence, from the argv the fake pi recorded one argument per line.
+last_flag_value() {  # <argv-file> <flag>
+  local file=$1 flag=$2 line value="" take=0
+  while IFS= read -r line; do
+    if [ "$take" = 1 ]; then
+      value=$line
+      take=0
+    elif [ "$line" = "$flag" ]; then
+      take=1
+    fi
+  done < "$file"
+  printf '%s' "$value"
 }
 
 test_list_names_every_lane_and_its_variable() {
@@ -373,6 +397,49 @@ test_pi_sees_only_the_invoked_lanes_own_key() {
   pass "pi sees the invoked lane's own key and none of the other three"
 }
 
+test_lane_dispatch_uses_a_slim_prompt_and_no_builtin_tools() {
+  local dir args
+  dir="$TMP_ROOT/slim-prompt"
+  make_fakebin "$dir/bin"
+  export FM_TEST_PI_ARGS="$dir/pi-args.txt"
+
+  GROQ_API_KEY=not-a-real-value PATH="$dir/bin:$PATH" "$RUNNER" groq -p "hi" \
+    >/dev/null 2>&1 || fail "the groq lane did not dispatch"
+
+  args=$(cat "$FM_TEST_PI_ARGS")
+  assert_contains "$args" "--system-prompt" \
+    "the runner did not pass a system prompt to pi"
+  assert_contains "$args" "one-shot text generator" \
+    "the runner did not pass its slim free-lane system prompt to pi"
+  assert_contains "$args" "--no-builtin-tools" \
+    "the runner did not disable pi's built-in tools"
+  assert_contains "$args" "--no-context-files" \
+    "the runner did not disable pi's AGENTS.md/CLAUDE.md context-file discovery"
+  assert_contains "$args" "--no-extensions" \
+    "the runner did not disable pi's extension discovery"
+
+  unset FM_TEST_PI_ARGS
+  pass "a lane invocation passes a slim system prompt and disables built-in tools, context files, and extensions"
+}
+
+test_caller_can_still_override_the_default_system_prompt() {
+  local dir resolved
+  dir="$TMP_ROOT/slim-prompt-override"
+  make_fakebin "$dir/bin"
+  export FM_TEST_PI_ARGS="$dir/pi-args.txt"
+
+  GROQ_API_KEY=not-a-real-value PATH="$dir/bin:$PATH" \
+    "$RUNNER" groq --system-prompt "caller prompt" -p "hi" \
+    >/dev/null 2>&1 || fail "the groq lane did not dispatch with a caller override"
+
+  resolved=$(last_flag_value "$FM_TEST_PI_ARGS" --system-prompt)
+  [ "$resolved" = "caller prompt" ] \
+    || fail "pi would resolve --system-prompt to '$resolved', not the caller's own"
+
+  unset FM_TEST_PI_ARGS
+  pass "the caller's --system-prompt is the last one pi sees, so it wins the override"
+}
+
 test_a_lane_session_may_not_start_another_lane() {
   local dir status err lane
   dir="$TMP_ROOT/reentry"
@@ -416,4 +483,6 @@ test_cloudflare_refuses_an_unfilled_account_segment
 test_cloudflare_shape_problems_warn_and_still_dispatch
 test_the_account_guard_is_scoped_to_the_cloudflare_lane
 test_pi_sees_only_the_invoked_lanes_own_key
+test_lane_dispatch_uses_a_slim_prompt_and_no_builtin_tools
+test_caller_can_still_override_the_default_system_prompt
 test_a_lane_session_may_not_start_another_lane
