@@ -715,7 +715,7 @@ __FM_BEARINGS_BOARD_DATA__
     var row = el("div", "bb-row");
     row.appendChild(badge(t.state === "working" ? "online" : "info", t.state));
     var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", t.doing));
+    main.appendChild(el("div", "bb-row__title", shownTitle(t.doing)));
     /* captain-facing rows name the repo; the internal task id shows only when
        no repo is known */
     main.appendChild(el("div", "bb-row__sub", t.kind + " · " + (t.repo || t.id)));
@@ -732,7 +732,7 @@ __FM_BEARINGS_BOARD_DATA__
     chk.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
     row.appendChild(chk);
     var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", t.what));
+    main.appendChild(el("div", "bb-row__title", shownTitle(t.what)));
     main.appendChild(el("div", "bb-row__sub", (t.repo || t.id) + " · " + t.owner));
     row.appendChild(main);
     if (t.pr_url) {

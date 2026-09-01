@@ -283,7 +283,10 @@ test_a_promoted_idea_row_drops_the_prefix_too() {
   local home out data
   home=$(make_home ideas-promoted); data="$home/promoted-payload.json"
   jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
-    prs_live:false, captains_call:[], underway:[], landed:[],
+    prs_live:false, captains_call:[],
+    underway:[{id:"idea-b", state:"working", doing:"Idea: repaint the hull",
+               kind:"ship", repo:"sample"}],
+    landed:[{id:"idea-c", what:"Idea: scrub the deck", owner:"(main)", repo:"sample"}],
     charted:[{id:"idea-a", title:"Idea: batch the merges", repo:"sample",
               reason:"waiting on review", dispatchable:true}]}' > "$data"
   PATH="$home/fakebin:$PATH" FM_HOME="$home" \
@@ -294,8 +297,9 @@ test_a_promoted_idea_row_drops_the_prefix_too() {
     || fail "the built board could not be rendered"
   printf '%s' "$out" | jq -e '
     .error == "" and .charted[0].title == "batch the merges" and .charted[0].pickable == true
-  ' >/dev/null || fail "a promoted idea kept its plumbing prefix in Charted Next: $out"
-  pass "a promoted idea's Charted Next row drops the stored Idea: prefix"
+      and .underway == ["repaint the hull"] and .landed == ["scrub the deck"]
+  ' >/dev/null || fail "a promoted idea kept its plumbing prefix on the board: $out"
+  pass "a promoted idea drops the stored Idea: prefix in charted, underway, and landed"
 }
 
 test_two_captured_ideas_queue_two_distinct_answers() {

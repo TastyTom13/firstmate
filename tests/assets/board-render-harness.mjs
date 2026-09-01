@@ -2,10 +2,11 @@
 // shim and print what the renderer actually produced, so board behavior is
 // asserted through the real template rather than by reading its source.
 //
-// Usage: node board-render-harness.mjs <built-board.html>
+// Usage: node board-render-harness.mjs <built-board.html> [idea-to-submit...]
 // Prints one JSON document:
 //   { stats:[{n,label}], fuel:{hidden,cells:[{tone,name,pct,fill,meta}]},
-//     charted:[{title,sub,badges,pickable}], parkedIdeas:[{title,sub}] }
+//     charted:[{title,sub,badges,pickable}], underway:[title], landed:[title],
+//     parkedIdeas:[{title,sub}], ideaCapture:{submitted,cleared,limitText,queued} }
 import { readFileSync } from "node:fs";
 
 const html = readFileSync(process.argv[2], "utf8");
@@ -131,6 +132,17 @@ const fuel = {
   }),
 };
 
+// Underway and Recently Landed: the titles those two sections actually show.
+const titlesOf = (id) =>
+  (byId.get(id) || new Node("div")).children
+    .filter((r) => r.className.split(/\s+/).includes("bb-row"))
+    .map((row) =>
+      row.children
+        .find((c) => c.className.includes("bb-row__main"))
+        ?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "");
+const underway = titlesOf("bb-underway");
+const landed = titlesOf("bb-landed");
+
 const ch = byId.get("bb-charted") || new Node("div");
 const charted = ch.children
   .filter((r) => r.className.split(/\s+/).includes("bb-row"))
@@ -182,5 +194,6 @@ for (const text of process.argv.slice(3)) {
 ideaCapture.queued = queued;
 
 process.stdout.write(JSON.stringify({
-  stats, fuel, charted, empty, more, parkedIdeas, parkedIdeasEmpty, ideaCapture, error: errorText,
+  stats, fuel, charted, empty, more, underway, landed,
+  parkedIdeas, parkedIdeasEmpty, ideaCapture, error: errorText,
 }) + "\n");
