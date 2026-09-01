@@ -8,6 +8,8 @@
 # The cloudflare lane additionally refuses when the account segment of its pi
 # provider baseUrl is still an unfilled blank, while every shape problem in
 # that models file warns and dispatches anyway.
+# The lane pi starts sees only the invoked lane's own key, never the other
+# three, and the generated launcher records variable names rather than values.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -24,6 +26,8 @@ make_fakebin() {
   cat > "$dir/pi" <<'FAKE'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "$FM_TEST_PI_ARGS"
+env | grep -E '^(GROQ|CEREBRAS|CLOUDFLARE|OPENROUTER)_API_KEY=' \
+  > "$FM_TEST_PI_ARGS.env" || : > "$FM_TEST_PI_ARGS.env"
 FAKE
   chmod +x "$dir/pi"
 }
@@ -120,8 +124,12 @@ test_install_launcher_writes_a_blessable_shebang() {
   : > "$dir/avbin/av"
   chmod +x "$dir/avbin/av"
 
-  FM_CONFIG_OVERRIDE="$dir/config" "$RUNNER" --install-launcher --av "$dir/avbin/av" \
-    >/dev/null 2>&1 || fail "--install-launcher did not exit 0"
+  (
+    export GROQ_API_KEY=sentinel-groq-9f1 CEREBRAS_API_KEY=sentinel-cerebras-9f2
+    export CLOUDFLARE_API_KEY=sentinel-cloudflare-9f3 OPENROUTER_API_KEY=sentinel-openrouter-9f4
+    FM_CONFIG_OVERRIDE="$dir/config" "$RUNNER" --install-launcher --av "$dir/avbin/av" \
+      >/dev/null 2>&1
+  ) || fail "--install-launcher did not exit 0"
 
   launcher="$dir/config/free-lane-launcher"
   [ -x "$launcher" ] || fail "--install-launcher did not write an executable launcher"
@@ -142,8 +150,12 @@ test_install_launcher_writes_a_blessable_shebang() {
 
   assert_grep "fm-free-lane-run.sh" "$launcher" \
     "the launcher does not hand off to the tracked runner"
-  assert_not_contains "$(cat "$launcher")" "not-a-real-value" \
-    "the launcher captured a value instead of a variable name"
+  local sentinel
+  for sentinel in sentinel-groq-9f1 sentinel-cerebras-9f2 sentinel-cloudflare-9f3 \
+    sentinel-openrouter-9f4; do
+    assert_not_contains "$(cat "$launcher")" "$sentinel" \
+      "the launcher captured the value of a lane key instead of its name"
+  done
 
   pass "--install-launcher writes an executable av inject launcher naming every lane key"
 }
@@ -318,6 +330,41 @@ test_the_account_guard_is_scoped_to_the_cloudflare_lane() {
   pass "an unfilled cloudflare account segment does not affect the other three lanes"
 }
 
+test_pi_sees_only_the_invoked_lanes_own_key() {
+  local dir lane keep other seen
+  dir="$TMP_ROOT/key-narrowing"
+  make_fakebin "$dir/bin"
+  export FM_TEST_PI_ARGS="$dir/pi-args.txt"
+  write_models "$dir/pi" "https://api.cloudflare.com/client/v4/accounts/abc123/ai/v1"
+
+  for lane in groq openrouter cloudflare; do
+    case $lane in
+      groq) keep=GROQ_API_KEY ;;
+      openrouter) keep=OPENROUTER_API_KEY ;;
+      cloudflare) keep=CLOUDFLARE_API_KEY ;;
+    esac
+    rm -f "$FM_TEST_PI_ARGS.env"
+
+    GROQ_API_KEY=sentinel-groq-1a CEREBRAS_API_KEY=sentinel-cerebras-2b \
+      CLOUDFLARE_API_KEY=sentinel-cloudflare-3c OPENROUTER_API_KEY=sentinel-openrouter-4d \
+      PI_CODING_AGENT_DIR="$dir/pi" PATH="$dir/bin:$PATH" \
+      "$RUNNER" "$lane" -p "hi" >/dev/null 2>&1 \
+      || fail "the $lane lane did not dispatch with every lane key present"
+
+    seen=$(cat "$FM_TEST_PI_ARGS.env")
+    assert_contains "$seen" "$keep=" "the $lane lane did not pass its own key to pi"
+    for other in GROQ_API_KEY CEREBRAS_API_KEY CLOUDFLARE_API_KEY OPENROUTER_API_KEY; do
+      if [ "$other" != "$keep" ]; then
+        assert_not_contains "$seen" "$other=" \
+          "the $lane lane left $other readable by pi"
+      fi
+    done
+  done
+
+  unset FM_TEST_PI_ARGS
+  pass "pi sees the invoked lane's own key and none of the other three"
+}
+
 test_list_names_every_lane_and_its_variable
 test_usage_errors_are_distinct_from_lane_failures
 test_absent_key_refuses_without_launching_pi
@@ -329,3 +376,4 @@ test_install_launcher_rejects_arguments_it_does_not_recognise
 test_cloudflare_refuses_an_unfilled_account_segment
 test_cloudflare_shape_problems_warn_and_still_dispatch
 test_the_account_guard_is_scoped_to_the_cloudflare_lane
+test_pi_sees_only_the_invoked_lanes_own_key

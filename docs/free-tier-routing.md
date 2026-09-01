@@ -137,6 +137,9 @@ Before the cloudflare lane only, it also refuses when the account segment of tha
 That check is deliberately non-fatal on any shape problem: an absent, unreadable, or malformed models file warns on stderr once and dispatches anyway, so a pi change can cost the guard but never the lane.
 
 `bin/fm-free-lane-run.sh --install-launcher` writes a home-local launcher to `config/free-lane-launcher` whose shebang is an `av inject` line naming exactly the four lane keys, resolving this machine's own `av` path.
+The launcher names all four keys so that one blessing covers every lane, but the lane process itself is given only the invoked lane's own key: the script removes the other three before it starts pi.
+That matters because a free-tier session must never be able to read another vendor's key and send it to the vendor it is talking to, which the pilot data lines above already forbid.
+Accepted residual: the invoked lane's own key does stay readable by the agent in that session, and removing even that would need the key to reach pi by a path the agent cannot read, which is a larger design deliberately not bought here.
 The owner then runs `av bless <that path>` once, and every later call runs without a further approval prompt.
 The launcher is home-local and gitignored because its shebang carries a machine-specific interpreter path, which is also why the portable script cannot carry that shebang itself.
 Re-run `--install-launcher` and `av bless` after moving or reinstalling the firstmate home, because the launcher records an absolute path to the tracked script.

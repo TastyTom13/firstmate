@@ -23,6 +23,15 @@
 # home-local and gitignored because its shebang carries a machine-specific
 # interpreter path; this tracked script stays portable and secret-free.
 #
+# One lane, one key: the launcher injects the whole set so a single blessing
+# covers every lane, and this script then narrows the environment immediately
+# before starting pi, removing every lane key except the one the invoked lane
+# declares. A free-tier session must not be able to read another vendor's key
+# and send it to the vendor it is talking to. If a key cannot be removed, the
+# script exits 3 rather than starting pi with a wider environment than
+# intended. The invoked lane's own key does stay readable inside that session,
+# which is the accepted residual.
+#
 # Cloudflare mispaste guard: the cloudflare lane is account-scoped and pi does
 # not expand environment variables in `baseUrl`, only in `apiKey` and
 # `headers`, so the account identifier must be typed into the operator's own
@@ -40,8 +49,8 @@
 # change can cost this guard but can never brick the lane.
 #
 # Exit codes: 0 the lane ran, 2 usage error, 3 the lane's key is absent from
-# the environment or its account segment is unfilled, otherwise pi's own exit
-# code.
+# the environment, its account segment is unfilled, or the environment could
+# not be narrowed, otherwise pi's own exit code.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -123,6 +132,21 @@ check_cloudflare_account() {
   esac
 }
 
+# The launcher injects every lane key; only the invoked lane's own key may
+# reach pi.
+narrow_to_lane_key() {
+  local keep=$1 var
+  while read -r var; do
+    if [ "$var" != "$keep" ]; then
+      unset "$var" || true
+      if [ -n "${!var:-}" ]; then
+        echo "error: cannot remove $var from the lane environment; refusing to start pi" >&2
+        exit 3
+      fi
+    fi
+  done < <(printf '%s\n' "$LANES" | cut -d'|' -f2)
+}
+
 [ "$#" -gt 0 ] || { usage; exit 2; }
 
 case $1 in
@@ -164,5 +188,7 @@ if [ -z "${!ENV_VAR:-}" ]; then
 fi
 
 [ "$LANE" != cloudflare ] || check_cloudflare_account "$PROVIDER"
+
+narrow_to_lane_key "$ENV_VAR"
 
 exec pi --provider "$PROVIDER" --model "$MODEL" "$@"
