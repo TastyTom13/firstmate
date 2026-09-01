@@ -1,5 +1,7 @@
-=== pi -p print-mode run with the fixed fm-calm extension loaded (pi 0.84.3) ===
-$ pi -p --provider openai-codex --model gpt-5.4-mini -e .pi/extensions/fm-calm.ts --no-context-files --no-tools --no-session 'Reply with exactly: CALM_PRINT_OK'
-CALM_PRINT_OK
-[exit status] 0
-(no stderr, no 'Extension ctx is stale' error, exit 0)
+$ pi -p --provider calm-e2e --model delayed "hello"   (Calm OFF)
+CALM_WORKING_E2E_RESPONSE
+
+$ pi -p --provider calm-e2e --model delayed "hello"   (Calm ON)
+CALM_WORKING_E2E_RESPONSE
+
+both exited 0, no "Extension ctx is stale" output
