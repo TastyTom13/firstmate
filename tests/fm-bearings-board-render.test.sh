@@ -341,7 +341,11 @@ test_unicode_whitespace_cannot_hide_a_metadata_tag() {
   # White_Space property, so the backlog reader's [[:space:]] accepts either in
   # front of a metadata key even though neither is an ASCII space.
   for tag in a0 85; do
-    sp=$(printf "\\302\\2$( [ "$tag" = a0 ] && printf 40 || printf 05 )")
+    if [ "$tag" = a0 ]; then
+      sp=$(printf '%b' '\0302\0240')
+    else
+      sp=$(printf '%b' '\0302\0205')
+    fi
     home=$(make_home "ideas-uws-$tag")
     out=$(render_ideas "$home" - \
       "parser rethink,${sp}hold-kind: captain,${sp}hold: pick one" \
