@@ -774,8 +774,8 @@ __FM_BEARINGS_BOARD_DATA__
        parse shape: "(key: value)" and ", key: value" tags, "(word value)"
        tags, and an unanchored "blocked-by:" which the reader matches anywhere. */
     var idea = ideaInput.value.trim()
-      .replace(/([(,][ \t]*)(repo|kind|priority|hold-kind|hold-until|hold):/g, "$1$2 -")
-      .replace(/([(,][ \t]*)(since|merged|reported|done)([ \t])/g, "$1$2-$3")
+      .replace(/(\(|,\s*)(repo|kind|priority|hold-kind|hold-until|hold):/g, "$1$2 -")
+      .replace(/(\(|,\s*)(since|merged|reported|done)(\s)/g, "$1$2-$3")
       .replace(/blocked-by:/g, "blocked-by -");
     if (!idea) return;
     if (utf8ByteLength(idea) > 512) {
