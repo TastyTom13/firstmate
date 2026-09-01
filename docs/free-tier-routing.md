@@ -27,6 +27,7 @@ Any page offering free frontier tokens without qualification is showing a revoke
 ## Provider entries
 
 Four lanes are installed: Groq, Cloudflare Workers AI, and OpenRouter are live, and Cerebras is registered but currently refused by its own account.
+Live here means live through the launcher; a spawned crewmate does not yet reach these lanes, as the dispatch rule section below explains.
 All four run on `pi`, because OpenCode is not installed on this machine (`command -v opencode` finds nothing as of 2026-09-01) and an uninstalled harness cannot be verified.
 The OpenCode block that earlier versions of this page carried has been removed rather than left unverified; add it back only after an installed OpenCode proves its own field names.
 
@@ -128,6 +129,7 @@ Cerebras passes it and still returns `402 payment_required` on every chat comple
 
 No key value is ever written to a file, including this one.
 Routine lane invocations go through one stable launcher so the owner reviews it once instead of approving every call.
+That launcher is the only path that delivers a lane key today, which is why a spawned crewmate cannot use a lane until `fm-free-lane-spawn-wiring` lands.
 
 [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh) is the single command shape for every lane; its header owns the exact flags, lane table, and exit codes.
 It is an ordinary portable script that reads each lane's key from its own environment and refuses with exit 3 when that variable is absent, so an unauthenticated lane never dispatches.
@@ -140,6 +142,12 @@ The launcher is home-local and gitignored because its shebang carries a machine-
 Re-run `--install-launcher` and `av bless` after moving or reinstalling the firstmate home, because the launcher records an absolute path to the tracked script.
 
 ## Dispatch rule
+
+Read this before installing the rule: the free-tier lanes are launcher-only today.
+They work when a lane is invoked by hand through [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh) or the blessed launcher, and only then.
+A crewmate spawned on this rule does not inherit the lane keys, because the spawn path launches the `pi` binary directly and knows nothing about the launcher.
+Selecting this rule today therefore produces a worker whose free-tier model is unavailable in its own pane, so the rule must not be relied on for real dispatch yet.
+The follow-up task `fm-free-lane-spawn-wiring` is the work that closes that gap; install the rule now only to have it ready, not to route real work through it.
 
 `config/crew-dispatch.json` is home-local and gitignored, so this repository ships the rule text rather than the file.
 Add this object to the `rules` array of the home's own `config/crew-dispatch.json`, keeping it ahead of the general cheap-model rule so the narrower condition is matched first.
@@ -165,7 +173,7 @@ Add this object to the `rules` array of the home's own `config/crew-dispatch.jso
       "effort": "low"
     }
   ],
-  "why": "Free-tier relief for the highest-volume, lowest-judgement task class. Candidates are in survey-preference order from docs/free-tier-providers.md: Groq first (Services Agreement forbids training on inputs account-wide, no free-tier carve-out), Cloudflare Workers AI second (published no-training term), OpenRouter last for breadth (non-logging upstreams only by default). Cerebras is deliberately absent: its account returned 402 payment_required on every chat completion on 2026-09-01 despite a live key, so it is held out until the account clears. Never select this profile without a passing bin/fm-free-tier-guard.sh check. Routine invocations go through the blessed launcher at config/free-lane-launcher, never ad-hoc av inject. See docs/free-tier-routing.md."
+  "why": "Free-tier relief for the highest-volume, lowest-judgement task class. Candidates are in survey-preference order from docs/free-tier-providers.md: Groq first (Services Agreement forbids training on inputs account-wide, no free-tier carve-out), Cloudflare Workers AI second (published no-training term), OpenRouter last for breadth (non-logging upstreams only by default). Cerebras is deliberately absent: its account returned 402 payment_required on every chat completion on 2026-09-01 despite a live key, so it is held out until the account clears. Never select this profile without a passing bin/fm-free-tier-guard.sh check. Routine invocations go through the blessed launcher at config/free-lane-launcher, never ad-hoc av inject. LAUNCHER-ONLY UNTIL fm-free-lane-spawn-wiring LANDS: the spawn path launches pi directly and does not deliver the lane keys, so a crewmate spawned on this profile will not have a working free-tier model in its pane. See docs/free-tier-routing.md."
 }
 ```
 

@@ -28,10 +28,12 @@
 # `headers`, so the account identifier must be typed into the operator's own
 # models.json. Before dispatching that lane only, this script reads
 # ${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/models.json, which is the path pi
-# itself resolves, and inspects the account segment of the cloudflare
-# provider's baseUrl. An unfilled segment - empty, an unexpanded `$NAME` or
-# `${NAME}` reference, or an angle-bracket blank - exits 3 naming the file and
-# what to fill in, instead of dispatching to a URL Cloudflare will reject.
+# itself resolves, and inspects the account segment of the baseUrl belonging to
+# the provider the lane table names for that lane, so renaming the provider
+# there cannot silently drop the guard. An unfilled segment - empty, an
+# unexpanded `$NAME` or `${NAME}` reference, or an angle-bracket blank - exits 3
+# naming the file and what to fill in, instead of dispatching to a URL
+# Cloudflare will reject.
 # A shape or parse problem is deliberately NOT fatal: an absent, unreadable, or
 # malformed file, a missing cloudflare provider, a missing baseUrl, or an
 # absent jq all print one warning line to stderr and dispatch anyway, so a pi
@@ -97,16 +99,16 @@ install_launcher() {
 # Refuses only an account segment that is plainly still a blank; every other
 # problem warns and lets the dispatch through.
 check_cloudflare_account() {
-  local base_url account rest
+  local provider=$1 base_url account rest
   if [ ! -r "$MODELS_FILE" ] || ! command -v jq >/dev/null 2>&1; then
-    echo "warning: cannot check the cloudflare account id in $MODELS_FILE; dispatching anyway" >&2
+    echo "warning: cannot check the '$provider' account id in $MODELS_FILE; dispatching anyway" >&2
     return 0
   fi
-  base_url=$(jq -r '.providers.cloudflare.baseUrl // empty' "$MODELS_FILE" 2>/dev/null) || base_url=''
+  base_url=$(jq -r --arg p "$provider" '.providers[$p].baseUrl // empty' "$MODELS_FILE" 2>/dev/null) || base_url=''
   case $base_url in
     */accounts/*) ;;
     *)
-      echo "warning: no cloudflare provider baseUrl with an account segment in $MODELS_FILE; dispatching anyway" >&2
+      echo "warning: no '$provider' baseUrl with an account segment in $MODELS_FILE; dispatching anyway" >&2
       return 0
       ;;
   esac
@@ -114,7 +116,7 @@ check_cloudflare_account() {
   account=${rest%%/*}
   case $account in
     ''|'$'*|'<'*)
-      echo "error: the cloudflare provider in $MODELS_FILE still has an unfilled account segment" >&2
+      echo "error: the '$provider' provider in $MODELS_FILE still has an unfilled account segment" >&2
       echo "hint: pi does not expand variables in baseUrl; type your own Cloudflare account id into that file" >&2
       exit 3
       ;;
@@ -161,6 +163,6 @@ if [ -z "${!ENV_VAR:-}" ]; then
   exit 3
 fi
 
-[ "$LANE" != cloudflare ] || check_cloudflare_account
+[ "$LANE" != cloudflare ] || check_cloudflare_account "$PROVIDER"
 
 exec pi --provider "$PROVIDER" --model "$MODEL" "$@"
