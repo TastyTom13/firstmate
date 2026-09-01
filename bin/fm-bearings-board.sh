@@ -50,7 +50,18 @@
 # fm-bearings-board.v1 payload and the board simply renders no parked-ideas
 # list, so the schema version stays unchanged. The board's own idea-capture box
 # does not read this list; it only submits a new idea through the existing
-# answer channel (`idea.<id>` in the fm-bearings-board.v1 answer shape below).
+# answer channel (`idea.<unique-suffix>` in the fm-bearings-board.v1 answer
+# shape below).
+#
+# `idea` is the optional boolean marker an Underway, Recently Landed, or
+# Charted Next item carries once a parked idea has been promoted to real work:
+# it means "this row's stored title still carries the literal `Idea: `
+# plumbing prefix", so the board strips that prefix when rendering the row.
+# The composer sets it from the task's own history and never by inspecting the
+# title text, which is what lets an ordinary task the captain deliberately
+# titled "Idea: ..." keep the exact title its backlog row has. Like the fields
+# above it is additive, and `parked_ideas` entries carry no marker because
+# every entry there is an idea by definition.
 #
 # THE IDEA-ANSWER SHAPE. A captured idea rides the same `window.lavish.
 # queuePrompt` "choice" mechanism as every other board answer
