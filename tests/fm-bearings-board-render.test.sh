@@ -269,6 +269,19 @@ test_parked_ideas_render_title_and_repo() {
   pass "parked ideas render their title, and their repo only when known"
 }
 
+test_a_board_with_no_live_connection_keeps_the_idea_and_says_so() {
+  local home out
+  home=$(make_home ideas-nobridge)
+  out=$(FM_BOARD_NO_LAVISH=1 render_ideas "$home" - "Buy a bigger anchor")
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.ideaCapture.queued | length) == 0
+      and .ideaCapture.kept == "Buy a bigger anchor"
+      and .ideaCapture.queuedTick == false
+      and (.ideaCapture.limitText | test("no live connection"))
+  ' >/dev/null || fail "an unqueueable idea was lost or falsely confirmed: $out"
+  pass "with no live connection the idea stays in the box and the board says why"
+}
+
 test_the_stored_idea_prefix_never_reaches_the_captain() {
   local home out
   home=$(make_home ideas-prefix)
@@ -345,3 +358,4 @@ test_two_captured_ideas_queue_two_distinct_answers
 test_an_over_long_idea_is_refused_instead_of_queued
 test_the_stored_idea_prefix_never_reaches_the_captain
 test_a_promoted_idea_row_drops_the_prefix_too
+test_a_board_with_no_live_connection_keeps_the_idea_and_says_so

@@ -89,7 +89,9 @@ globalThis.document = {
 // Stand in for the Lavish bridge the real board talks to, and record every
 // prompt the page queues so submissions can be asserted as observable output.
 const queued = [];
-globalThis.window = {
+// FM_BOARD_NO_LAVISH=1 stands in for an exported or file:// copy of the board,
+// where the host frame never injects the SDK.
+globalThis.window = process.env.FM_BOARD_NO_LAVISH === "1" ? {} : {
   lavish: {
     queuePrompt: (prompt, opts) => {
       queued.push({ prompt, text: opts?.text ?? "", key: opts?.data?.question ?? "", answer: opts?.data?.answer ?? "" });
@@ -190,6 +192,8 @@ for (const text of process.argv.slice(3)) {
   ideaCapture.submitted += 1;
   ideaCapture.limitText = ideaLimit.textContent;
   ideaCapture.cleared = ideaInput.value === "";
+  ideaCapture.kept = ideaInput.value;
+  ideaCapture.queuedTick = ideaForm.classList.contains("is-queued");
 }
 ideaCapture.queued = queued;
 

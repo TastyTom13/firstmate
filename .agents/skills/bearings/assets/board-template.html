@@ -776,13 +776,16 @@ __FM_BEARINGS_BOARD_DATA__
        submission for a repeated key, and each parked idea must survive even
        when several are queued in one board session */
     var key = "idea." + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
-    if (window.lavish && window.lavish.queuePrompt) {
-      window.lavish.queuePrompt(
-        "Parked idea: " + idea,
-        { tag: "choice", text: "Idea -> " + idea, element: ideaForm,
-          data: { question: key, answer: idea } }
-      );
+    if (!(window.lavish && window.lavish.queuePrompt)) {
+      ideaLimit.textContent = "This board has no live connection, so the idea was not queued. Keep the text and try again from the session board.";
+      ideaLimit.classList.add("is-visible");
+      return;
     }
+    window.lavish.queuePrompt(
+      "Parked idea: " + idea,
+      { tag: "choice", text: "Idea -> " + idea, element: ideaForm,
+        data: { question: key, answer: idea } }
+    );
     ideaForm.classList.add("is-queued");
     ideaInput.value = "";
     setTimeout(function () { ideaForm.classList.remove("is-queued"); }, 1600);
