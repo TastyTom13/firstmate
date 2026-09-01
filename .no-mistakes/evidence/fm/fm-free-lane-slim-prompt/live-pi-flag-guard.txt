@@ -1,4 +1,9 @@
+FM_TEST_BEGIN 2026-09-01T12:29:33Z tests/fm-free-lane-slim-prompt-live-e2e.test.sh family=live-harness-optin expected_gate_skip=optin-env
 ok - the lane request offers no tools, while the same pi offers read,bash,edit,write,fm_free_lane_live_probe without the flags
 ok - the lane request carries no AGENTS.md content, while the same pi loads it without the flag
 ok - the lane request carries the runner's own system prompt, not pi's default
 # verified against pi 0.84.3
+FM_TEST_END 2026-09-01T12:29:34Z tests/fm-free-lane-slim-prompt-live-e2e.test.sh exit=0 duration_ms=981 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=1033
+FM_TEST_SUMMARY_FAMILY family=live-harness-optin count=1 duration_ms=981 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-free-lane-slim-prompt-live-e2e.test.sh duration_ms=981

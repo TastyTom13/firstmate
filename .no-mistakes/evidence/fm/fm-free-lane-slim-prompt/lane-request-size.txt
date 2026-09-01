@@ -1,0 +1,4 @@
+Prompt sent: 'hi'   cwd=firstmate repo (AGENTS.md present)   pi 0.84.3
+
+pi default (before fix)      chars=  94692  est_tokens(chars/4)= 23673  tools=6
+fm-free-lane-run.sh groq     chars=    338  est_tokens(chars/4)=    85  tools=0
