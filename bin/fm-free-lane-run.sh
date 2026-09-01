@@ -73,14 +73,19 @@
 # roughly 20k-31k tokens in local measurement and live evidence). A
 # free-tier lane is one-shot text generation, never a tool-using or
 # project-aware agent session, so every lane invocation here passes a
-# minimal --system-prompt plus --no-builtin-tools and --no-context-files
-# ahead of the caller's own arguments. Because pi takes the last occurrence
-# of a repeated flag, a caller who genuinely needs a different system
-# prompt or the built-in tools can still pass --system-prompt or
-# --tools/-t after the lane name; nothing here refuses that override. pi
-# has no flag to force context-file discovery back on, so a lane call that
-# genuinely needs AGENTS.md/CLAUDE.md content should not go through this
-# free-tier runner at all.
+# minimal --system-prompt plus --no-builtin-tools, --no-context-files, and
+# --no-extensions ahead of the caller's own arguments. --no-builtin-tools
+# alone leaves pi's extension discovery on, and a trusted home (pi's own
+# ~/.pi/agent/trust.json) auto-loads .pi/extensions/*.ts, whose activation
+# registers extra tools such as fm_branch_outcomes, with their descriptions
+# and prompt snippets, into this same request; --no-extensions blocks that
+# the same way. Because pi takes the last occurrence of a repeated flag, a
+# caller who genuinely needs a different system prompt or the built-in
+# tools can still pass --system-prompt or --tools/-t after the lane name;
+# nothing here refuses that override. pi has no flag to force context-file
+# or extension discovery back on, so a lane call that genuinely needs
+# AGENTS.md/CLAUDE.md content or an extension's tools should not go through
+# this free-tier runner at all.
 FREE_LANE_SYSTEM_PROMPT='You are a one-shot text generator running on a free-tier model. Respond with only the requested content, nothing else: no tool calls, no preamble, no explanation of your process, no follow-up questions.'
 set -euo pipefail
 
@@ -231,4 +236,5 @@ fi
 narrow_to_lane_key "$ENV_VAR"
 
 exec pi --provider "$PROVIDER" --model "$MODEL" \
-  --system-prompt "$FREE_LANE_SYSTEM_PROMPT" --no-builtin-tools --no-context-files "$@"
+  --system-prompt "$FREE_LANE_SYSTEM_PROMPT" \
+  --no-builtin-tools --no-context-files --no-extensions "$@"

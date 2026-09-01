@@ -13,9 +13,11 @@
 # already sees that marker refuses with exit 4, and the generated launcher
 # records variable names rather than values.
 # Every lane dispatch also passes a slim --system-prompt, --no-builtin-tools,
-# and --no-context-files to pi instead of its default coding-agent prompt,
-# tool set, and AGENTS.md/CLAUDE.md auto-discovery, and a caller can still
-# override the default system prompt with its own flag.
+# --no-context-files, and --no-extensions to pi instead of its default
+# coding-agent prompt, tool set, AGENTS.md/CLAUDE.md auto-discovery, and
+# extension discovery, and a caller can still override the default system
+# prompt with its own flag, because the runner's own flags always precede the
+# caller's and pi takes the last occurrence.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -45,6 +47,21 @@ write_models() {
   mkdir -p "$agent_dir"
   printf '{"providers":{"cloudflare":{"baseUrl":"%s","api":"openai-completions"}}}\n' \
     "$base_url" > "$agent_dir/models.json"
+}
+
+# Resolves a repeated flag the way pi itself does, taking the last
+# occurrence, from the argv the fake pi recorded one argument per line.
+last_flag_value() {  # <argv-file> <flag>
+  local file=$1 flag=$2 line value= take=0
+  while IFS= read -r line; do
+    if [ "$take" = 1 ]; then
+      value=$line
+      take=0
+    elif [ "$line" = "$flag" ]; then
+      take=1
+    fi
+  done < "$file"
+  printf '%s' "$value"
 }
 
 test_list_names_every_lane_and_its_variable() {
@@ -395,13 +412,15 @@ test_lane_dispatch_uses_a_slim_prompt_and_no_builtin_tools() {
     "the runner did not disable pi's built-in tools"
   assert_contains "$args" "--no-context-files" \
     "the runner did not disable pi's AGENTS.md/CLAUDE.md context-file discovery"
+  assert_contains "$args" "--no-extensions" \
+    "the runner did not disable pi's extension discovery"
 
   unset FM_TEST_PI_ARGS
-  pass "a lane invocation passes a slim system prompt, disables built-in tools, and disables context-file discovery"
+  pass "a lane invocation passes a slim system prompt and disables built-in tools, context files, and extensions"
 }
 
 test_caller_can_still_override_the_default_system_prompt() {
-  local dir args
+  local dir resolved
   dir="$TMP_ROOT/slim-prompt-override"
   make_fakebin "$dir/bin"
   export FM_TEST_PI_ARGS="$dir/pi-args.txt"
@@ -410,12 +429,12 @@ test_caller_can_still_override_the_default_system_prompt() {
     "$RUNNER" groq --system-prompt "caller prompt" -p "hi" \
     >/dev/null 2>&1 || fail "the groq lane did not dispatch with a caller override"
 
-  args=$(cat "$FM_TEST_PI_ARGS")
-  assert_contains "$args" "caller prompt" \
-    "the caller's own --system-prompt did not reach pi"
+  resolved=$(last_flag_value "$FM_TEST_PI_ARGS" --system-prompt)
+  [ "$resolved" = "caller prompt" ] \
+    || fail "pi would resolve --system-prompt to '$resolved', not the caller's own"
 
   unset FM_TEST_PI_ARGS
-  pass "a caller-supplied --system-prompt still reaches pi alongside the default"
+  pass "the caller's --system-prompt is the last one pi sees, so it wins the override"
 }
 
 test_a_lane_session_may_not_start_another_lane() {

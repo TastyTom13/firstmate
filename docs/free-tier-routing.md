@@ -132,6 +132,8 @@ Routine lane invocations go through one stable launcher so the owner reviews it 
 That launcher is the only path that delivers a lane key today, which is why a spawned crewmate cannot use a lane until `fm-free-lane-spawn-wiring` lands.
 
 [`bin/fm-free-lane-run.sh`](../bin/fm-free-lane-run.sh) is the single command shape for every lane; its header owns the exact flags, lane table, and exit codes.
+A lane invocation is text-only: it runs with no built-in tools, no extension-registered tools, and no `AGENTS.md`/`CLAUDE.md` project context, so a lane cannot read the repository it is pointed at.
+A caller can pass its own `--system-prompt` or `--tools` after the lane name to override those two, but there is no per-call override for the context-file and extension restriction; a call that needs either should not use this runner.
 It is an ordinary portable script that reads each lane's key from its own environment and refuses with exit 3 when that variable is absent, so an unauthenticated lane never dispatches.
 Before the cloudflare lane only, it also refuses when the account segment of that provider's `baseUrl` is still an unfilled blank in the operator's own `models.json`.
 That check is deliberately non-fatal on any shape problem: an absent, unreadable, or malformed models file warns on stderr once and dispatches anyway, so a pi change can cost the guard but never the lane.
@@ -153,6 +155,9 @@ They work when a lane is invoked by hand through [`bin/fm-free-lane-run.sh`](../
 A crewmate spawned on this rule does not inherit the lane keys, because the spawn path launches the `pi` binary directly and knows nothing about the launcher.
 Selecting this rule today therefore produces a worker whose free-tier model is unavailable in its own pane, so the rule must not be relied on for real dispatch yet.
 The follow-up task `fm-free-lane-spawn-wiring` is the work that closes that gap; install the rule now only to have it ready, not to route real work through it.
+
+Scope the brief accordingly: a lane is text-only and cannot read the repository, so any fixture shape, module signature, or existing test style the generated boilerplate must match has to be quoted into the brief itself.
+The lane returns text for the dispatching agent to place; it is not a worker that opens files in the repo.
 
 `config/crew-dispatch.json` is home-local and gitignored, so this repository ships the rule text rather than the file.
 Add this object to the `rules` array of the home's own `config/crew-dispatch.json`, keeping it ahead of the general cheap-model rule so the narrower condition is matched first.
