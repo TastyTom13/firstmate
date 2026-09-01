@@ -74,7 +74,7 @@ Board answers are acted on later under the normal authority rules; this skill's 
    - **Captain's Call** - every open decision summarized with its options from the structured decision record, plus each PR ready to merge and each needed credential or login, every PR with the full `https://...` URL, never a bare `#number`.
    - **Recently Landed** - the bounded current recent-completions baseline from structured state across the main fleet and every registered secondmate home, rendered in full on every run.
    - **Underway** - each live direct report making progress, with its current state, and the plans or main pickup pointers worth reopening (`data/<id>/report.md` files, `.lavish/*.html` boards).
-   - **Charted Next** - queued or gated work, including any main-inventory integrity warning, with each item's blocker, date, or integrity reason.
+   - **Charted Next** - queued or gated work, including any main-inventory integrity warning, with each item's blocker, date, or integrity reason, and never a queued `kind=idea` task.
    After writing the file, return the concise four-section chat digest and include the report path or link without adding a fifth section.
    For a richer review surface, offer `/bearings lavish` when the report has enough structure to deserve one, but only after the required digest is ready.
 
@@ -97,6 +97,7 @@ That command is the one place that maps both quota readers - quota-axi for the C
 If the command itself fails, omit `pools` entirely and build the board without a gauge rather than inventing one.
 - Every Captain's Call item and every Underway, Recently Landed, and Charted Next row carries an explicit `repo` field. Fill it from the snapshot and task records wherever known; use null or an empty string only as the deliberate genuinely-no-repo marker, in which case the template may show the internal id. Ids otherwise stay in the payload only as the routing channel, and composed reasons name blockers in plain words.
 - Fill the optional `parked_ideas` field from `tasks-axi list --state queued --kind idea`: one entry per queued idea-kind task, each carrying `id`, `title`, and `repo` (null when the idea named no project). Omit the field entirely when there are none queued, the same additive contract as `pools`.
+- A queued `kind=idea` task belongs to `parked_ideas` and NOWHERE else: exclude it from Charted Next entirely, exactly as a `kind: "warning"` row is excluded from the dispatchable count, so an unscoped idea never reads as queued work and never appears in the `dispatch.charted` picker. An idea leaves the parked list only by promotion - when the captain picks it up as real work, its kind changes away from `idea` and it then enters the ordinary queued/Charted Next flow, never before.
 
 Run `build` once after composing the payload.
 Its serve-first sequence publishes the board, establishes or resumes its Lavish session with `lavish-axi`, and only then binds and arms the polling source; use the session URL it prints in the chat digest.
@@ -132,7 +133,7 @@ Every `/bearings` chat response renders EXACTLY these four sections, in THIS ord
    Empty-state: "No recent completions are in the current baseline."
 3. **Underway** - live work progressing on its own, one line of current state per direct report.
    Empty-state: "Nothing is underway."
-4. **Charted Next** - queued or gated work waiting on the fleet or a date, plus action-free fleet-integrity warnings, never on the captain.
+4. **Charted Next** - queued or gated work waiting on the fleet or a date, plus action-free fleet-integrity warnings, never on the captain, and never a queued `kind=idea` task.
    Empty-state: "Nothing is queued."
 
 Rules that keep the contract unambiguous:

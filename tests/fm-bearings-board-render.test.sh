@@ -222,8 +222,9 @@ test_an_estimated_reading_says_it_is_an_estimate() {
 }
 
 # Build a board carrying <parked-ideas-json|-> and return what the renderer produced.
-render_ideas() {  # <home> <parked-ideas-json|->
+render_ideas() {  # <home> <parked-ideas-json|-> [idea-typed-into-the-box...]
   local home=$1 ideas=$2 data="$1/ideas-payload.json"
+  shift 2
   if [ "$ideas" = "-" ]; then
     jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
       prs_live:false, captains_call:[], underway:[], landed:[], charted:[]}' > "$data"
@@ -236,7 +237,7 @@ render_ideas() {  # <home> <parked-ideas-json|->
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
-  node "$HARNESS" "$home/.lavish/bearings-board.html" \
+  node "$HARNESS" "$home/.lavish/bearings-board.html" "$@" \
     || fail "the built board could not be rendered"
 }
 
@@ -268,6 +269,33 @@ test_parked_ideas_render_title_and_repo() {
   pass "parked ideas render their title, and their repo only when known"
 }
 
+test_two_captured_ideas_queue_two_distinct_answers() {
+  local home out
+  home=$(make_home ideas-capture)
+  out=$(render_ideas "$home" - "Buy a bigger anchor" "Repaint the hull")
+  printf '%s' "$out" | jq -e '
+    .error == "" and .ideaCapture.submitted == 2 and .ideaCapture.cleared == true
+      and (.ideaCapture.queued | length) == 2
+      and (.ideaCapture.queued | map(.key) | all(startswith("idea.")))
+      and (.ideaCapture.queued | map(.key) | unique | length) == 2
+      and .ideaCapture.queued[0].answer == "Buy a bigger anchor"
+      and .ideaCapture.queued[1].answer == "Repaint the hull"
+  ' >/dev/null || fail "two submitted ideas did not queue two distinct idea answers: $out"
+  pass "two captured ideas queue two distinct idea.* answers"
+}
+
+test_an_over_long_idea_is_refused_instead_of_queued() {
+  local home out long
+  home=$(make_home ideas-toolong)
+  long=$(printf 'x%.0s' $(seq 1 600))
+  out=$(render_ideas "$home" - "$long")
+  printf '%s' "$out" | jq -e '
+    .error == "" and (.ideaCapture.queued | length) == 0
+      and (.ideaCapture.limitText | test("too long"))
+  ' >/dev/null || fail "an over-long idea was not refused: $out"
+  pass "an idea over the answer-size limit is refused instead of queued"
+}
+
 test_a_warning_row_reads_as_a_repair_not_as_queued_work
 test_warnings_are_excluded_from_the_charted_next_count
 test_a_board_of_only_warnings_still_reports_nothing_queued
@@ -280,3 +308,5 @@ test_a_nearly_spent_pool_reads_differently_from_a_healthy_one
 test_an_estimated_reading_says_it_is_an_estimate
 test_a_board_without_parked_ideas_shows_the_empty_state
 test_parked_ideas_render_title_and_repo
+test_two_captured_ideas_queue_two_distinct_answers
+test_an_over_long_idea_is_refused_instead_of_queued

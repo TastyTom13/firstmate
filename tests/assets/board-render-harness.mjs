@@ -24,8 +24,12 @@ class Node {
     this.type = "";
     this.value = "";
     this.checked = false;
+    this.listeners = {};
     this.classList = {
       add: (c) => { this.className = (this.className + " " + c).trim(); },
+      remove: (c) => {
+        this.className = this.className.split(/\s+/).filter((x) => x && x !== c).join(" ");
+      },
       contains: (c) => this.className.split(/\s+/).includes(c),
     };
   }
@@ -37,7 +41,10 @@ class Node {
   set textContent(v) { this._text = String(v); this.children = []; }
   appendChild(n) { n.parentNode = this; this.children.push(n); return n; }
   setAttribute(k, v) { this.attributes[k] = v; }
-  addEventListener() {}
+  addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
+  dispatch(type, ev) {
+    for (const fn of this.listeners[type] || []) fn.call(this, ev);
+  }
   querySelectorAll(sel) {
     const want = sel.replace(/^\./, "").replace(/:checked$/, "");
     const checkedOnly = sel.endsWith(":checked");
@@ -78,8 +85,19 @@ globalThis.document = {
     return byId.get(id);
   },
 };
-globalThis.window = {};
+// Stand in for the Lavish bridge the real board talks to, and record every
+// prompt the page queues so submissions can be asserted as observable output.
+const queued = [];
+globalThis.window = {
+  lavish: {
+    queuePrompt: (prompt, opts) => {
+      queued.push({ prompt, text: opts?.text ?? "", key: opts?.data?.question ?? "", answer: opts?.data?.answer ?? "" });
+    },
+  },
+};
 globalThis.TextEncoder = TextEncoder;
+// Deferred UI resets are captured, not scheduled, so the harness exits at once.
+globalThis.setTimeout = (fn) => fn && 0;
 
 const script = html.slice(html.indexOf("<script>") + "<script>".length, html.lastIndexOf("</script>"));
 new Function(script)();
@@ -147,6 +165,22 @@ const parkedIdeas = piNode.children
   });
 const parkedIdeasEmpty = piNode.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
 
+// Drive the capture box itself: every extra argument is one idea typed into the
+// form and submitted, in order, so the queued prompts show what the real
+// handler does with repeated submissions.
+const ideaForm = byId.get("bb-idea-form");
+const ideaInput = byId.get("bb-idea-input");
+const ideaLimit = byId.get("bb-idea-limit");
+const ideaCapture = { submitted: 0, queued: [], limitText: "" };
+for (const text of process.argv.slice(3)) {
+  ideaInput.value = text;
+  ideaForm.dispatch("submit", { preventDefault() {} });
+  ideaCapture.submitted += 1;
+  ideaCapture.limitText = ideaLimit.textContent;
+  ideaCapture.cleared = ideaInput.value === "";
+}
+ideaCapture.queued = queued;
+
 process.stdout.write(JSON.stringify({
-  stats, fuel, charted, empty, more, parkedIdeas, parkedIdeasEmpty, error: errorText,
+  stats, fuel, charted, empty, more, parkedIdeas, parkedIdeasEmpty, ideaCapture, error: errorText,
 }) + "\n");
