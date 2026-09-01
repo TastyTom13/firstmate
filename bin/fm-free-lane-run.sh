@@ -82,10 +82,12 @@
 # the same way. Because pi takes the last occurrence of a repeated flag, a
 # caller who genuinely needs a different system prompt or the built-in
 # tools can still pass --system-prompt or --tools/-t after the lane name;
-# nothing here refuses that override. pi has no flag to force context-file
-# or extension discovery back on, so a lane call that genuinely needs
-# AGENTS.md/CLAUDE.md content or an extension's tools should not go through
-# this free-tier runner at all.
+# nothing here refuses that override. --no-extensions blocks automatic
+# discovery only: pi keeps an explicitly named extension enabled, so a
+# caller that needs one specific extension can still pass -e <path> after
+# the lane name. Only --no-context-files has no per-call override, so a
+# lane call that genuinely needs AGENTS.md/CLAUDE.md content should not go
+# through this free-tier runner at all.
 FREE_LANE_SYSTEM_PROMPT='You are a one-shot text generator running on a free-tier model. Respond with only the requested content, nothing else: no tool calls, no preamble, no explanation of your process, no follow-up questions.'
 set -euo pipefail
 
