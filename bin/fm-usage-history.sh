@@ -32,9 +32,10 @@
 #               model, rounds, calls, fresh_input, output, cache_read}]
 #   notes       reader-provenance strings for anything that could not be read
 #
-# A review call that recorded no tokens at all spent nothing and is left out of
-# both spend lists, so a run that died before its first model turn cannot crowd
-# the recent-runs view out of the calls that actually cost something.
+# A review call that recorded no tokens at all spent nothing and is filtered
+# out of both spend lists row by row, before grouping, so a run that died
+# before its first model turn can never inflate the calls count or rounds
+# figure of a group it happens to share a model with.
 #
 # The percentages are the providers' own reported remaining allowance; the
 # token counts are the pipeline's own measured spend. They are different
@@ -184,9 +185,9 @@ review_spend() {
            sum(coalesce(cache_read_tokens, 0)) as cache_read
       from agent_invocations
      where step_name = 'review'
+       and coalesce(input_tokens, 0) + coalesce(output_tokens, 0)
+           + coalesce(cache_read_tokens, 0) > 0
      group by date, pool, model
-     having sum(coalesce(input_tokens, 0)) + sum(coalesce(output_tokens, 0))
-            + sum(coalesce(cache_read_tokens, 0)) > 0
      order by date desc, model asc
      limit $((DAYS * 12));" 2>/dev/null) || {
     unreadable_review "the pipeline database could not be read"
@@ -204,9 +205,9 @@ review_spend() {
            sum(coalesce(cache_read_tokens, 0)) as cache_read
       from agent_invocations
      where step_name = 'review'
+       and coalesce(input_tokens, 0) + coalesce(output_tokens, 0)
+           + coalesce(cache_read_tokens, 0) > 0
      group by run_id, pool, model
-     having sum(coalesce(input_tokens, 0)) + sum(coalesce(output_tokens, 0))
-            + sum(coalesce(cache_read_tokens, 0)) > 0
      order by min(started_at) desc
      limit $RUNS;" 2>/dev/null) || {
     unreadable_review "the pipeline database could not be read"

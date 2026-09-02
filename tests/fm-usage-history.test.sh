@@ -161,13 +161,18 @@ test_a_call_that_spent_nothing_is_left_out_of_the_spend_lists() {
   make_db "$db" "
     insert into agent_invocations values
       ('a','R1','review',1,'review','pi',NULL,1788350000,1000,0,0,0),
-      ('b','R2','review',1,'review','claude','claude-opus-5',1788351000,1000,5,1,9);"
+      ('b','R2','review',1,'review','claude','claude-opus-5',1788351000,1000,5,1,9),
+      ('c','R2','review',2,'review','claude','claude-opus-5',1788352000,1000,0,0,0);"
   out=$(run_history "$home" "$db") || fail "the reduction failed on a zero-token row"
   printf '%s' "$out" | jq -e '
     ([.review.runs[].run_id] == ["R2"])
     and ([.review.daily[].model] == ["claude-opus-5"])
+    and (.review.runs | map(select(.run_id == "R2")) | first
+         | .calls == 1 and .rounds == 1)
+    and (.review.daily | map(select(.model == "claude-opus-5")) | first
+         | .calls == 1)
   ' >/dev/null || fail "a call that spent nothing still crowded the lists: $out"
-  pass "a review call that recorded no tokens stays out of the spend lists"
+  pass "a review call that recorded no tokens stays out of the spend lists, even sharing a model and run with a real call"
 }
 
 test_an_absent_history_file_reports_its_reason_instead_of_failing() {
