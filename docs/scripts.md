@@ -105,6 +105,7 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-quota-choose.sh`     | Choose the first candidate with known positive quota from an ordered harness:model list |
 | `fm-gpt-quota.sh`        | Read the ChatGPT subscription's remaining allowance from the Codex backend's own rate-limit headers ([verification/gpt-quota.md](verification/gpt-quota.md)) |
 | `fm-quota-pools.sh`      | Map the Claude and ChatGPT quota readings onto the bearings board's optional `pools` usage-gauge array |
+| `fm-usage-history.sh`    | Reduce quota-sample burn curves and pipeline review spend onto the bearings board's optional `usage` panel |
 | `fm-vendor-auth-probe.sh`| Run one hard-bounded, non-destructive authentication probe of a named vendor CLI and report the fact |
 | `fm-wake-drain.sh`       | Present and acknowledge the current actor's claimed wake rows alongside status, decision, divergence, recovery, and supervision checks |
 | `fm-wake-grant.sh`       | Serialize Pi supervision-branch wake-row claim activation, publication, release, and deactivation |

@@ -288,6 +288,46 @@ a { color: inherit; text-decoration: none; }
 }
 .bb-empty { padding: 18px; font-size: var(--fs-sm); color: var(--text-muted); }
 
+/* ---- burn history: how fast each pool is being spent, and on what ---- */
+.bb-usage[hidden] { display: none; }
+.bb-usage__pad { padding: 16px 18px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.bb-usage__curves { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.bb-usage__cell { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.bb-usage__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.bb-usage__name { font-size: var(--fs-xs); font-weight: 800; letter-spacing: 0.04em;
+  color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bb-usage__now { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 600;
+  color: var(--text-body); white-space: nowrap; }
+.bb-spark {
+  display: flex; align-items: flex-end; justify-content: flex-start;
+  gap: 2px; height: 54px; padding: 4px 6px;
+  border: 1.5px solid var(--border-default); border-radius: var(--radius-xs);
+  background: var(--paper-000); overflow: hidden;
+}
+/* max-width keeps a two-sample series reading as two thin marks rather than as
+   two full-width blocks that look like a solid gauge */
+.bb-spark__bar { flex: 1 1 0; min-width: 2px; max-width: 16px;
+  background: var(--ocean-500); border-radius: 1px 1px 0 0; }
+.bb-spark__bar--reset { background: var(--rust-500); }
+.bb-usage__meta { font-size: var(--fs-2xs); color: var(--text-muted); line-height: 1.35; }
+.bb-usage__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.bb-usage__panel { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.bb-usage__h { font-size: var(--fs-xs); font-weight: 800; text-transform: uppercase;
+  letter-spacing: var(--ls-caps); color: var(--text-muted); }
+.bb-tbl { display: flex; flex-direction: column; min-width: 0; }
+.bb-tbl__row { display: flex; align-items: baseline; gap: 10px; padding: 5px 0;
+  border-top: 1px solid var(--border-soft); min-width: 0; }
+.bb-tbl__row:first-child { border-top: none; }
+.bb-tbl__k { flex: 1 1 auto; min-width: 0; font-size: var(--fs-xs); color: var(--text-strong);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bb-tbl__v { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-body);
+  white-space: nowrap; }
+.bb-tbl__row--costly .bb-tbl__v { color: var(--status-danger); font-weight: 700; }
+.bb-usage__read { display: flex; flex-direction: column; gap: 6px;
+  border-top: 1.5px solid var(--border-default); padding-top: 12px; }
+.bb-usage__read p { font-size: var(--fs-xs); color: var(--text-body); line-height: 1.45; margin: 0; }
+.bb-usage__read strong { color: var(--text-strong); }
+
 /* ---- Charted Next dispatch picker ---- */
 /* margin:0 kills the UA default checkbox margin so picker rows and spacer rows
    share one text left edge */
@@ -334,6 +374,56 @@ a { color: inherit; text-decoration: none; }
   <!-- Fuel gauges. Rendered only when the payload carries `pools`, so a board
        built without a usage reading simply has no gauge instead of an empty one. -->
   <div class="bb-fuel" id="bb-fuel" hidden></div>
+
+  <!-- Burn history. Rendered only when the payload carries `usage`, so a board
+       built without the reduction simply has no history panel. The explanation
+       below the numbers is SHIPPED copy, never composed per run, so a live
+       board cannot state a mitigation the fleet no longer applies. -->
+  <section class="bb-section bb-usage" id="bb-usage" hidden>
+    <div class="bb-section__head">
+      <span class="fm-sign fm-sign--eyebrow">
+        <svg class="fm-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        Burn history
+      </span>
+      <span class="fm-sign fm-sign--muted" id="bb-usage-sub"></span>
+    </div>
+    <div class="fm-card">
+      <div class="bb-usage__pad">
+        <div class="bb-usage__curves" id="bb-usage-curves"></div>
+        <div class="bb-usage__grid">
+          <div class="bb-usage__panel">
+            <span class="bb-usage__h">Burn per day</span>
+            <div class="bb-tbl" id="bb-usage-daily"></div>
+          </div>
+          <div class="bb-usage__panel">
+            <span class="bb-usage__h">Review spend per model</span>
+            <div class="bb-tbl" id="bb-usage-spend"></div>
+          </div>
+        </div>
+        <div class="bb-usage__panel">
+          <span class="bb-usage__h">Recent review runs</span>
+          <div class="bb-tbl" id="bb-usage-runs"></div>
+        </div>
+        <div class="bb-usage__read" id="bb-usage-read">
+          <p><strong>Where the numbers come from.</strong>
+            The curves and the per-day burn are the providers' own remaining-allowance readings, sampled every half hour and stored in this home's quota history.
+            The token columns are the review pipeline's own measured spend, read from its record of every agent call.
+            They measure different things, so a percentage and a token count never explain each other directly.</p>
+          <p><strong>Cost per token is not the same on both pools.</strong>
+            A token spent on the ChatGPT Team pool costs roughly two orders of magnitude more of that pool than a token spent on Claude Max.
+            Read the ChatGPT token rows as expensive and the Claude token rows as cheap; never compare the two columns as if they were one currency.</p>
+          <p><strong>What each curve decides.</strong>
+            A five-hour curve falling fast means throttle dispatch or wait for the reset.
+            A weekly curve falling faster than the days remaining means move a workload to the other pool.
+            A single run whose re-sent context dwarfs its fresh input means the change under review is too big: split it.</p>
+          <p><strong>What we do about it today.</strong>
+            Code review runs on Claude opus at medium, because the ChatGPT Team pool cannot host agentic review.
+            A review stops at the first round that finds no errors.
+            A change aims at about 500 lines, and a larger one states its reason.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <div class="bb-cols">
   <section class="bb-section">
@@ -568,6 +658,106 @@ __FM_BEARINGS_BOARD_DATA__
     cell.appendChild(el("span", "bb-fuel__meta", bits.join(" \u00b7 ")));
     fuel.appendChild(cell);
   });
+
+  /* burn history: the same two questions the gauges cannot answer - how fast
+     is each pool going, and what spent it. Absent payload, absent panel. */
+  function fmtTokens(n) {
+    if (typeof n !== "number" || !isFinite(n)) return "-";
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+    if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
+    return String(Math.round(n));
+  }
+  function tblRow(host, k, v, costly) {
+    var row = el("div", "bb-tbl__row" + (costly ? " bb-tbl__row--costly" : ""));
+    row.appendChild(el("span", "bb-tbl__k", k));
+    row.appendChild(el("span", "bb-tbl__v", v));
+    host.appendChild(row);
+    return row;
+  }
+  var usage = data.usage && typeof data.usage === "object" ? data.usage : null;
+  var usageSection = document.getElementById("bb-usage");
+  usageSection.hidden = !usage;
+  if (usage) {
+    var curves = Array.isArray(usage.curves) ? usage.curves : [];
+    var curveHost = document.getElementById("bb-usage-curves");
+    curves.forEach(function (c) {
+      var pts = Array.isArray(c.points) ? c.points : [];
+      if (!pts.length) return;
+      var resets = Array.isArray(c.resets) ? c.resets : [];
+      var cell = el("div", "bb-usage__cell");
+      var head = el("div", "bb-usage__head");
+      head.appendChild(el("span", "bb-usage__name", String(c.label || c.window || "window")));
+      var last = pts[pts.length - 1];
+      head.appendChild(el("span", "bb-usage__now", Math.round(last.percent_remaining) + "% left"));
+      cell.appendChild(head);
+      /* One bar per sample, tallest = most left. A bar the series read as a
+         reset is marked, so a refilled window never reads as a burn spike. */
+      var spark = el("div", "bb-spark");
+      pts.forEach(function (pt) {
+        var pct = Math.max(0, Math.min(100, Number(pt.percent_remaining) || 0));
+        var isReset = resets.indexOf(pt.ts) !== -1;
+        var bar = el("div", "bb-spark__bar" + (isReset ? " bb-spark__bar--reset" : ""));
+        bar.setAttribute("style", "height: " + Math.max(2, pct) + "%");
+        bar.setAttribute("title", shortWhen(pt.ts) + ": " + Math.round(pct) + "% left");
+        spark.appendChild(bar);
+      });
+      cell.appendChild(spark);
+      var bits = [pts.length + " sample" + (pts.length === 1 ? "" : "s")];
+      if (resets.length) bits.push(resets.length + " reset" + (resets.length === 1 ? "" : "s"));
+      cell.appendChild(el("span", "bb-usage__meta", bits.join(" \u00b7 ")));
+      curveHost.appendChild(cell);
+    });
+
+    var dailyHost = document.getElementById("bb-usage-daily");
+    var daily = Array.isArray(usage.daily) ? usage.daily : [];
+    if (!daily.length) {
+      dailyHost.appendChild(el("div", "bb-usage__meta", "no full day of samples yet"));
+    }
+    daily.slice(0, 12).forEach(function (d) {
+      var v = Math.round(Number(d.burn_points) || 0) + " pts";
+      if (d.resets) v += " \u00b7 " + d.resets + " reset" + (d.resets === 1 ? "" : "s");
+      tblRow(dailyHost, String(d.date) + "  " + String(d.label || d.pool), v);
+    });
+
+    var review = usage.review && typeof usage.review === "object" ? usage.review : {};
+    var spendHost = document.getElementById("bb-usage-spend");
+    var spend = Array.isArray(review.daily) ? review.daily : [];
+    if (!spend.length) {
+      spendHost.appendChild(el("div", "bb-usage__meta",
+        review.note ? String(review.note) : "no review spend recorded yet"));
+    }
+    spend.slice(0, 12).forEach(function (r) {
+      tblRow(spendHost,
+        String(r.date) + "  " + String(r.model),
+        fmtTokens(r.fresh_input) + " fresh \u00b7 " + fmtTokens(r.output) + " out \u00b7 "
+          + fmtTokens(r.cache_read) + " re-sent",
+        r.pool === "openai-codex");
+    });
+
+    var runsHost = document.getElementById("bb-usage-runs");
+    var runs = Array.isArray(review.runs) ? review.runs : [];
+    if (!runs.length) {
+      runsHost.appendChild(el("div", "bb-usage__meta", "no review run recorded yet"));
+    }
+    runs.slice(0, 10).forEach(function (r) {
+      var rounds = Number(r.rounds) || 0;
+      tblRow(runsHost,
+        String(r.date) + "  " + String(r.model) + "  "
+          + rounds + " round" + (rounds === 1 ? "" : "s"),
+        fmtTokens(r.fresh_input) + " fresh \u00b7 " + fmtTokens(r.output) + " out \u00b7 "
+          + fmtTokens(r.cache_read) + " re-sent",
+        r.pool === "openai-codex");
+    });
+
+    var subBits = [];
+    if (typeof usage.samples === "number") {
+      subBits.push(usage.samples + " sample" + (usage.samples === 1 ? "" : "s"));
+    }
+    if (usage.since) subBits.push("since " + shortWhen(usage.since));
+    if (Array.isArray(usage.notes) && usage.notes.length) subBits.push(usage.notes.join("; "));
+    document.getElementById("bb-usage-sub").textContent = subBits.join(" \u00b7 ");
+  }
 
   /* Captain's Call deck: every item renders as the same full card */
   var deck = document.getElementById("bb-call");

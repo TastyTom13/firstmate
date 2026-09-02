@@ -53,6 +53,21 @@
 # answer channel (`idea.<unique-suffix>` in the fm-bearings-board.v1 answer
 # shape below).
 #
+# `usage` is the optional burn-history panel: the reduction
+# bin/fm-usage-history.sh produces from this home's quota samples and the
+# no-mistakes pipeline's own record of what each review call spent. It carries
+# `generated`, `samples`, `since`, `curves` (per pool window: `pool`,
+# `window`, `label`, `points` of `{ts, percent_remaining}`, and `resets`),
+# `daily` (per pool window per day: `burn_points` and `resets`), `review`
+# (`available`, `note`, `daily`, `runs`), and `notes`. Like `pools` and
+# `parked_ideas` the field is additive, so a payload that omits it stays a
+# valid fm-bearings-board.v1 payload and the board simply renders no history
+# panel; that is what keeps the schema version unchanged. The board's standing
+# explanation of the numbers - which reader each column comes from, what each
+# curve decides, and the current review-cost mitigations - is shipped copy in
+# the template, never composed per run, so a live board can never state a
+# mitigation the fleet no longer applies.
+#
 # `idea` is the optional boolean marker an Underway, Recently Landed, or
 # Charted Next item carries once a parked idea has been promoted to real work:
 # it means "this row's stored title still carries the literal `Idea: `
@@ -170,6 +185,31 @@ validate_payload() {  # <data.json>
       and ((has("resets_at") | not) or .resets_at == null or (.resets_at | type == "string"))
       and ((has("estimate") | not) or (.estimate | type) == "boolean")
       and ((has("note") | not) or .note == null or (.note | type == "string"));
+    def usage_point:
+      type == "object" and (.ts | nonempty_string)
+      and (.percent_remaining | type) == "number";
+    def usage_curve:
+      type == "object" and (.pool | slug(64)) and (.window | type == "string")
+      and (.label | nonempty_string)
+      and (.points | type == "array") and ([.points[] | usage_point] | all)
+      and ((has("resets") | not)
+        or ((.resets | type) == "array" and ([.resets[] | nonempty_string] | all)));
+    def usage_day:
+      type == "object" and (.date | nonempty_string) and (.pool | slug(64))
+      and (.label | nonempty_string)
+      and (.burn_points | type) == "number"
+      and (.resets | type) == "number";
+    def usage_spend:
+      type == "object" and (.model | nonempty_string) and (.pool | slug(64))
+      and ([.fresh_input, .output, .cache_read] | map(type == "number") | all);
+    def usage_panel:
+      type == "object"
+      and (.curves | type == "array") and ([.curves[] | usage_curve] | all)
+      and (.daily | type == "array") and ([.daily[] | usage_day] | all)
+      and (.review | type == "object")
+      and ((.review.daily // []) | type == "array")
+      and ([(.review.daily // [])[] | usage_spend] | all)
+      and ([(.review.runs // [])[] | usage_spend] | all);
     def charted_item:
       type == "object" and repo_marker and (.id | slug(128))
       and (.title | nonempty_string) and (.reason | type == "string")
@@ -197,6 +237,7 @@ validate_payload() {  # <data.json>
       or ((.pools | type) == "array" and ([.pools[] | pool_item] | all)))
     and ((has("parked_ideas") | not)
       or ((.parked_ideas | type) == "array" and ([.parked_ideas[] | idea_item] | all)))
+    and ((has("usage") | not) or (.usage | usage_panel))
     and ([.captains_call[] | call_item] | all)
     and ([.underway[] | underway_item] | all)
     and ([.landed[] | landed_item] | all)

@@ -5,6 +5,7 @@
 // Usage: node board-render-harness.mjs <built-board.html> [idea-to-submit...]
 // Prints one JSON document:
 //   { stats:[{n,label}], fuel:{hidden,cells:[{tone,name,pct,fill,meta}]},
+//     usage:{hidden,sub,curves:[{name,now,bars,meta}],daily,spend,runs},
 //     charted:[{title,sub,badges,pickable}], underway:[title], landed:[title],
 //     parkedIdeas:[{title,sub}], ideaCapture:{submitted,cleared,limitText,queued},
 //     submits:{decision,dispatch} (only with FM_BOARD_DRIVE_SUBMITS=1) }
@@ -258,7 +259,44 @@ if (process.env.FM_BOARD_DRIVE_SUBMITS === "1") {
   }
 }
 
+// The burn-history panel: what the board shows for the quota curves and the
+// pipeline's own review spend.
+const usageNode = byId.get("bb-usage") || new Node("section");
+const tblRows = (id) =>
+  (byId.get(id) || new Node("div")).children
+    .filter((r) => r.className.includes("bb-tbl__row"))
+    .map((r) => ({
+    key: r.children.find((c) => c.className.includes("bb-tbl__k"))?.textContent ?? "",
+    value: r.children.find((c) => c.className.includes("bb-tbl__v"))?.textContent ?? "",
+    costly: r.className.includes("bb-tbl__row--costly"),
+    text: r.textContent,
+  }));
+const usage = {
+  hidden: usageNode.hidden === true,
+  sub: (byId.get("bb-usage-sub") || new Node("span")).textContent,
+  curves: (byId.get("bb-usage-curves") || new Node("div")).children.map((cell) => {
+    const head = cell.children.find((c) => c.className.includes("bb-usage__head"));
+    const spark = cell.children.find((c) => c.className.includes("bb-spark"));
+    return {
+      name: head?.children.find((c) => c.className.includes("bb-usage__name"))?.textContent ?? "",
+      now: head?.children.find((c) => c.className.includes("bb-usage__now"))?.textContent ?? "",
+      bars: (spark?.children ?? []).map((b) => ({
+        height: b.attributes.style ?? "",
+        reset: b.className.includes("bb-spark__bar--reset"),
+      })),
+      meta: cell.children.find((c) => c.className.includes("bb-usage__meta"))?.textContent ?? "",
+    };
+  }),
+  daily: tblRows("bb-usage-daily"),
+  spend: tblRows("bb-usage-spend"),
+  runs: tblRows("bb-usage-runs"),
+  dailyNote: (byId.get("bb-usage-daily") || new Node("div")).children
+    .filter((c) => c.className.includes("bb-usage__meta")).map((c) => c.textContent),
+  spendNote: (byId.get("bb-usage-spend") || new Node("div")).children
+    .filter((c) => c.className.includes("bb-usage__meta")).map((c) => c.textContent),
+};
+
 process.stdout.write(JSON.stringify({
   stats, fuel, charted, empty, more, underway, landed,
-  parkedIdeas, parkedIdeasEmpty, ideaCapture, submits, error: errorText,
+  parkedIdeas, parkedIdeasEmpty, ideaCapture, submits, usage, error: errorText,
 }) + "\n");
