@@ -43,6 +43,20 @@ install_fake_ssh() {
 set -eu
 log=${FM_FAKE_SSH_LOG:?}
 sleep_s=${FM_FAKE_SSH_SLEEP:-0.4}
+barrier=${FM_FAKE_BARRIER_DIR:-}
+# Rendezvous with the clone-refresh fetch instead of racing it on wall clock: a
+# slow remote command parks until the fetch has announced itself, so overlap is
+# decided by whether the two really run together, not by machine load.
+barrier_meet() { # <signal-name> <await-name>
+  local waited=0 limit=${FM_FAKE_BARRIER_TICKS:-200}
+  [ -n "$barrier" ] || return 0
+  : > "$barrier/$1"
+  while [ ! -e "$barrier/$2" ] && [ ! -e "$barrier/$2.timeout" ]; do
+    [ "$waited" -lt "$limit" ] || { : > "$barrier/$2.timeout"; return 0; }
+    sleep 0.05
+    waited=$((waited + 1))
+  done
+}
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -o) shift 2 ;;
@@ -73,6 +87,7 @@ case "$command_name" in
 esac
 if [ "$slow" -eq 1 ]; then
   printf 'START %s %s %s\n' "$host" "$command_name" "$subcommand" >> "$log"
+  barrier_meet remote fetch
   sleep "$sleep_s"
   printf 'END %s %s %s\n' "$host" "$command_name" "$subcommand" >> "$log"
 else
@@ -137,6 +152,17 @@ for arg in "\$@"; do
 done
 if [ "\$slow" -eq 1 ]; then
   printf 'START fleet-fetch git fetch\n' >> '$log'
+  barrier=\${FM_FAKE_BARRIER_DIR:-}
+  if [ -n "\$barrier" ]; then
+    : > "\$barrier/fetch"
+    waited=0
+    limit=\${FM_FAKE_BARRIER_TICKS:-200}
+    while [ ! -e "\$barrier/remote" ] && [ ! -e "\$barrier/remote.timeout" ]; do
+      [ "\$waited" -lt "\$limit" ] || { : > "\$barrier/remote.timeout"; break; }
+      sleep 0.05
+      waited=\$((waited + 1))
+    done
+  fi
   sleep "\${FM_FAKE_GIT_FETCH_SLEEP:-0.4}"
   printf 'END fleet-fetch git fetch\n' >> '$log'
 fi
@@ -159,7 +185,7 @@ starts_before_first_end() { # <log> <pattern>
 
 test_remote_probe_scheduling_keeps_per_mate_lines() { # <parallel|fallback>
   local mode=$1
-  local dir home primary fakebin log out n doctor_overlap liveness_starts fetch_starts
+  local dir home primary fakebin log barrier out n doctor_overlap liveness_starts fetch_starts
   local alpha_root alpha_home bravo_root bravo_home charlie_root charlie_home
   dir="$TMP_ROOT/parallel-lines-$mode"
   home="$dir/home"
@@ -174,6 +200,8 @@ test_remote_probe_scheduling_keeps_per_mate_lines() { # <parallel|fallback>
   fm_fake_exit0 "$fakebin" gh treehouse tmux node
   log="$dir/probe.log"
   : > "$log"
+  barrier="$dir/barrier"
+  mkdir -p "$barrier"
   install_fake_ssh "$fakebin"
   install_slow_git "$fakebin" "$REAL_GIT" "$log"
   if [ "$mode" = fallback ]; then
@@ -220,6 +248,7 @@ SH
     FM_FAKE_SSH_FAIL_HOST=host-alpha \
     FM_FAKE_SSH_DIRTY_HOST=host-charlie \
     FM_FAKE_GIT_FETCH_SLEEP=0.4 \
+    FM_FAKE_BARRIER_DIR="$barrier" \
     FM_INHERITABLE_CONFIG='' \
     FM_FAKE_TREEHOUSE_LEASE_HELP=1 \
     "$ROOT/bin/fm-bootstrap.sh" 2>&1

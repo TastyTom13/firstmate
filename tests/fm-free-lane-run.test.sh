@@ -21,6 +21,10 @@
 # A fake pi accepts whatever argv it is handed, so that those four flags still
 # mean what the runner assumes is proven separately against the real binary by
 # tests/fm-free-lane-slim-prompt-live-e2e.test.sh.
+# --exec <lane> -- <command...> shares the default form's key-presence check,
+# cloudflare guard, narrowing, and re-entry guard, but runs the caller's own
+# command verbatim instead of a hardcoded slim-prompt pi invocation - the
+# worker-spawn path bin/fm-spawn.sh drives.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -471,6 +475,86 @@ test_a_lane_session_may_not_start_another_lane() {
   pass "a lane session refuses to start another lane, and a first invocation still runs"
 }
 
+test_exec_runs_the_given_command_with_no_forced_flags() {
+  local dir args
+  dir="$TMP_ROOT/exec-basic"
+  make_fakebin "$dir/bin"
+  export FM_TEST_PI_ARGS="$dir/pi-args.txt"
+
+  GROQ_API_KEY=not-a-real-value PATH="$dir/bin:$PATH" \
+    "$RUNNER" --exec groq -- pi --tools everything -p "hi" \
+    >/dev/null 2>&1 || fail "--exec did not dispatch a present-key lane"
+
+  args=$(cat "$FM_TEST_PI_ARGS")
+  assert_contains "$args" "--tools" \
+    "--exec should run the caller's own command verbatim"
+  assert_contains "$args" "everything" \
+    "--exec dropped the caller's own arguments"
+  assert_not_contains "$args" "one-shot text generator" \
+    "--exec must not force the one-shot slim system prompt onto a worker launch"
+  assert_not_contains "$args" "--no-builtin-tools" \
+    "--exec must not force --no-builtin-tools onto a worker launch"
+
+  unset FM_TEST_PI_ARGS
+  pass "--exec runs the caller's own command with none of the one-shot lane's forced flags"
+}
+
+test_exec_shares_key_presence_and_narrowing_with_the_default_form() {
+  local dir status err seen
+  dir="$TMP_ROOT/exec-shared-checks"
+  make_fakebin "$dir/bin"
+  err="$dir/err.txt"
+
+  status=0
+  env -u GROQ_API_KEY PATH="$dir/bin:$PATH" "$RUNNER" --exec groq -- true \
+    >/dev/null 2>"$err" || status=$?
+  expect_code 3 "$status" "--exec with an absent key did not refuse with exit 3"
+  assert_contains "$(cat "$err")" "GROQ_API_KEY" \
+    "--exec's refusal did not name the missing variable"
+
+  export FM_TEST_PI_ARGS="$dir/pi-args.txt.env"
+  GROQ_API_KEY=sentinel-groq-7a CEREBRAS_API_KEY=sentinel-cerebras-7b \
+    PATH="$dir/bin:$PATH" "$RUNNER" --exec groq -- \
+    env | grep -E '^(GROQ|CEREBRAS)_API_KEY=|^FM_FREE_LANE_ACTIVE=' > "$FM_TEST_PI_ARGS" \
+    || fail "--exec with a present key did not dispatch"
+  seen=$(cat "$FM_TEST_PI_ARGS")
+  assert_contains "$seen" "GROQ_API_KEY=" "--exec dropped the invoked lane's own key"
+  assert_contains "$seen" "FM_FREE_LANE_ACTIVE=" "--exec dropped the re-entry marker"
+  assert_not_contains "$seen" "CEREBRAS_API_KEY=" \
+    "--exec left another lane's key readable by the command"
+
+  status=0
+  FM_FREE_LANE_ACTIVE=1 GROQ_API_KEY=sentinel-groq-7a PATH="$dir/bin:$PATH" \
+    "$RUNNER" --exec groq -- true >/dev/null 2>"$err" || status=$?
+  expect_code 4 "$status" "--exec did not honor the re-entry guard"
+
+  unset FM_TEST_PI_ARGS
+  pass "--exec shares the default form's key-presence check, narrowing, and re-entry guard"
+}
+
+test_exec_usage_errors() {
+  local dir status
+  dir="$TMP_ROOT/exec-usage"
+
+  status=0
+  "$RUNNER" --exec >/dev/null 2>&1 || status=$?
+  expect_code 2 "$status" "--exec with no lane was not a usage error"
+
+  status=0
+  "$RUNNER" --exec groq >/dev/null 2>&1 || status=$?
+  expect_code 2 "$status" "--exec with no -- separator was not a usage error"
+
+  status=0
+  "$RUNNER" --exec groq -- >/dev/null 2>&1 || status=$?
+  expect_code 2 "$status" "--exec with no command after -- was not a usage error"
+
+  status=0
+  "$RUNNER" --exec bogus -- true >/dev/null 2>&1 || status=$?
+  expect_code 2 "$status" "--exec with an unknown lane was not a usage error"
+
+  pass "--exec rejects a missing lane, missing separator, missing command, and unknown lane"
+}
+
 test_list_names_every_lane_and_its_variable
 test_usage_errors_are_distinct_from_lane_failures
 test_absent_key_refuses_without_launching_pi
@@ -486,3 +570,6 @@ test_pi_sees_only_the_invoked_lanes_own_key
 test_lane_dispatch_uses_a_slim_prompt_and_no_builtin_tools
 test_caller_can_still_override_the_default_system_prompt
 test_a_lane_session_may_not_start_another_lane
+test_exec_runs_the_given_command_with_no_forced_flags
+test_exec_shares_key_presence_and_narrowing_with_the_default_form
+test_exec_usage_errors

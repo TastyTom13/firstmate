@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 # Run one free-tier model lane through pi, from a single stable command shape.
 # Usage: fm-free-lane-run.sh <lane> [pi-args...]
+#        fm-free-lane-run.sh --exec <lane> -- <command...>
 #        fm-free-lane-run.sh --list
 #        fm-free-lane-run.sh --install-launcher [--av <path>]
 # Lanes are groq, cerebras, cloudflare, and openrouter, in the survey
 # preference order of docs/free-tier-providers.md. Each lane maps to the pi
 # provider and model registered in the operator's own ~/.pi/agent/models.json;
 # docs/free-tier-routing.md owns those provider entries.
+#
+# --exec <lane> -- <command...> runs the same lane validation, key-presence
+# check, cloudflare account guard, and environment narrowing as the default
+# form, then execs the given command verbatim instead of a hardcoded slim-
+# prompt pi invocation. This is the worker-spawn path: bin/fm-spawn.sh uses it
+# to run a full agentic pi crewmate (tools, brief, turn-end extension) on a
+# free-tier lane's key, which the default one-shot form deliberately forbids.
+# The re-entry guard, key narrowing, and exit codes are identical between the
+# two forms; only what runs afterward differs.
 # This script never reads, writes, or logs a secret value. It requires the
 # lane's key to be present in its own environment and exits 3 naming the
 # missing variable when it is not, so an unauthenticated lane refuses instead
@@ -62,7 +72,8 @@
 # Exit codes: 0 the lane ran, 2 usage error, 3 the lane's key is absent from
 # the environment, its account segment is unfilled, or the environment could
 # not be narrowed, 4 a free-tier lane tried to start another free-tier lane,
-# otherwise pi's own exit code.
+# otherwise pi's own exit code (or, under --exec, the given command's own exit
+# code).
 #
 # Slim prompt: pi's own default is a coding-agent system prompt plus its
 # built-in tool definitions (read, bash, edit, write, and friends). Worse,
@@ -170,6 +181,31 @@ check_cloudflare_account() {
   esac
 }
 
+# Single owner of lane validation: unknown-lane check, key-presence check, the
+# cloudflare account guard, and environment narrowing. Sets ENV_VAR, PROVIDER,
+# and MODEL as a side effect. Used by both the default one-shot form and
+# --exec.
+prepare_lane_env() {
+  local lane=$1 row
+  if [ -n "${FM_FREE_LANE_ACTIVE:-}" ]; then
+    echo "error: a free-tier lane may not start another free-tier lane" >&2
+    echo "hint: FM_FREE_LANE_ACTIVE marks this process tree as already inside a lane" >&2
+    exit 4
+  fi
+  row=$(lane_row "$lane")
+  [ -n "$row" ] || { echo "error: unknown lane '$lane'; run --list" >&2; exit 2; }
+  ENV_VAR=$(printf '%s' "$row" | cut -d'|' -f2)
+  PROVIDER=$(printf '%s' "$row" | cut -d'|' -f3)
+  MODEL=$(printf '%s' "$row" | cut -d'|' -f4)
+  if [ -z "${!ENV_VAR:-}" ]; then
+    echo "error: lane '$lane' needs $ENV_VAR in the environment" >&2
+    echo "hint: run through the blessed launcher ($LAUNCHER); see --install-launcher" >&2
+    exit 3
+  fi
+  [ "$lane" != cloudflare ] || check_cloudflare_account "$PROVIDER"
+  narrow_to_lane_key "$ENV_VAR"
+}
+
 # The launcher injects every lane key; only the invoked lane's own key may
 # reach pi.
 narrow_to_lane_key() {
@@ -209,33 +245,23 @@ case $1 in
     install_launcher "$AV_PATH"
     exit 0
     ;;
+  --exec)
+    shift
+    [ "$#" -ge 1 ] || { echo "error: --exec requires a lane" >&2; exit 2; }
+    LANE=$1
+    shift
+    [ "$#" -ge 1 ] && [ "$1" = "--" ] || { echo "error: usage: --exec <lane> -- <command...>" >&2; exit 2; }
+    shift
+    [ "$#" -ge 1 ] || { echo "error: --exec requires a command after --" >&2; exit 2; }
+    prepare_lane_env "$LANE"
+    exec "$@"
+    ;;
 esac
 
 LANE=$1
 shift
 
-if [ -n "${FM_FREE_LANE_ACTIVE:-}" ]; then
-  echo "error: a free-tier lane may not start another free-tier lane" >&2
-  echo "hint: FM_FREE_LANE_ACTIVE marks this process tree as already inside a lane" >&2
-  exit 4
-fi
-
-ROW=$(lane_row "$LANE")
-[ -n "$ROW" ] || { echo "error: unknown lane '$LANE'; run --list" >&2; exit 2; }
-
-ENV_VAR=$(printf '%s' "$ROW" | cut -d'|' -f2)
-PROVIDER=$(printf '%s' "$ROW" | cut -d'|' -f3)
-MODEL=$(printf '%s' "$ROW" | cut -d'|' -f4)
-
-if [ -z "${!ENV_VAR:-}" ]; then
-  echo "error: lane '$LANE' needs $ENV_VAR in the environment" >&2
-  echo "hint: run through the blessed launcher ($LAUNCHER); see --install-launcher" >&2
-  exit 3
-fi
-
-[ "$LANE" != cloudflare ] || check_cloudflare_account "$PROVIDER"
-
-narrow_to_lane_key "$ENV_VAR"
+prepare_lane_env "$LANE"
 
 exec pi --provider "$PROVIDER" --model "$MODEL" \
   --system-prompt "$FREE_LANE_SYSTEM_PROMPT" \
