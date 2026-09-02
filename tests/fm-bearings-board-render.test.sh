@@ -189,6 +189,25 @@ test_a_readable_pool_shows_how_much_is_left_and_when_it_resets() {
   pass "a readable pool shows how much is left, its window, and when it resets"
 }
 
+# Build a board carrying <usage-json> and return what the renderer produced.
+render_usage() {  # <home> <usage-json|->
+  local home=$1 usage=$2 data="$1/usage-payload.json"
+  if [ "$usage" = "-" ]; then
+    jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-09-02T00:00Z",
+      prs_live:false, captains_call:[], underway:[], landed:[], charted:[]}' > "$data"
+  else
+    jq -n --argjson usage "$usage" '{schema:"fm-bearings-board.v1", home:"render-home",
+      generated:"2026-09-02T00:00Z", prs_live:false, captains_call:[], underway:[],
+      landed:[], charted:[], usage:$usage}' > "$data"
+  fi
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  node "$HARNESS" "$home/.lavish/bearings-board.html" \
+    || fail "the built board could not be rendered"
+}
+
 test_a_board_without_pools_shows_no_gauge_at_all() {
   local home out
   home=$(make_home fuel-absent)
@@ -521,7 +540,87 @@ test_a_board_of_only_warnings_still_reports_nothing_queued
 test_omitted_warnings_never_count_as_more_queued
 test_an_omitted_kind_keeps_the_existing_queued_rendering
 test_a_readable_pool_shows_how_much_is_left_and_when_it_resets
+test_a_board_without_usage_shows_no_history_panel() {
+  local home out
+  home=$(make_home usage-absent)
+  out=$(render_usage "$home" -)
+  printf '%s' "$out" | jq -e '.usage.hidden == true and (.usage.curves | length) == 0' \
+    >/dev/null || fail "a board with no burn history still rendered the panel: $out"
+  pass "a board built without burn history renders no history panel"
+}
+
+test_the_history_panel_draws_one_mark_per_sample_and_flags_each_reset() {
+  local home out
+  home=$(make_home usage-curve)
+  out=$(render_usage "$home" '{
+    "samples": 3, "since": "2026-09-02T10:00:00Z",
+    "curves": [{"pool":"openai-codex","window":"primary","label":"ChatGPT 5 hour",
+      "points":[{"ts":"2026-09-02T10:00:00Z","percent_remaining":80},
+                {"ts":"2026-09-02T11:00:00Z","percent_remaining":20},
+                {"ts":"2026-09-02T12:00:00Z","percent_remaining":100}],
+      "resets":["2026-09-02T12:00:00Z"]}],
+    "daily": [], "review": {"available": true, "note": null, "daily": [], "runs": []},
+    "notes": []}')
+  printf '%s' "$out" | jq -e '
+    .usage.hidden == false
+    and (.usage.curves | length) == 1
+    and (.usage.curves[0].now | test("100% left"))
+    and (.usage.curves[0].bars | length) == 3
+    and ([.usage.curves[0].bars[] | select(.reset)] | length) == 1
+    and (.usage.curves[0].bars[2].reset == true)
+    and (.usage.curves[0].meta | test("1 reset"))
+  ' >/dev/null || fail "the curve did not mark its reset: $out"
+  pass "the history panel draws one mark per sample and flags the reset"
+}
+
+test_review_spend_on_the_costly_pool_is_marked_as_costly() {
+  local home out
+  home=$(make_home usage-spend)
+  out=$(render_usage "$home" '{
+    "samples": 0, "since": null, "curves": [], "daily": [],
+    "review": {"available": true, "note": null,
+      "daily": [{"date":"2026-09-02","pool":"openai-codex","model":"gpt-5.6-sol",
+                 "runs":1,"calls":3,"fresh_input":345121,"output":23718,"cache_read":4280704},
+                {"date":"2026-09-02","pool":"claude","model":"claude-opus-5",
+                 "runs":3,"calls":85,"fresh_input":8882,"output":27356,"cache_read":1062129271}],
+      "runs": [{"run_id":"R1","date":"2026-09-02","pool":"openai-codex","model":"gpt-5.6-sol",
+                "rounds":2,"calls":3,"fresh_input":345121,"output":23718,"cache_read":4280704}]},
+    "notes": []}')
+  printf '%s' "$out" | jq -e '
+    (.usage.spend | length) == 2
+    and (.usage.spend | map(select(.key | test("gpt-5.6-sol"))) | first
+         | .costly == true and (.value | test("345.1k fresh")) and (.value | test("4.28M re-sent")))
+    and (.usage.spend | map(select(.key | test("claude-opus-5"))) | first
+         | .costly == false and (.value | test("1.06B re-sent")))
+    and (.usage.runs | first | .key | test("2 rounds"))
+  ' >/dev/null || fail "the costly pool was not marked apart: $out"
+  pass "review spend on the expensive pool is marked apart from the cheap pool"
+}
+
+test_an_unreadable_spend_source_shows_its_reason_in_place_of_the_rows() {
+  local home out
+  home=$(make_home usage-noreview)
+  out=$(render_usage "$home" '{
+    "samples": 1, "since": "2026-09-02T10:00:00Z",
+    "curves": [{"pool":"claude","window":"five_hour","label":"Claude session",
+      "points":[{"ts":"2026-09-02T10:00:00Z","percent_remaining":51}],"resets":[]}],
+    "daily": [],
+    "review": {"available": false, "note": "no pipeline database at /nowhere", "daily": [], "runs": []},
+    "notes": ["no pipeline database at /nowhere"]}')
+  printf '%s' "$out" | jq -e '
+    (.usage.spend | length) == 0
+    and (.usage.spendNote | join(" ") | test("no pipeline database"))
+    and (.usage.dailyNote | join(" ") | test("no full day"))
+    and (.usage.sub | test("no pipeline database"))
+  ' >/dev/null || fail "an unreadable spend source rendered no reason: $out"
+  pass "an unreadable spend source shows its reason instead of an empty table"
+}
+
 test_a_board_without_pools_shows_no_gauge_at_all
+test_a_board_without_usage_shows_no_history_panel
+test_the_history_panel_draws_one_mark_per_sample_and_flags_each_reset
+test_review_spend_on_the_costly_pool_is_marked_as_costly
+test_an_unreadable_spend_source_shows_its_reason_in_place_of_the_rows
 test_an_unreadable_pool_says_so_instead_of_showing_a_bar
 test_a_nearly_spent_pool_reads_differently_from_a_healthy_one
 test_an_estimated_reading_says_it_is_an_estimate
