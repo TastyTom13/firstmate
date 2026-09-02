@@ -49,7 +49,8 @@ make_db() {  # <path> <rows-sql>
 }
 
 run_history() {  # <home> [db]
-  local home=$1 db=${2:-$home/absent.sqlite}
+  local home=$1
+  local db=${2:-$home/absent.sqlite}
   PATH="$home/fakebin:$PATH" FM_HOME="$home" \
     FM_USAGE_HISTORY_FILE="$home/data/quota-history.jsonl" \
     FM_USAGE_HISTORY_DB="$db" \
