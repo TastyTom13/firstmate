@@ -266,6 +266,8 @@ This prevents closing the workspace's last tab before a replacement exists.
 
 The generic Herdr agent-liveness probe reuses the same classifier.
 A structurally gone pane becomes `missing`, a restored agent-less shell becomes `dead`, a registered agent becomes `alive`, and an unexpected read becomes `unreadable`.
+A terminal `done` registration is also `dead` when the pane's process tree has returned to one verified lone idle shell, because Herdr can retain that record after a crashed Pi process exits.
+The same `done` registration stays `alive` while any live process remains in the pane, so a stale status never authorizes recovery over a running process.
 Unlike tmux process-name inspection, native registration can classify Pi without guessing from a generic interpreter name.
 
 The session-start sweep uses this probe.

@@ -1867,19 +1867,17 @@ fm_backend_herdr_explicit_close_pane_confirmed() {  # <session> <pane_id>
 #              reaped it - verified empirically: killing a pane's shell pid
 #              on a live server makes herdr immediately drop both the pane
 #              and its tab from `pane get`/`tab list`).
-#   no-agent - `pane get` succeeds (the pane structurally exists) but `agent
-#              get` responds with error code agent_not_found: nothing is
-#              registered in it - exactly what a herdr session-layout restore
-#              produces (verified empirically: `session stop` + fresh `herdr
-#              server` restart leaves the pane alive, agent_status "unknown",
-#              agent get -> agent_not_found - docs/herdr-backend.md "ID
-#              stability across a server restart"), and what a future
-#              `resume_agents_on_restore = false` restore would produce too
-#              (a plain shell, never an agent).
-#   live     - `agent get` succeeds and reports a real agent_status (working,
-#              idle, done, or blocked - any registered value). An idle or
-#              blocked agent is still a genuine, still-registered agent, not
-#              a restored husk, so it is never a close-and-replace candidate.
+#   no-agent - `pane get` succeeds and `agent get` either responds with
+#              agent_not_found or reports done after the pane has returned to
+#              its lone idle shell. The first shape is what a Herdr session
+#              restore produces when agents are not resumed. The second shape
+#              can remain after a Pi provider failure even though the Pi
+#              process has exited, so the process-tree proof overrides that
+#              stale terminal status.
+#   live     - `agent get` succeeds and reports working, idle, or blocked, or
+#              reports done while a process still occupies the pane. An idle
+#              or blocked agent is still genuine and registered, and a done
+#              record cannot make a live process safe to replace.
 #   unknown  - anything else: an unparseable/unexpected response from either
 #              call, or a `pane get` success whose own echoed pane_id does not
 #              round-trip (guards against misreading a herdr response shape
@@ -1904,7 +1902,14 @@ fm_backend_herdr_pane_agent_state() {  # <session> <pane_id>
   fi
   status=$(printf '%s' "$out" | jq -r '.result.agent.agent_status // empty' 2>/dev/null)
   case "$status" in
-    working|idle|done|blocked) printf 'live' ;;
+    working|idle|blocked) printf 'live' ;;
+    done)
+      if fm_backend_herdr_pane_idle_shell_pid "$session" "$pane_id" >/dev/null; then
+        printf 'no-agent'
+      else
+        printf 'live'
+      fi
+      ;;
     *) printf 'unknown' ;;
   esac
 }
