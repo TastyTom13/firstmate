@@ -587,6 +587,38 @@ test_create_task_refuses_duplicate_label_when_agent_live() {
   pass "fm_backend_herdr_create_task: a same-labeled tab with a live (even idle) registered agent still refuses exactly as before"
 }
 
+test_done_agent_record_without_agent_process_is_dead() {
+  local dir log resp fb out
+  dir="$TMP_ROOT/done-shell"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent":"pi","agent_status":"done"}}}\n' > "$resp/2.out"
+  death_process_info_fixture w1:p2 4242 > "$resp/3.out"
+  make_death_lab "$dir" 4242
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    FM_HERDR_PS_BIN="$dir/ps" FM_BACKEND_HERDR_IDLE_SHELL_PROOF_POLLS=1 \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_agent_state fmtest:w1:p2' "$ROOT")
+  [ "$out" = dead ] || fail "a done Pi record over a lone shell should be recovery-grade dead, got '$out'"
+  assert_contains "$(cat "$log")" $'pane\x1fprocess-info\x1f--pane\x1fw1:p2' \
+    "the done-state classifier did not inspect the pane process tree"
+  pass "fm_backend_herdr_agent_state: a stale done Pi record over a lone shell is dead"
+}
+
+test_done_agent_record_with_live_process_stays_alive() {
+  local dir log resp fb out
+  dir="$TMP_ROOT/done-live"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent":"pi","agent_status":"done"}}}\n' > "$resp/2.out"
+  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_process_group_id":4343,"foreground_processes":[{"pid":4343,"name":"node","argv0":"pi"}]}}}\n' > "$resp/3.out"
+  make_death_lab "$dir" 4242
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    FM_HERDR_PS_BIN="$dir/ps" FM_BACKEND_HERDR_IDLE_SHELL_PROOF_POLLS=1 \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_agent_state fmtest:w1:p2' "$ROOT")
+  [ "$out" = alive ] || fail "a done record with a live Pi process should stay alive, got '$out'"
+  pass "fm_backend_herdr_agent_state: a done record cannot hide a live Pi process"
+}
+
 test_create_task_refuses_when_any_duplicate_label_is_live() {
   local dir log resp fb out status
   dir="$TMP_ROOT/dup-mixed-live"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -4462,6 +4494,8 @@ test_create_task_closes_and_replaces_no_agent_husk
 test_create_task_closes_all_duplicate_husks_after_replacement
 test_create_task_refuses_when_preexisting_husk_tab_remains
 test_create_task_refuses_when_agent_state_ambiguous
+test_done_agent_record_without_agent_process_is_dead
+test_done_agent_record_with_live_process_stays_alive
 test_create_task_husk_replacement_creates_before_closing
 test_create_task_creates_and_parses_ids
 test_create_task_creates_with_no_focus_flag
