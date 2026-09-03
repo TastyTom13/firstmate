@@ -69,10 +69,30 @@
 # handled/ (record, doorbell, and ladder owned by bin/fm-task-inbox-lib.sh).
 # Ship and scout scaffolds also carry, ahead of the deliverable contract: a pointer
 # to the project's CONTEXT.md when one exists; a Toolkit section naming the four
-# standard research and forge tools; and Reporting rules stating that "no finding"
-# is a complete answer, that every claimed problem cites clickable evidence, that
-# execution and reasoning are reported separately, and that findings, decisions,
+# standard research and forge tools plus a cd-compound caution for Claude workers
+# (absolute paths or `git -C <dir>` instead of `cd <dir> && ...`, since the
+# captain's Read deny rules stop Claude Code on a relative read after a cd); and
+# Reporting rules stating that "no finding" is a complete answer, that every
+# claimed problem cites clickable evidence, that what was measured is kept
+# separate from what was inferred by reading, and that findings, decisions,
 # options, and risks carry stable F1/D1/O1/R1 codes.
+# Every Task/Charter section opens with an "Intent:" placeholder line - who the
+# work is for, what it enables, what done means - firstmate fills at intake the
+# same way it fills {TASK} (fable-prompting-2026-09-03 P2: state intent, not
+# just a task list).
+# Ship and scout scaffolds also carry a "Working discipline" section with three
+# standing lines: grounded claims (audit progress/done claims against a tool
+# result from this session before reporting them), scope discipline (don't fix,
+# optimise, or extend anything the task doesn't ask for; implement the most
+# directly supported reading of an ambiguous task; test only where the task or
+# repo convention asks), and surgical edits (edit files in place rather than
+# rewriting them whole).
+# Every ship mode's Definition of done adds one verification step before the
+# push, PR, or done line: verify the acceptance criteria with a fresh-context
+# subagent or a fresh read of the diff against the task, on a harness that
+# offers subagents, and fix what it finds before finishing. This sits in front
+# of whatever the mode already does (a no-mistakes run, a direct PR, or a ready
+# branch) and never replaces it.
 # Ship tasks include a project-memory section so durable project-intrinsic
 # learnings can be committed to AGENTS.md through the project's delivery path;
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
@@ -275,6 +295,7 @@ IFS= read -r -d '' TOOLKIT_SECTION <<'EOF' || true
 - For web research, default to WebFetch for a single targeted question on a mostly-static page (docs, articles, long legal text) - it is 4-8x faster to get an answer from and returns ~15x fewer tokens than a raw page read, but it can only answer what you ask and cannot see JS-rendered content or anything behind a login.
 - Use `chrome-devtools-axi` instead for JS-heavy/SPA pages, pages that redirect, multi-step site navigation, or anything requiring a real interactive session (including logging in when the task explicitly authorizes it); its `open <url>` snapshot silently truncates around 16-17KB, so pass `--full` when you need a long page's complete content and budget the extra tokens for it.
 - For GitHub repo metadata and all GitHub work - issues, pull requests, checks, releases - prefer `gh-axi` over either browse tool.
+- If you are Claude, use absolute paths or `git -C <dir>` rather than a `cd <dir> && <command>` compound; the captain's Read deny rules make Claude Code stop and ask a human before any relative read after a `cd`.
 EOF
 TOOLKIT_SECTION=${TOOLKIT_SECTION%$'\n'}
 
@@ -286,10 +307,27 @@ IFS= read -r -d '' REPORTING_SECTION <<'EOF' || true
 # Reporting rules
 1. "No finding" is a valid and complete answer. Reporting zero issues will not be read as insufficient effort, and an invented finding is worse than none.
 2. Every claimed problem cites evidence that can be clicked: a `file:line`, a command you actually ran, or quoted output. A problem without a citation is not reported.
-3. Separate what you RAN from what you REASONED. Keep findings from execution and findings from reading in labelled buckets, so nobody has to guess which is which.
+3. Separate what you measured (commands run, output seen) from what you inferred by reading. Keep findings from execution and findings from reading in labelled buckets, so nobody has to guess which is which.
 4. Give findings, decisions, options, and risks stable reference codes - `F1`, `D1`, `O1`, `R1` - and keep each code meaning the same thing for the whole task, so a reply can say "keep D1, reject O2".
 EOF
 REPORTING_SECTION=${REPORTING_SECTION%$'\n'}
+
+# Intent slot: a short labelled line firstmate fills at intake, giving the finish
+# line and the reason instead of only a task list (fable-prompting-2026-09-03 P2).
+# Its placeholders stay in the {TASK}-style until firstmate replaces them.
+INTENT_LINE='Intent: this is for {who}; it enables {what}; done means {finish line}.'
+
+# Working discipline: the three standing lines from fable-prompting-2026-09-03 P2
+# (grounded claims, scope discipline, surgical edits), shared by ship and scout so
+# the two cannot drift. Deliberately just these three lines: they replace older
+# prescriptive rules rather than stacking on top of them.
+IFS= read -r -d '' WORKING_DISCIPLINE_SECTION <<'EOF' || true
+# Working discipline
+1. Grounded claims: before you report progress or done, audit each claim against a tool result from this session; report only work you can point to evidence for, and say plainly when something is not yet verified, a test failed (with its output), or a step was skipped.
+2. Scope discipline: don't fix, optimise, or extend a pre-existing bug, a performance concern, or behaviour the task does not mention unless the requested behaviour cannot work without it - report it as a follow-up in your summary instead; on an ambiguous task, implement the reading its wording and the surrounding code most directly support, state that assumption, and do not build the other readings too; commit tests only where the task asks for them or the repo already keeps tests for this kind of change, sized like the neighbouring tests; this bounds extras only - implement every behaviour the task asks for, completely.
+3. Surgical edits: edit files surgically rather than rewriting them whole when the end result is the same; a whole-file rewrite costs far more output for no gain.
+EOF
+WORKING_DISCIPLINE_SECTION=${WORKING_DISCIPLINE_SECTION%$'\n'}
 
 # The project's durable working context, when the project keeps one.
 # shellcheck disable=SC2016  # single quotes are deliberate: the backticks around CONTEXT.md must reach the reading agent literally.
@@ -356,6 +394,8 @@ cat > "$BRIEF" <<EOF
 You are a persistent second mate managed by the main firstmate. Work on your own; do not wait for a human.
 
 # Charter
+$INTENT_LINE
+
 $SECONDMATE_CHARTER
 
 # Routing scope
@@ -460,6 +500,8 @@ cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
 # Task
+$INTENT_LINE
+
 {TASK}
 
 $HERDR_SECTION
@@ -493,6 +535,8 @@ $CONTEXT_LINE$ENV_SECTION
 7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
    every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
    daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
+
+$WORKING_DISCIPLINE_SECTION
 
 $TOOLKIT_SECTION
 
@@ -538,6 +582,8 @@ cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
 # Task
+$INTENT_LINE
+
 {TASK}
 
 $HERDR_SECTION
@@ -578,6 +624,8 @@ $RULE1
 7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
    every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
    daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
+
+$WORKING_DISCIPLINE_SECTION
 
 $TOOLKIT_SECTION
 

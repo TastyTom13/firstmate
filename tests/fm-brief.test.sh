@@ -794,7 +794,7 @@ test_orientation_sections_render_for_ship_and_scout() {
     assert_grep '"No finding" is a valid and complete answer' "$brief" \
       "$kind Reporting rules lost the zero-issues permission that removes the invent-a-finding incentive"
     assert_grep "cites evidence that can be clicked" "$brief" "$kind Reporting rules lost the citation requirement"
-    assert_grep "Separate what you RAN from what you REASONED" "$brief" \
+    assert_grep "Separate what you measured (commands run, output seen) from what you inferred by reading" "$brief" \
       "$kind Reporting rules lost the execution-versus-reasoning split"
     assert_grep "\`F1\`, \`D1\`, \`O1\`, \`R1\`" "$brief" "$kind Reporting rules lost the stable reference codes"
     # A banned-word list is deliberately absent: it is cosmetic and paraphrased around.
@@ -965,6 +965,72 @@ test_built_by_line_reads_task_meta() {
   pass "fm-brief.sh: the Built-by PR-body line reads this task's own recorded harness/model/effort"
 }
 
+# fable-prompting-2026-09-03 P2/P4: every scaffold's Task/Charter section opens
+# with an Intent placeholder; ship and scout carry the three Working discipline
+# lines and the Claude cd-compound caution in Toolkit; every ship mode's
+# Definition of done gains one pre-done verification line. Rendered through the
+# executable for every variant, never asserted against source bytes.
+test_fable_prompting_additions_render() {
+  local home id brief
+  home="$TMP_ROOT/fable-prompting-home"
+  mkdir -p "$home/data"
+
+  for mode in no-mistakes direct-PR local-only; do
+    id="brief-fable-ship-$mode"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1
+    brief="$home/data/$id/brief.md"
+    assert_present "$brief" "ship ($mode): brief was not scaffolded"
+    # shellcheck disable=SC2016  # Literal braces must remain unexpanded.
+    assert_grep 'Intent: this is for {who}; it enables {what}; done means {finish line}.' "$brief" \
+      "ship ($mode): Task section lost the Intent placeholder"
+    assert_grep "# Working discipline" "$brief" "ship ($mode): lost the Working discipline section"
+    assert_grep "Grounded claims: before you report progress or done, audit each claim against a tool result from this session" "$brief" \
+      "ship ($mode): lost the grounded-claims standing line"
+    assert_grep "Scope discipline: don't fix, optimise, or extend" "$brief" \
+      "ship ($mode): lost the scope-discipline standing line"
+    assert_grep "Surgical edits: edit files surgically rather than rewriting them whole" "$brief" \
+      "ship ($mode): lost the surgical-edits standing line"
+    assert_grep "If you are Claude, use absolute paths or \`git -C <dir>\`" "$brief" \
+      "ship ($mode): Toolkit lost the Claude cd-compound caution"
+    assert_grep "captain's Read deny rules make Claude Code stop and ask a human before any relative read after a \`cd\`" "$brief" \
+      "ship ($mode): cd-compound caution lost its reason"
+    assert_grep "verify the acceptance criteria with a fresh-context subagent or a fresh read of the diff against the task" "$brief" \
+      "ship ($mode): Definition of done lost the pre-done verification step"
+  done
+
+  id="brief-fable-scout"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "scout: brief was not scaffolded"
+  # shellcheck disable=SC2016  # Literal braces must remain unexpanded.
+  assert_grep 'Intent: this is for {who}; it enables {what}; done means {finish line}.' "$brief" \
+    "scout: Task section lost the Intent placeholder"
+  assert_grep "# Working discipline" "$brief" "scout: lost the Working discipline section"
+  assert_grep "Grounded claims: before you report progress or done" "$brief" \
+    "scout: lost the grounded-claims standing line"
+  assert_grep "Scope discipline: don't fix, optimise, or extend" "$brief" \
+    "scout: lost the scope-discipline standing line"
+  assert_grep "Surgical edits: edit files surgically rather than rewriting them whole" "$brief" \
+    "scout: lost the surgical-edits standing line"
+  assert_grep "If you are Claude, use absolute paths or \`git -C <dir>\`" "$brief" \
+    "scout: Toolkit lost the Claude cd-compound caution"
+  assert_no_grep "verify the acceptance criteria with a fresh-context subagent" "$brief" \
+    "scout: a scout has no push/PR/done gate and must not carry the ship verification step"
+
+  id="brief-fable-secondmate"
+  FM_HOME="$home" FM_SECONDMATE_CHARTER='Supervise the fable domain.' \
+    "$ROOT/bin/fm-brief.sh" "$id" --secondmate alpha >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "secondmate: charter was not scaffolded"
+  # shellcheck disable=SC2016  # Literal braces must remain unexpanded.
+  assert_grep 'Intent: this is for {who}; it enables {what}; done means {finish line}.' "$brief" \
+    "secondmate: Charter section lost the Intent placeholder"
+  assert_no_grep "# Working discipline" "$brief" \
+    "secondmate: charter is not a ship/scout brief and must not carry Working discipline"
+
+  pass "fm-brief.sh: fable-prompting Intent slot, Working discipline lines, cd caution, and ship verification step render for every scaffold"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
@@ -990,3 +1056,4 @@ test_orientation_sections_render_for_ship_and_scout
 test_env_file_block_is_opt_in_and_self_explaining
 test_pr_wait_follow_up_only_where_a_pr_exists
 test_built_by_line_reads_task_meta
+test_fable_prompting_additions_render

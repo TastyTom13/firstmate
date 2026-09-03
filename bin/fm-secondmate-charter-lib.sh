@@ -30,7 +30,7 @@ registry_summary_for_brief() {
   if [ -n "${FM_SECONDMATE_CHARTER:-}" ]; then
     printf '%s\n' "$FM_SECONDMATE_CHARTER" | normalize_registry_text
   else
-    brief_section_text "$brief" "Charter" | normalize_registry_text
+    brief_section_text "$brief" "Charter" | grep -v '^Intent:' | normalize_registry_text
   fi
 }
 
