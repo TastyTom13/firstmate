@@ -20,6 +20,11 @@
 # external wait rather than an idle pane the watcher escalates as stale.
 # local-only raises no PR and therefore carries no such line, and no
 # "Built by" instruction either, since it never opens one.
+# Every mode also opens its closing step with one pre-done verification line
+# (fable-prompting-2026-09-03 P4): a fresh-context subagent or a fresh diff
+# read against the task, fixed before the worker finishes. This sits in front
+# of whatever the mode already does and is not a second review pipeline; the
+# no-mistakes mode's own gates are unchanged.
 # The no-mistakes "Built by" recipe is the fleet's ONE sanctioned use of raw
 # `gh` instead of `gh-axi`: gh-axi has no way to read a PR body back verbatim
 # (`pr view --full` renders a record, and `--body-file` has no stdin form), so
@@ -54,8 +59,9 @@ fm_dod_block() {  # <mode> <task-id> <meta-path>
 Delivery contract: mode=direct-PR
 This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
+Before you push, verify the acceptance criteria with a fresh-context subagent or a fresh read of the diff against the task - on a harness that offers subagents - and fix what it finds.
 Before opening the PR, read $meta and turn its \`harness=\`, \`model=\`, and \`effort=\` fields into a trailing PR-body line \`Built by: <harness>/<model> at <effort>\` (an unset model or effort reads back as the literal \`default\`, matching how it was recorded); for example: \`awk -F= '\$1=="harness"{h=\$2} \$1=="model"{m=\$2} \$1=="effort"{e=\$2} END{printf "Built by: %s/%s at %s", h, m, e}' $meta\`. Include that exact line, on its own line, in the PR body you pass to \`gh-axi\`.
-When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file, follow it with \`$paused: awaiting merge of PR {url}\`, and stop.
+When it is implemented, committed, and verified, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file, follow it with \`$paused: awaiting merge of PR {url}\`, and stop.
 That second line declares a known external wait, so your idle pane is rechecked on a long cadence instead of being treated as a possible wedge.
 Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
 EOF
@@ -67,7 +73,8 @@ Delivery contract: mode=local-only
 This task ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`fm/$id\`. Do NOT push, do NOT open a PR, do NOT merge.
 Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
-When it is implemented and committed, append \`done: ready in branch fm/$id\` to the status file and stop.
+Before you report it ready, verify the acceptance criteria with a fresh-context subagent or a fresh read of the diff against the task - on a harness that offers subagents - and fix what it finds.
+When it is implemented, committed, and verified, append \`done: ready in branch fm/$id\` to the status file and stop.
 The configured merge authority approves the ready branch, then firstmate merges it into local \`main\` through the guarded fast-forward path.
 EOF
       ;;
@@ -76,7 +83,8 @@ EOF
 # Definition of done
 Delivery contract: mode=no-mistakes
 The task is complete only when committed on your branch.
-When you believe it is complete, append \`done: {summary}\` to the status file and stop.
+Before you report it done, verify the acceptance criteria with a fresh-context subagent or a fresh read of the diff against the task - on a harness that offers subagents - and fix what it finds.
+When you believe it is complete and verified, append \`done: {summary}\` to the status file and stop.
 Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
 
 You drive no-mistakes by responding to its gates, not by implementing fixes.
