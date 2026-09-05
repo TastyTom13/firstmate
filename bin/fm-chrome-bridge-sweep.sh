@@ -3,6 +3,7 @@
 # ownership is established from their current working directory.
 #
 # Usage: fm-chrome-bridge-sweep.sh [--apply] [--summary] [--worktree <path>]
+#        fm-chrome-bridge-sweep.sh --record-owner <task-id> <worktree> <bridge-pid> <session-root> [state-dir]
 #
 # The default is a dry-run inventory with bridge age, owner, and disposition.
 # --apply sends TERM to selected bridges and their current descendants, then
@@ -13,6 +14,8 @@
 # Existing owners remain protected at every age; the age threshold reports them.
 # --summary prints only a startup diagnostic and the exact inspect/apply commands.
 # Unknown ownership is always reported and never selected.
+# --record-owner atomically publishes the durable state/<task-id>.bridge-owner
+# record expected by global cleanup. Session root is the owning process pid.
 #
 # Test seams use fixture files rather than real processes:
 # FM_BRIDGE_PS_FILE has tab-separated pid, ppid, elapsed, command rows;
@@ -20,12 +23,37 @@
 # FM_BRIDGE_KILL_LOG records "SIGNAL pid" instead of sending signals.
 set -u
 
+if [ "${1:-}" = --record-owner ]; then
+  [ "$#" -ge 5 ] || { echo "error: --record-owner requires task-id, worktree, bridge-pid, and session-root" >&2; exit 2; }
+  OWNER_TASK=$2
+  OWNER_WORKTREE=$3
+  OWNER_BRIDGE_PID=$4
+  OWNER_SESSION_ROOT=$5
+  OWNER_STATE=${6:-${FM_BRIDGE_OWNER_DIR:-${FM_STATE_OVERRIDE:-${FM_HOME:-$PWD}/state}}}
+  case "$OWNER_TASK:$OWNER_BRIDGE_PID:$OWNER_SESSION_ROOT" in
+    *[!A-Za-z0-9_.:-]*) echo "error: invalid ownership record identity" >&2; exit 2 ;;
+  esac
+  mkdir -p "$OWNER_STATE" || exit 1
+  OWNER_TMP="$OWNER_STATE/.$OWNER_TASK.bridge-owner.$$"
+  if ! {
+    printf 'task_id=%s\n' "$OWNER_TASK"
+    printf 'worktree=%s\n' "$OWNER_WORKTREE"
+    printf 'bridge_pid=%s\n' "$OWNER_BRIDGE_PID"
+    printf 'session_root=%s\n' "$OWNER_SESSION_ROOT"
+  } > "$OWNER_TMP" || ! mv -f "$OWNER_TMP" "$OWNER_STATE/$OWNER_TASK.bridge-owner"; then
+    rm -f "$OWNER_TMP"
+    exit 1
+  fi
+  exit 0
+fi
+
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 APPLY=0
 SUMMARY=0
 WORKTREE=
 MAX_HOURS=${FM_BRIDGE_MAX_AGE_HOURS:-6}
 GRACE=${FM_BRIDGE_TERM_GRACE_SECS:-1}
+OWNER_DIR=${FM_BRIDGE_OWNER_DIR:-${FM_STATE_OVERRIDE:-${FM_HOME:-$PWD}/state}}
 
 usage() {
   sed -n '2,/^set -u$/p' "$0" | sed 's/^# \{0,1\}//; $d'
@@ -102,22 +130,6 @@ path_belongs_to_worktree() {  # <path> <worktree>
   case "$1" in "$2"|"$2"/*) return 0 ;; *) return 1 ;; esac
 }
 
-owner_path_has_live_process() {  # <path>
-  local path=$1 pid ppid elapsed command cwd
-  while IFS=$'\t' read -r pid ppid elapsed command; do
-    case "$pid:$ppid" in *[!0-9:]*) continue ;; esac
-    case "$command" in
-      node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*|\
-      node\ *chrome-devtools-mcp.js*|*/node\ *chrome-devtools-mcp.js*|\
-      *Google\ Chrome*--headless*) continue ;;
-    esac
-    case "$command" in *"$path"*) return 0 ;; esac
-    cwd=$(process_cwd "$pid" 2>/dev/null || true)
-    case "$cwd" in "$path"|"$path"/*) return 0 ;; esac
-  done < "$PS_TABLE"
-  return 1
-}
-
 capture_identity() {  # <pid> <command> <cwd>
   local pid=$1 command=$2 cwd=$3 identity
   if [ -n "${FM_BRIDGE_PS_FILE:-}" ]; then
@@ -130,6 +142,28 @@ capture_identity() {  # <pid> <command> <cwd>
 }
 
 load_processes
+
+owner_record_for_pid() {  # <bridge-pid>
+  local bridge_pid=$1 record task_id worktree record_pid session_root
+  for record in "$OWNER_DIR"/*.bridge-owner; do
+    [ -f "$record" ] || continue
+    task_id=$(awk -F= '$1 == "task_id" { print substr($0, index($0, "=") + 1); exit }' "$record")
+    worktree=$(awk -F= '$1 == "worktree" { print substr($0, index($0, "=") + 1); exit }' "$record")
+    record_pid=$(awk -F= '$1 == "bridge_pid" { print substr($0, index($0, "=") + 1); exit }' "$record")
+    session_root=$(awk -F= '$1 == "session_root" { print substr($0, index($0, "=") + 1); exit }' "$record")
+    if [ "$record_pid" = "$bridge_pid" ] && [ -n "$task_id" ] && [ -n "$worktree" ] && [ -n "$session_root" ]; then
+      printf '%s\t%s\t%s\n' "$task_id" "$worktree" "$session_root"
+      return 0
+    fi
+  done
+  return 1
+}
+
+owner_record_process_state() {  # <session-root>
+  case "$1" in ''|*[!0-9]*) return 2 ;; esac
+  awk -F '\t' -v pid="$1" '$1 == pid { found=1 } END { exit found ? 0 : 1 }' "$PS_TABLE"
+}
+
 while IFS=$'\t' read -r pid ppid elapsed command; do
   case "$pid:$ppid" in *[!0-9:]*) continue ;; esac
   case "$command" in
@@ -149,26 +183,37 @@ while IFS=$'\t' read -r pid ppid elapsed command; do
   cwd=$(process_cwd "$pid" 2>/dev/null || true)
   disposition=keep
   reason=active
-  if [ -z "$cwd" ]; then
-    disposition=unknown
-    reason=owner-unresolved
-  elif [ -n "$WORKTREE" ]; then
-    if path_belongs_to_worktree "$cwd" "$WORKTREE"; then
+  if [ -n "$WORKTREE" ]; then
+    if [ -z "$cwd" ]; then
+      disposition=unknown
+      reason=owner-unresolved
+    elif path_belongs_to_worktree "$cwd" "$WORKTREE"; then
       disposition=select
       reason=task-worktree
     fi
-  elif [ ! -e "$cwd" ]; then
-    if owner_path_has_live_process "$cwd"; then
-      reason=owner-live
+  else
+    owner_record=$(owner_record_for_pid "$pid" 2>/dev/null || true)
+    if [ -z "$owner_record" ]; then
+      disposition=unknown
+      reason=owner-unrecorded
     else
-      disposition=select
-      reason=owner-missing
+      owner_worktree=$(printf '%s\n' "$owner_record" | cut -f2)
+      owner_session_root=$(printf '%s\n' "$owner_record" | cut -f3)
+      if [ "$owner_session_root" = 1 ] || owner_record_process_state "$owner_session_root"; then
+        reason=owner-live
+      elif [ "$?" -eq 2 ]; then
+        disposition=unknown
+        reason=owner-unresolved
+      elif [ ! -e "$owner_worktree" ]; then
+        disposition=select
+        reason=owner-missing
+      elif [ -n "$age" ] && [ "$age" -ge "$((MAX_HOURS * 3600))" ]; then
+        reason=long-running
+      elif [ -z "$age" ]; then
+        disposition=unknown
+        reason='age-unresolved'
+      fi
     fi
-  elif [ -n "$age" ] && [ "$age" -ge "$((MAX_HOURS * 3600))" ]; then
-    reason=long-running
-  elif [ -z "$age" ]; then
-    disposition=unknown
-    reason='age-unresolved'
   fi
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$pid" "$ppid" "$elapsed" "${cwd:-unknown}" "$disposition" "$reason" >> "$BRIDGES"
   [ "$disposition" = select ] && printf '%s\n' "$pid" >> "$SELECTED"

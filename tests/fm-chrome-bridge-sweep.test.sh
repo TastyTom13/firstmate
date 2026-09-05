@@ -12,7 +12,8 @@ CWD_FILE="$TMP_ROOT/cwd.tsv"
 KILL_LOG="$TMP_ROOT/kills"
 TASK="$TMP_ROOT/task"
 OTHER="$TMP_ROOT/other"
-mkdir -p "$TASK/subdir" "$OTHER"
+OWNER_DIR="$TMP_ROOT/state"
+mkdir -p "$TASK/subdir" "$OTHER" "$OWNER_DIR"
 
 write_fixtures() {
   cat > "$PS_FILE" <<EOF
@@ -38,6 +39,9 @@ EOF
 EOF
 }
 write_fixtures
+FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner task-missing "$TMP_ROOT/gone" 301 999 >/dev/null || fail "missing-owner record is written"
+FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner live-owner "$OTHER" 201 200 >/dev/null || fail "live-owner record is written"
+FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner existing-owner "$OTHER" 302 998 >/dev/null || fail "existing-owner record is written"
 
 out=$(FM_BRIDGE_PS_FILE="$PS_FILE" FM_BRIDGE_CWD_FILE="$CWD_FILE" \
   "$SWEEP" --worktree "$TASK") || fail "task inventory runs"
@@ -63,20 +67,22 @@ fi
 pass "task apply retires the owned bridge, MCP, and Chrome descendants"
 
 out=$(FM_BRIDGE_PS_FILE="$PS_FILE" FM_BRIDGE_CWD_FILE="$CWD_FILE" \
-  FM_BRIDGE_MAX_AGE_HOURS=6 "$SWEEP") || fail "global inventory runs"
-printf '%s\n' "$out" | grep -F $'201\t08:00:00' | grep -F $'keep\tlong-running' >/dev/null \
+  FM_BRIDGE_OWNER_DIR="$OWNER_DIR" FM_BRIDGE_MAX_AGE_HOURS=6 "$SWEEP") || fail "global inventory runs"
+printf '%s\n' "$out" | grep -F $'201\t08:00:00' | grep -F $'keep\towner-live' >/dev/null \
   || fail "old bridge with a live owner is protected"
 printf '%s\n' "$out" | grep -F $'301\t00:05:00' | grep -F $'would-stop\towner-missing' >/dev/null \
   || fail "missing owner is selected"
-printf '%s\n' "$out" | grep -F $'101\t00:10:00' | grep -F $'keep\tactive' >/dev/null \
-  || fail "young bridge with existing owner is retained"
+printf '%s\n' "$out" | grep -F $'101\t00:10:00' | grep -F $'unknown\towner-unrecorded' >/dev/null \
+  || fail "unrecorded bridge remains protected"
 printf '%s\n' "$out" | grep -F $'302\t07:00:00' | grep -F $'keep\tlong-running' >/dev/null \
   || fail "existing worktree bridge remains protected"
-pass "global mode selects missing-owner bridges and protects live owners"
+printf '%s\n' "$out" | grep -F $'401\t00:05:00' | grep -F $'unknown\towner-unrecorded' >/dev/null \
+  || fail "unrecorded bridge is listed but not selected"
+pass "global mode requires records and protects live owners"
 
 summary=$(FM_BRIDGE_PS_FILE="$PS_FILE" FM_BRIDGE_CWD_FILE="$CWD_FILE" \
-  "$SWEEP" --summary) || fail "summary runs"
-printf '%s\n' "$summary" | grep -F 'BROWSER_BRIDGES: 1 orphan bridge(s), 1 unknown, 2 long-running and protected' >/dev/null \
+  FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --summary) || fail "summary runs"
+printf '%s\n' "$summary" | grep -F 'BROWSER_BRIDGES: 1 orphan bridge(s), 2 unknown, 1 long-running and protected' >/dev/null \
   || fail "summary reports candidate, unknown, and protected counts"
 printf '%s\n' "$summary" | grep -F "inspect: $SWEEP; apply: $SWEEP --apply" >/dev/null \
   || fail "summary gives exact commands"
