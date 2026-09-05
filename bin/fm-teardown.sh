@@ -2786,26 +2786,35 @@ fi
 if [ "$KIND" != secondmate ]; then
   conclude_task_no_mistakes_run "$WT"
   reap_task_worktree_processes worktree "$WT" "$TASK_TMP"
+  BACKEND_STOPPED=0
   if [ "$BACKEND" = herdr ] && [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
-    if teardown_herdr_session_lock_held "$HERDR_PRESENTATION_SESSION"; then
-      fm_backend_herdr_projection_close_pane_focus_preserving \
-        "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE" || true
+    if teardown_herdr_session_lock_held "$HERDR_PRESENTATION_SESSION" \
+       && fm_backend_herdr_projection_close_pane_focus_preserving \
+         "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE"; then
+      BACKEND_STOPPED=1
     else
-      echo "warning: herdr presentation focus lock unavailable; refusing a concurrent focus-unsafe pane close" >&2
+      echo "warning: herdr presentation focus lock unavailable or pane close was unconfirmed; skipping bridge sweep" >&2
     fi
   elif [ "$BACKEND" = herdr ]; then
-    if teardown_herdr_session_lock_held "$TEARDOWN_HERDR_SESSION"; then
-      fm_backend_herdr_kill_serialized "$TEARDOWN_HERDR_SESSION" "$TEARDOWN_HERDR_PANE" 2>/dev/null || true
+    if teardown_herdr_session_lock_held "$TEARDOWN_HERDR_SESSION" \
+       && fm_backend_herdr_kill_serialized "$TEARDOWN_HERDR_SESSION" "$TEARDOWN_HERDR_PANE" 2>/dev/null; then
+      BACKEND_STOPPED=1
     else
-      echo "warning: herdr session presentation lock path is unavailable; skipping the pane close rather than closing unlocked" >&2
+      echo "warning: herdr session presentation lock path is unavailable or pane close failed; skipping bridge sweep" >&2
     fi
   elif [ "$BACKEND" = orca ]; then
-    [ -z "$T_ORCA" ] || fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
-  else
-    fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
+    if [ -z "$T_ORCA" ] || fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null; then
+      BACKEND_STOPPED=1
+    fi
+  elif fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null; then
+    BACKEND_STOPPED=1
   fi
-  "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --apply --worktree "$WT" >&2 || \
-    echo "warning: browser bridge inspection failed for $ID; no unverified bridge was signaled" >&2
+  if [ "$BACKEND_STOPPED" -eq 1 ] && worktree_registered_for_project "$PROJ" "$WT"; then
+    "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --apply --worktree "$WT" >&2 || \
+      echo "warning: browser bridge inspection failed for $ID; no unverified bridge was signaled" >&2
+  else
+    echo "warning: browser bridge sweep skipped for $ID; endpoint shutdown or current worktree ownership was not confirmed" >&2
+  fi
 fi
 
 # Fix 4 (see script header): sweep remote job workers abandoned by an already

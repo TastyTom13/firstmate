@@ -58,8 +58,8 @@ pass "task apply retires the owned bridge, MCP, and Chrome descendants"
 
 out=$(FM_BRIDGE_PS_FILE="$PS_FILE" FM_BRIDGE_CWD_FILE="$CWD_FILE" \
   FM_BRIDGE_MAX_AGE_HOURS=6 "$SWEEP") || fail "global inventory runs"
-printf '%s\n' "$out" | grep -F $'201\t08:00:00' | grep -F $'would-stop\tover-age' >/dev/null \
-  || fail "old bridge is selected"
+printf '%s\n' "$out" | grep -F $'201\t08:00:00' | grep -F $'keep\tlong-running' >/dev/null \
+  || fail "old bridge with a live owner is protected"
 printf '%s\n' "$out" | grep -F $'301\t00:05:00' | grep -F $'would-stop\towner-missing' >/dev/null \
   || fail "missing owner is selected"
 printf '%s\n' "$out" | grep -F $'101\t00:10:00' | grep -F $'keep\tactive' >/dev/null \
@@ -68,8 +68,8 @@ pass "global mode selects over-age and missing-owner bridges"
 
 summary=$(FM_BRIDGE_PS_FILE="$PS_FILE" FM_BRIDGE_CWD_FILE="$CWD_FILE" \
   "$SWEEP" --summary) || fail "summary runs"
-printf '%s\n' "$summary" | grep -F 'BROWSER_BRIDGES: 2 orphaned or over-age bridge(s), 1 with unknown ownership' >/dev/null \
-  || fail "summary reports selected and unknown counts"
+printf '%s\n' "$summary" | grep -F 'BROWSER_BRIDGES: 1 orphan bridge(s), 1 unknown, 1 long-running and protected' >/dev/null \
+  || fail "summary reports candidate, unknown, and protected counts"
 printf '%s\n' "$summary" | grep -F "inspect: $SWEEP; apply: $SWEEP --apply" >/dev/null \
   || fail "summary gives exact commands"
 pass "startup summary is concise and actionable"

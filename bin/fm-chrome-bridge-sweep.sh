@@ -9,8 +9,8 @@
 # KILL to survivors after FM_BRIDGE_TERM_GRACE_SECS (default 1).
 # --worktree limits selection to bridges whose cwd is that path or below it and
 # ignores age; teardown uses this while the task worktree still exists.
-# Without --worktree, a bridge is selected when its cwd no longer exists or its
-# age exceeds FM_BRIDGE_MAX_AGE_HOURS (default 6).
+# Without --worktree, a bridge is selected only when its cwd no longer exists.
+# Existing owners remain protected at every age; the age threshold reports them.
 # --summary prints only a startup diagnostic and the exact inspect/apply commands.
 # Unknown ownership is always reported and never selected.
 #
@@ -123,8 +123,7 @@ while IFS=$'\t' read -r pid ppid elapsed command; do
     disposition=select
     reason=owner-missing
   elif [ -n "$age" ] && [ "$age" -ge "$((MAX_HOURS * 3600))" ]; then
-    disposition=select
-    reason=over-age
+    reason=long-running
   elif [ -z "$age" ]; then
     disposition=unknown
     reason='age-unresolved'
@@ -135,12 +134,14 @@ done < "$PS_TABLE"
 
 selected_count=$(grep -c . "$SELECTED" 2>/dev/null || true)
 unknown_count=$(awk -F '\t' '$5 == "unknown" { n++ } END { print n + 0 }' "$BRIDGES")
+long_running_count=$(awk -F '\t' '$6 == "long-running" { n++ } END { print n + 0 }' "$BRIDGES")
 if [ "$SUMMARY" -eq 1 ]; then
-  if [ "$selected_count" -gt 0 ] || [ "$unknown_count" -gt 0 ]; then
-    printf 'BROWSER_BRIDGES: %s orphaned or over-age bridge(s), %s with unknown ownership; inspect: %s; apply: %s --apply\n' \
-      "$selected_count" "$unknown_count" "$SCRIPT_PATH" "$SCRIPT_PATH"
+  if [ "$selected_count" -gt 0 ]; then
+    printf 'BROWSER_BRIDGES: %s orphan bridge(s), %s unknown, %s long-running and protected; inspect: %s; apply: %s --apply\n' \
+      "$selected_count" "$unknown_count" "$long_running_count" "$SCRIPT_PATH" "$SCRIPT_PATH"
   else
-    printf 'BROWSER_BRIDGES: 0 orphan bridges detected.\n'
+    printf 'BROWSER_BRIDGES: 0 orphan bridges detected (%s unknown, %s long-running and protected).\n' \
+      "$unknown_count" "$long_running_count"
   fi
   exit 0
 fi
