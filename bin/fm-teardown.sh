@@ -108,10 +108,11 @@
 # checks before any destructive return. Teardown output notes every wait, retry, and
 # removal so the operator can see what happened.
 #
-# Pre-teardown cleanup sequence (runs once every landed/discard-work safety
-# refusal above has already passed, and BEFORE any worktree return, branch
-# delete, or backend kill below - a still-active run or a leaked process may
-# own live work in that worktree):
+# Pre-teardown cleanup sequence runs once every landed/discard-work safety
+# refusal above has passed, concludes any parked no-mistakes run, confirms backend
+# endpoint shutdown, sweeps the task's browser bridge immediately after that
+# confirmation, and then reaps remaining leaked non-browser processes sharing the
+# task roots, all before the worktree return.
 #   Fix 1 - conclude the task's own no-mistakes run. A ship task's worktree can
 #     be torn down while its no-mistakes pipeline run is still PARKED at a gate
 #     (awaiting_approval/fix_review/any awaiting_agent field), with no worker
@@ -128,30 +129,25 @@
 #     that verified run instance. A run already terminal
 #     (an outcome is set) or not parked at a gate is left untouched. Idempotent:
 #     an already-aborted run reads back terminal and is skipped on retry.
-#   Fix 2 - reap leaked descendant processes. A backgrounded/disowned process
-#     started under the worktree (or its per-task tasktmp) does not receive the
-#     SIGHUP/SIGTERM that closing the backend pane sends to its own foreground
-#     process group, so it survives reparented to init (observed 2026-08-03:
-#     two `go test` binaries, deadlines blown past by ~100x, pinning CPU for
-#     hours with no live task meta to attribute them to once teardown had
-#     already removed it). reap_task_worktree_processes finds every process
-#     whose CURRENT WORKING DIRECTORY is this task's own worktree or tasktmp
-#     root via `lsof -a -d cwd` (cheap: bounded by process count, not by
-#     walking the worktree's file tree) and sends TERM, then KILL after a short
-#     grace period to any survivor whose process identity still matches. Both
-#     roots are unique per task and never
-#     shared, so this can never reach another task's or the primary's
-#     processes. Browser bridge leaders are reserved for Fix 3 so their
-#     detached child family remains attributable after the worker stops.
-#     Idempotent: nothing left to find is a silent no-op.
-#   Fix 3 - retire the task's browser bridge family. chrome-devtools-axi
+#   Fix 2 - retire the task's browser bridge family. chrome-devtools-axi
 #     detaches its bridge, MCP child, and Chrome descendants from the worker's
 #     process group. bin/fm-chrome-bridge-sweep.sh attributes the bridge by its
-#     cwd under this task's exact worktree and signals that captured family.
-#     Unknown ownership is reported and never signaled.
+#     cwd under this task's exact worktree and signals that captured family
+#     only after endpoint shutdown is confirmed. Unknown ownership is reported
+#     and never signaled.
+#   Fix 3 - reap leaked non-browser descendant processes. A backgrounded/disowned
+#     process started under the worktree (or its per-task tasktmp) does not
+#     receive the SIGHUP/SIGTERM that closing the backend pane sends to its own
+#     foreground process group, so it survives reparented to init. The reap
+#     finds every non-browser process whose CURRENT WORKING DIRECTORY is this
+#     task's own worktree or tasktmp root via `lsof -a -d cwd`, then sends TERM
+#     and KILL after a short grace period to any survivor whose process identity
+#     still matches. Both roots are unique per task and never shared, so this
+#     can never reach another task's or the primary's processes. It runs only
+#     after endpoint shutdown is confirmed and is idempotent.
 #   Fix 4 - sweep abandoned remote job workers. A remote job worker started
 #     from a worktree's own bin/ outlives that worktree's removal without
-#     being reachable by Fix 2, because its working directory is wherever it
+#     being reachable by the task-worktree process reap, because its working directory is wherever it
 #     was launched rather than the task worktree (observed 2026-08-07: 29
 #     workers at ppid 1, 1-2 days old, each still polling and appending to a
 #     log in a pruned no-mistakes gate worktree). bin/fm-remote-job-reap-orphans.sh
