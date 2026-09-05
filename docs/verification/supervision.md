@@ -344,6 +344,17 @@ FM_PI_LIVE_E2E=1 tests/fm-pi-primary-live-e2e.test.sh
 FM_GROK_STOP_LIVE_E2E=1 FM_GROK_NATIVE_BIN="$native_grok" FM_GROK_LEGACY_BIN="$pre_native_grok" tests/fm-grok-stop-live-e2e.test.sh
 ```
 
+The away-mode daemon turn-end predicate was verified on 2026-09-06 against tracked implementation `2cc21c8a1cff5e9ddf3a9e552e9e24c7a5cd9706` with a live identity-matched daemon between watcher runs, dead and mismatched daemon controls, and away mode disabled.
+
+```sh
+tests/fm-turnend-guard.test.sh
+bin/fm-lint.sh
+bin/fm-doc-audience-check.sh
+bin/fm-test-run.sh --all
+```
+
+The focused test passed with zero failures, the lint and documentation checks were clean, and the full test run reported `ALL TESTS PASSED`.
+
 The Claude auto-arm false-failure, guard-predicate, and monotonic bounded fail-open correction was verified on 2026-08-02 with the installed ShellCheck 0.11.0 and isolated behavior suites.
 
 ```sh

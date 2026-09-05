@@ -13,7 +13,7 @@ Do not infer this guard's scope, loop safety, or compatibility tradeoffs for tho
 
 `bin/fm-guard.sh` is a pull-based warning that runs only when another supervision command invokes it.
 The turn-end guard closes the remaining gap at the primary's own turn boundary.
-When work, a process-event source, or Relay polling needs supervision at that boundary and no identity-matched watcher has a fresh beacon, the harness integration must either block the turn end or force one bounded follow-up that uses the recovery instruction from the emitted session-start protocol.
+When work, a process-event source, or Relay polling needs supervision at that boundary and neither an identity-matched watcher with a fresh beacon nor the away-mode daemon predicate has been proven healthy, the harness integration must either block the turn end or force one bounded follow-up that uses the recovery instruction from the emitted session-start protocol.
 The mid-turn pull warning uses the model-aware supervision verdict described below, while the turn-end guard keeps the PID-strict watcher predicate.
 The guard remains a backstop; [`watcher-continuity.md`](watcher-continuity.md) owns normal continuity.
 
@@ -42,6 +42,9 @@ Requiring the turn-end guard extension as well as the watch extension is deliber
 Without that proof an unheld lock alarms exactly as it did before, so an unloaded, version-drifted, or exited Pi session is loud immediately, and a cycle the extension never restores is loud once the beacon passes grace.
 Under every persistent-watcher harness a live identity-matched watcher with a fresh beacon is still required, so the pull guard keeps the same strict semantics there.
 Its banner names the true failing condition, either a missing live watcher process or a genuinely stale beacon with its real age, and keys the once-per-episode dedup on that condition rather than the beacon mtime.
+
+While `state/.afk` exists the away-mode daemon owns watcher supervision and runs `bin/fm-watch.sh` one-shot, so between two of those runs no watcher process holds the home lock and the strict watcher check is legitimately false; the guard therefore also accepts a live away-mode daemon as supervision when `state/.supervise-daemon.lock` names a live pid whose recorded `pid-identity` still matches that pid, plus a liveness signal within grace from either the watcher beacon or the daemon's own `state/.subsuper-last-housekeep` tick.
+A dead, identity-mismatched, or silent daemon fails that predicate and keeps every existing block, and the predicate never applies with away mode off.
 
 `FM_STATE_OVERRIDE` wins over `FM_HOME/state`, and `FM_HOME` wins over repository-root `state/`.
 `FM_GUARD_GRACE` controls beacon freshness and defaults to 300 seconds.
