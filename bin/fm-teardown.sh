@@ -2826,10 +2826,17 @@ if [ "$KIND" != secondmate ]; then
       echo "warning: herdr session presentation lock path is unavailable or pane close failed; skipping bridge sweep" >&2
     fi
   elif [ "$BACKEND" = orca ]; then
-    if [ -z "$T_ORCA" ] || { fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null \
-      && backend_endpoint_shutdown_confirmed; }; then
+    if [ -z "$T_ORCA" ]; then
+      echo "warning: Orca endpoint shutdown is unconfirmed; skipping browser bridge sweep for $ID" >&2
+    elif fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null \
+      && backend_endpoint_shutdown_confirmed; then
       BACKEND_STOPPED=1
+    else
+      echo "warning: Orca endpoint shutdown is unconfirmed; skipping browser bridge sweep for $ID" >&2
     fi
+  elif [ "$BACKEND" = zellij ] || [ "$BACKEND" = cmux ]; then
+    fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
+    echo "warning: $BACKEND endpoint shutdown confirmation is unsupported; skipping browser bridge sweep for $ID" >&2
   elif fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null \
        && backend_endpoint_shutdown_confirmed; then
     BACKEND_STOPPED=1
@@ -2837,8 +2844,10 @@ if [ "$KIND" != secondmate ]; then
   if [ "$BACKEND_STOPPED" -eq 1 ] && worktree_owned_by_task; then
     "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --apply --worktree "$WT" >&2 || \
       echo "warning: browser bridge inspection failed for $ID; no unverified bridge was signaled" >&2
+  elif [ "$BACKEND_STOPPED" -ne 1 ]; then
+    echo "warning: $BACKEND endpoint shutdown or current worktree ownership was not confirmed; skipping browser bridge sweep for $ID" >&2
   else
-    echo "warning: browser bridge sweep skipped for $ID; endpoint shutdown or current worktree ownership was not confirmed" >&2
+    echo "warning: $BACKEND browser bridge sweep skipped for $ID; current worktree ownership was not confirmed" >&2
   fi
 fi
 

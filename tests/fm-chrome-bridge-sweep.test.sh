@@ -16,12 +16,15 @@ mkdir -p "$TASK/subdir" "$OTHER"
 
 write_fixtures() {
   cat > "$PS_FILE" <<EOF
-101	1	00:10:00	node /opt/chrome-devtools-axi-bridge.js
+100	1	00:11:00	/bin/agent-owner
+101	100	00:10:00	node /opt/chrome-devtools-axi-bridge.js
 102	101	00:09:59	node /opt/chrome-devtools-mcp.js
 103	102	00:09:58	/Applications/Google Chrome --headless
-201	1	08:00:00	node /opt/chrome-devtools-axi-bridge.js
+200	1	08:01:00	/bin/agent-owner
+201	200	08:00:00	node /opt/chrome-devtools-axi-bridge.js
 202	201	07:59:59	node /opt/chrome-devtools-mcp.js
 301	1	00:05:00	node /opt/chrome-devtools-axi-bridge.js
+302	1	00:06:00	node /opt/chrome-devtools-axi-bridge.js
 401	1	00:05:00	node /opt/chrome-devtools-axi-bridge.js
 501	1	1-02:03:04	node /opt/unrelated.js
 EOF
@@ -31,6 +34,7 @@ EOF
 103	$TASK/subdir
 201	$OTHER
 301	$TMP_ROOT/gone
+302	$OTHER
 EOF
 }
 write_fixtures
@@ -66,11 +70,13 @@ printf '%s\n' "$out" | grep -F $'301\t00:05:00' | grep -F $'would-stop\towner-mi
   || fail "missing owner is selected"
 printf '%s\n' "$out" | grep -F $'101\t00:10:00' | grep -F $'keep\tactive' >/dev/null \
   || fail "young bridge with existing owner is retained"
-pass "global mode selects over-age and missing-owner bridges"
+printf '%s\n' "$out" | grep -F $'302\t00:06:00' | grep -F $'would-stop\towner-dead' >/dev/null \
+  || fail "existing worktree bridge with dead owner is selected"
+pass "global mode selects dead-owner and missing-owner bridges"
 
 summary=$(FM_BRIDGE_PS_FILE="$PS_FILE" FM_BRIDGE_CWD_FILE="$CWD_FILE" \
   "$SWEEP" --summary) || fail "summary runs"
-printf '%s\n' "$summary" | grep -F 'BROWSER_BRIDGES: 1 orphan bridge(s), 1 unknown, 1 long-running and protected' >/dev/null \
+printf '%s\n' "$summary" | grep -F 'BROWSER_BRIDGES: 2 orphan bridge(s), 1 unknown, 1 long-running and protected' >/dev/null \
   || fail "summary reports candidate, unknown, and protected counts"
 printf '%s\n' "$summary" | grep -F "inspect: $SWEEP; apply: $SWEEP --apply" >/dev/null \
   || fail "summary gives exact commands"

@@ -102,6 +102,21 @@ path_belongs_to_worktree() {  # <path> <worktree>
   case "$1" in "$2"|"$2"/*) return 0 ;; *) return 1 ;; esac
 }
 
+owner_process_tree_dead() {  # <pid>
+  local pid=$1 parent row first=1
+  while :; do
+    parent=$(awk -F '\t' -v pid="$pid" '$1 == pid { print $2; exit }' "$PS_TABLE")
+    case "$parent" in
+      1) [ "$first" -eq 1 ] && return 0 || return 1 ;;
+      ''|*[!0-9]*) return 1 ;;
+    esac
+    row=$(awk -F '\t' -v pid="$parent" '$1 == pid { print; exit }' "$PS_TABLE")
+    [ -n "$row" ] || return 0
+    first=0
+    pid=$parent
+  done
+}
+
 capture_identity() {  # <pid> <command> <cwd>
   local pid=$1 command=$2 cwd=$3 identity
   if [ -n "${FM_BRIDGE_PS_FILE:-}" ]; then
@@ -144,6 +159,9 @@ while IFS=$'\t' read -r pid ppid elapsed command; do
   elif [ ! -e "$cwd" ]; then
     disposition=select
     reason=owner-missing
+  elif owner_process_tree_dead "$pid"; then
+    disposition=select
+    reason=owner-dead
   elif [ -n "$age" ] && [ "$age" -ge "$((MAX_HOURS * 3600))" ]; then
     reason=long-running
   elif [ -z "$age" ]; then
