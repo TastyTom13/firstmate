@@ -693,7 +693,7 @@ if BRIDGE_SWEEP_OUT=$(fm_run_timed 5 "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --s
   BRIDGE_SWEEP_RC=0
 else
   BRIDGE_SWEEP_RC=$?
-  if [ -n "$BRIDGE_SWEEP_OUT" ]; then
+  if printf '%s\n' "$BRIDGE_SWEEP_OUT" | grep -q '^PID[[:space:]]'; then
     BRIDGE_SWEEP_OUT=$(printf 'BROWSER_BRIDGES: inspection failed; candidates:\n%s\ninspect: %s' "$BRIDGE_SWEEP_OUT" "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh")
   else
     BRIDGE_SWEEP_OUT="BROWSER_BRIDGES: inspection failed; candidates: none found; inspect: $SCRIPT_DIR/fm-chrome-bridge-sweep.sh"

@@ -26,6 +26,8 @@ write_fixtures() {
 202	201	07:59:59	node /opt/chrome-devtools-mcp.js
 301	1	00:05:00	node /opt/chrome-devtools-axi-bridge.js
 302	1	07:00:00	node /opt/chrome-devtools-axi-bridge.js
+601	600	00:05:00	/bin/agent-descendant
+602	600	00:05:00	node /opt/chrome-devtools-axi-bridge.js
 401	1	00:05:00	node /opt/chrome-devtools-axi-bridge.js
 501	1	1-02:03:04	node /opt/unrelated.js
 EOF
@@ -36,12 +38,14 @@ EOF
 201	$OTHER
 301	$TMP_ROOT/gone
 302	$OTHER
+602	$TMP_ROOT/gone-descendant
 EOF
 }
 write_fixtures
 FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner task-missing "$TMP_ROOT/gone" 301 999 >/dev/null || fail "missing-owner record is written"
 FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner live-owner "$OTHER" 201 200 >/dev/null || fail "live-owner record is written"
 FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner existing-owner "$OTHER" 302 998 >/dev/null || fail "existing-owner record is written"
+FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner live-descendant "$TMP_ROOT/gone-descendant" 602 600 >/dev/null || fail "descendant-owner record is written"
 
 out=$(FM_BRIDGE_PS_FILE="$PS_FILE" FM_BRIDGE_CWD_FILE="$CWD_FILE" \
   "$SWEEP" --worktree "$TASK") || fail "task inventory runs"
@@ -78,6 +82,8 @@ printf '%s\n' "$out" | grep -F $'302\t07:00:00' | grep -F $'keep\tlong-running' 
   || fail "existing worktree bridge remains protected"
 printf '%s\n' "$out" | grep -F $'401\t00:05:00' | grep -F $'unknown\towner-unrecorded' >/dev/null \
   || fail "unrecorded bridge is listed but not selected"
+printf '%s\n' "$out" | grep -F $'602\t00:05:00' | grep -F $'keep\towner-live' >/dev/null \
+  || fail "live owner descendant remains protected"
 pass "global mode requires records and protects live owners"
 
 summary=$(FM_BRIDGE_PS_FILE="$PS_FILE" FM_BRIDGE_CWD_FILE="$CWD_FILE" \

@@ -23,6 +23,45 @@
 # FM_BRIDGE_KILL_LOG records "SIGNAL pid" instead of sending signals.
 set -u
 
+if [ "${1:-}" = --watch-owner ]; then
+  [ "$#" -ge 4 ] || { echo "error: --watch-owner requires task-id, worktree, and state-dir" >&2; exit 2; }
+  WATCH_TASK=$2
+  WATCH_WORKTREE=$3
+  WATCH_STATE=$4
+  WATCH_SELF=$$
+  command -v lsof >/dev/null 2>&1 || exit 1
+  cd / || exit 1
+  while :; do
+    WATCH_BRIDGE_PID=
+    WATCH_OWNER_PID=
+    while IFS= read -r WATCH_ROW; do
+      WATCH_PID=${WATCH_ROW%% *}
+      WATCH_COMMAND=${WATCH_ROW#* }
+      case "$WATCH_COMMAND" in
+        node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*) ;;
+        *) continue ;;
+      esac
+      WATCH_CWD=$(lsof -a -p "$WATCH_PID" -d cwd -Fn 2>/dev/null | awk '/^n/ { sub(/^n/, ""); print; exit }') || continue
+      case "$WATCH_CWD" in "$WATCH_WORKTREE"|"$WATCH_WORKTREE"/*) WATCH_BRIDGE_PID=$WATCH_PID; break ;; esac
+    done < <(ps -axo pid=,command= 2>/dev/null)
+    if [ -n "$WATCH_BRIDGE_PID" ]; then
+      while IFS= read -r WATCH_ROW; do
+        WATCH_PID=${WATCH_ROW%% *}
+        WATCH_COMMAND=${WATCH_ROW#* }
+        [ "$WATCH_PID" = "$WATCH_SELF" ] && continue
+        case "$WATCH_COMMAND" in
+          node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*|\
+          node\ *chrome-devtools-mcp.js*|*/node\ *chrome-devtools-mcp.js*|*Google\ Chrome*--headless*|*fm-chrome-bridge-sweep.sh*) continue ;;
+        esac
+        WATCH_CWD=$(lsof -a -p "$WATCH_PID" -d cwd -Fn 2>/dev/null | awk '/^n/ { sub(/^n/, ""); print; exit }') || continue
+        case "$WATCH_CWD" in "$WATCH_WORKTREE"|"$WATCH_WORKTREE"/*) WATCH_OWNER_PID=$WATCH_PID; break ;; esac
+      done < <(ps -axo pid=,command= 2>/dev/null)
+      [ -n "$WATCH_OWNER_PID" ] && "$0" --record-owner "$WATCH_TASK" "$WATCH_WORKTREE" "$WATCH_BRIDGE_PID" "$WATCH_OWNER_PID" "$WATCH_STATE" && exit 0
+    fi
+    sleep 1
+  done
+fi
+
 if [ "${1:-}" = --record-owner ]; then
   [ "$#" -ge 5 ] || { echo "error: --record-owner requires task-id, worktree, bridge-pid, and session-root" >&2; exit 2; }
   OWNER_TASK=$2
@@ -159,9 +198,32 @@ owner_record_for_pid() {  # <bridge-pid>
   return 1
 }
 
-owner_record_process_state() {  # <session-root>
-  case "$1" in ''|*[!0-9]*) return 2 ;; esac
-  awk -F '\t' -v pid="$1" '$1 == pid { found=1 } END { exit found ? 0 : 1 }' "$PS_TABLE"
+process_is_browser_family() {  # <command>
+  case "$1" in
+    node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*|\
+    node\ *chrome-devtools-mcp.js*|*/node\ *chrome-devtools-mcp.js*|*Google\ Chrome*--headless*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+owner_process_tree_state() {  # <session-root>
+  local root=$1 pid parent command row
+  case "$root" in ''|*[!0-9]*) return 2 ;; esac
+  if awk -F '\t' -v pid="$root" '$1 == pid { found=1 } END { exit found ? 0 : 1 }' "$PS_TABLE"; then
+    return 0
+  fi
+  while IFS=$'\t' read -r pid parent _ command; do
+    [ "$pid" = "$root" ] && continue
+    row=$pid
+    while :; do
+      parent=$(awk -F '\t' -v pid="$row" '$1 == pid { print $2; exit }' "$PS_TABLE")
+      [ "$parent" = "$root" ] && { process_is_browser_family "$command" || return 0; break; }
+      case "$parent" in ''|*[!0-9]*) break ;; esac
+      [ "$parent" = "$row" ] && break
+      row=$parent
+    done
+  done < "$PS_TABLE"
+  return 1
 }
 
 while IFS=$'\t' read -r pid ppid elapsed command; do
@@ -199,19 +261,25 @@ while IFS=$'\t' read -r pid ppid elapsed command; do
     else
       owner_worktree=$(printf '%s\n' "$owner_record" | cut -f2)
       owner_session_root=$(printf '%s\n' "$owner_record" | cut -f3)
-      if [ "$owner_session_root" = 1 ] || owner_record_process_state "$owner_session_root"; then
-        reason=owner-live
-      elif [ "$?" -eq 2 ]; then
-        disposition=unknown
+      if [ "$owner_session_root" = 1 ]; then
         reason=owner-unresolved
-      elif [ ! -e "$owner_worktree" ]; then
-        disposition=select
-        reason=owner-missing
-      elif [ -n "$age" ] && [ "$age" -ge "$((MAX_HOURS * 3600))" ]; then
-        reason=long-running
-      elif [ -z "$age" ]; then
-        disposition=unknown
-        reason='age-unresolved'
+      else
+        owner_process_tree_state "$owner_session_root"
+        owner_state=$?
+        if [ "$owner_state" -eq 0 ]; then
+          reason=owner-live
+        elif [ "$owner_state" -eq 2 ]; then
+          disposition=unknown
+          reason=owner-unresolved
+        elif [ ! -e "$owner_worktree" ]; then
+          disposition=select
+          reason=owner-missing
+        elif [ -n "$age" ] && [ "$age" -ge "$((MAX_HOURS * 3600))" ]; then
+          reason=long-running
+        elif [ -z "$age" ]; then
+          disposition=unknown
+          reason='age-unresolved'
+        fi
       fi
     fi
   fi

@@ -3101,6 +3101,12 @@ case "$HARNESS" in
   cursor) LAUNCH=${LAUNCH//__CURSORBIN__/"$(shell_quote "$CURSOR_BIN")"} ;;
 esac
 LAUNCH=${LAUNCH//__WORKTREE__/$sq_worktree}
+if [ "$KIND" != secondmate ]; then
+  sq_state=$(shell_quote "$STATE")
+  sq_bridge_sweep=$(shell_quote "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh")
+  bridge_owner_watch="$sq_bridge_sweep --watch-owner $(shell_quote "$ID") $sq_worktree $sq_state"
+  LAUNCH="( $bridge_owner_watch >/dev/null 2>&1 & ); $LAUNCH"
+fi
 case "$HARNESS" in
   claude|codex|opencode|pi|pi-signed|grok|kimi|muse)
     LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS $LAUNCH"
