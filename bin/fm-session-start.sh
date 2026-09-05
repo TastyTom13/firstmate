@@ -692,9 +692,8 @@ fi
 BRIDGE_CANDIDATE_FILE=$(mktemp "${TMPDIR:-/tmp}/fm-bridge-candidates.XXXXXX" 2>/dev/null || true)
 if BRIDGE_SWEEP_OUT=$(FM_BRIDGE_CANDIDATE_FILE="$BRIDGE_CANDIDATE_FILE" \
     fm_run_timed 5 "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --summary 2>&1); then
-  BRIDGE_SWEEP_RC=0
+  true
 else
-  BRIDGE_SWEEP_RC=$?
   if [ -s "$BRIDGE_CANDIDATE_FILE" ]; then
     bridge_candidates=$(cat "$BRIDGE_CANDIDATE_FILE")
     BRIDGE_SWEEP_OUT=$(printf 'BROWSER_BRIDGES: inspection failed; candidates:\n%s\ninspect: %s' "$bridge_candidates" "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh")
