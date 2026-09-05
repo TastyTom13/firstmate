@@ -1656,11 +1656,14 @@ task_pid_list_contains() {  # <pid-list> <pid>
   printf '%s\n' "$1" | grep -Fxq "$2"
 }
 
-task_pid_is_chrome_bridge() {  # <pid>
+task_pid_is_browser_family() {  # <pid>
   local command
-  command=$(ps -p "$1" -o command= 2>/dev/null) || return 1
+  command=$(ps -p "$1" -o command= 2>/dev/null) || return 0
+  [ -n "$command" ] || return 0
   case "$command" in
-    node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*) return 0 ;;
+    node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*|\
+    node\ *chrome-devtools-mcp.js*|*/node\ *chrome-devtools-mcp.js*|\
+    *Google\ Chrome*--headless*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -1680,7 +1683,7 @@ $dir_pids"
   done
   TASK_PIDS=$(
     printf '%s\n' "$pids" | grep -E '^[0-9]+$' | sort -un | while IFS= read -r pid; do
-      task_pid_is_chrome_bridge "$pid" || printf '%s\n' "$pid"
+      task_pid_is_browser_family "$pid" || printf '%s\n' "$pid"
     done
   )
 }
@@ -1729,9 +1732,9 @@ reap_task_backend_process_group() {  # <label>
   fi
 }
 
-# Reap every process rooted (by cwd) under this task's own worktree or tasktmp
-# - both unique per task and never shared - before either is removed. TERM
-# first, then KILL after a short grace period for anything still alive; a
+# Reap every non-browser process rooted (by cwd) under this task's own worktree
+# or tasktmp - both unique per task and never shared - before either is removed.
+# TERM first, then KILL after a short grace period for anything still alive; a
 # process that exits on its own between the two passes is simply absent from
 # the recheck. A missing lsof uses the backend process-group fallback; an lsof
 # scan error refuses before destructive teardown.
