@@ -428,6 +428,14 @@ The locked bootstrap inheritance pass uses the same placement-specific behavior;
 That live discovery starts from `state/*.meta` records with `kind=secondmate`; `data/secondmates.md` only backfills `home=` for older or incomplete meta records.
 Skipped items, such as a destination checkout that does not yet gitignore the item, are visible warnings but not hard failures.
 
+## Quota history sampler
+
+[`bin/fm-quota-sampler.sh`](../bin/fm-quota-sampler.sh) appends one timestamped Claude and ChatGPT reading to `data/quota-history.jsonl` for the bearings board's burn curves.
+On macOS, a half-hourly Aqua LaunchAgent must invoke `/bin/sh` with the sampler's absolute path from the Firstmate checkout so the job runs in the signed-in user's credential session.
+The sampler restores an absent account home and discovers user-level `quota-axi` installations when launchd supplies only its sparse system `PATH`.
+It reads Claude with `--provider claude --no-credential-refresh`, which avoids a background keychain prompt or credential mutation, and records an unavailable reading as `null` without inventing or backfilling history.
+`FM_HOME`, `FM_QUOTA_SAMPLE_HISTORY`, `FM_QUOTA_SAMPLE_QUOTA_AXI`, `FM_QUOTA_SAMPLE_GPT_READER`, and `FM_QUOTA_SAMPLE_PYTHON` provide explicit installation and test overrides; the script header owns their exact behavior.
+
 ## Watched tool updates (config/watched-tools.json)
 
 `config/watched-tools.json` is an optional local, gitignored list of the tools this home depends on.
