@@ -2765,8 +2765,6 @@ fi
 if [ "$KIND" != secondmate ]; then
   conclude_task_no_mistakes_run "$WT"
   reap_task_worktree_processes worktree "$WT" "$TASK_TMP"
-  "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --apply --worktree "$WT" >&2 || \
-    echo "warning: browser bridge inspection failed for $ID; no unverified bridge was signaled" >&2
 fi
 
 # Fix 4 (see script header): sweep remote job workers abandoned by an already
@@ -2862,6 +2860,10 @@ elif [ "$BACKEND" = herdr ]; then
   fi
 elif [ "$BACKEND" != orca ]; then
   fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
+fi
+if [ "$KIND" != secondmate ]; then
+  "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --apply --worktree "$WT" >&2 || \
+    echo "warning: browser bridge inspection failed for $ID; no unverified bridge was signaled" >&2
 fi
 if [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
   if [ "$(fm_backend_herdr_pane_agent_state "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE")" = dead ]; then

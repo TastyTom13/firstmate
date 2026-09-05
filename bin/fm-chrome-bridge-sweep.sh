@@ -139,6 +139,8 @@ if [ "$SUMMARY" -eq 1 ]; then
   if [ "$selected_count" -gt 0 ] || [ "$unknown_count" -gt 0 ]; then
     printf 'BROWSER_BRIDGES: %s orphaned or over-age bridge(s), %s with unknown ownership; inspect: %s; apply: %s --apply\n' \
       "$selected_count" "$unknown_count" "$SCRIPT_PATH" "$SCRIPT_PATH"
+  else
+    printf 'BROWSER_BRIDGES: 0 orphan bridges detected.\n'
   fi
   exit 0
 fi
