@@ -689,9 +689,10 @@ else
       "$SCRIPT_DIR/fm-bootstrap.sh" 2>&1
   )
 fi
-BRIDGE_SWEEP_OUT=$(fm_run_timed 5 "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --summary 2>&1)
-BRIDGE_SWEEP_RC=$?
-if [ "$BRIDGE_SWEEP_RC" -ne 0 ]; then
+if BRIDGE_SWEEP_OUT=$(fm_run_timed 5 "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --summary 2>&1); then
+  BRIDGE_SWEEP_RC=0
+else
+  BRIDGE_SWEEP_RC=$?
   BRIDGE_SWEEP_OUT="BROWSER_BRIDGES: inspection failed; candidate result unavailable; no inspect/apply command issued"
 fi
 if [ -n "$BOOT_OUT" ] || [ -n "$BRIDGE_SWEEP_OUT" ]; then
