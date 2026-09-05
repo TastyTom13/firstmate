@@ -108,10 +108,11 @@
 # checks before any destructive return. Teardown output notes every wait, retry, and
 # removal so the operator can see what happened.
 #
-# Pre-teardown cleanup sequence (runs once every landed/discard-work safety
-# refusal above has already passed, and BEFORE any worktree return, branch
-# delete, or backend kill below - a still-active run or a leaked process may
-# own live work in that worktree):
+# Pre-teardown cleanup sequence runs once every landed/discard-work safety
+# refusal above has passed, concludes any parked no-mistakes run, confirms backend
+# endpoint shutdown, sweeps the task's browser bridge immediately after that
+# confirmation, and then reaps remaining leaked non-browser processes sharing the
+# task roots, all before the worktree return.
 #   Fix 1 - conclude the task's own no-mistakes run. A ship task's worktree can
 #     be torn down while its no-mistakes pipeline run is still PARKED at a gate
 #     (awaiting_approval/fix_review/any awaiting_agent field), with no worker
@@ -128,23 +129,25 @@
 #     that verified run instance. A run already terminal
 #     (an outcome is set) or not parked at a gate is left untouched. Idempotent:
 #     an already-aborted run reads back terminal and is skipped on retry.
-#   Fix 2 - reap leaked descendant processes. A backgrounded/disowned process
-#     started under the worktree (or its per-task tasktmp) does not receive the
-#     SIGHUP/SIGTERM that closing the backend pane sends to its own foreground
-#     process group, so it survives reparented to init (observed 2026-08-03:
-#     two `go test` binaries, deadlines blown past by ~100x, pinning CPU for
-#     hours with no live task meta to attribute them to once teardown had
-#     already removed it). reap_task_worktree_processes finds every process
-#     whose CURRENT WORKING DIRECTORY is this task's own worktree or tasktmp
-#     root via `lsof -a -d cwd` (cheap: bounded by process count, not by
-#     walking the worktree's file tree) and sends TERM, then KILL after a short
-#     grace period to any survivor whose process identity still matches. Both
-#     roots are unique per task and never
-#     shared, so this can never reach another task's or the primary's
-#     processes. Idempotent: nothing left to find is a silent no-op.
-#   Fix 3 - sweep abandoned remote job workers. A remote job worker started
+#   Fix 2 - retire the task's browser bridge family. chrome-devtools-axi
+#     detaches its bridge, MCP child, and Chrome descendants from the worker's
+#     process group. bin/fm-chrome-bridge-sweep.sh attributes the bridge by its
+#     cwd under this task's exact worktree and signals that captured family
+#     only after endpoint shutdown is confirmed. Unknown ownership is reported
+#     and never signaled.
+#   Fix 3 - reap leaked non-browser descendant processes. A backgrounded/disowned
+#     process started under the worktree (or its per-task tasktmp) does not
+#     receive the SIGHUP/SIGTERM that closing the backend pane sends to its own
+#     foreground process group, so it survives reparented to init. The reap
+#     finds every non-browser process whose CURRENT WORKING DIRECTORY is this
+#     task's own worktree or tasktmp root via `lsof -a -d cwd`, then sends TERM
+#     and KILL after a short grace period to any survivor whose process identity
+#     still matches. Both roots are unique per task and never shared, so this
+#     can never reach another task's or the primary's processes. It runs only
+#     after endpoint shutdown is confirmed and is idempotent.
+#   Fix 4 - sweep abandoned remote job workers. A remote job worker started
 #     from a worktree's own bin/ outlives that worktree's removal without
-#     being reachable by Fix 2, because its working directory is wherever it
+#     being reachable by the task-worktree process reap, because its working directory is wherever it
 #     was launched rather than the task worktree (observed 2026-08-07: 29
 #     workers at ppid 1, 1-2 days old, each still polling and appending to a
 #     log in a pruned no-mistakes gate worktree). bin/fm-remote-job-reap-orphans.sh
@@ -1649,10 +1652,28 @@ task_pid_list_contains() {  # <pid-list> <pid>
   printf '%s\n' "$1" | grep -Fxq "$2"
 }
 
+# Answers only "is this pid provably part of the browser family", so that the
+# non-browser reap can skip bridges the dedicated sweep already owns. An
+# unreadable command line is NOT such a proof: answering yes there would drop an
+# unidentifiable process out of the reap list entirely and turn a refusal into a
+# silent success. Leave it in the list instead - the reap's own identity checks
+# re-verify it and refuse rather than signal anything they cannot confirm.
+task_pid_is_browser_family() {  # <pid>
+  local command
+  command=$(ps -p "$1" -o command= 2>/dev/null) || return 1
+  [ -n "$command" ] || return 1
+  case "$command" in
+    node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*|\
+    node\ *chrome-devtools-mcp.js*|*/node\ *chrome-devtools-mcp.js*|\
+    *Google\ Chrome*--headless*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 task_pids_under_roots() {  # <dir>...
   TASK_PIDS=
   TASK_PIDS_FAILED_DIR=
-  local dir dir_pids pids=""
+  local dir dir_pids pids="" pid
   for dir in "$@"; do
     [ -n "$dir" ] || continue
     if ! dir_pids=$(pids_with_cwd_under "$dir"); then
@@ -1662,9 +1683,19 @@ task_pids_under_roots() {  # <dir>...
     pids="$pids
 $dir_pids"
   done
-  TASK_PIDS=$(printf '%s\n' "$pids" | grep -E '^[0-9]+$' | sort -un || true)
+  TASK_PIDS=$(
+    printf '%s\n' "$pids" | grep -E '^[0-9]+$' | sort -un | while IFS= read -r pid; do
+      task_pid_is_browser_family "$pid" || printf '%s\n' "$pid"
+    done
+  )
 }
 
+# Fallback for a host without lsof. Only reachable after endpoint shutdown is
+# confirmed (see the single call site), so the earlier pre-shutdown objection to
+# signalling a whole process group no longer applies: the agent and its backend
+# endpoint are already stopped. Every step still revalidates the leader's
+# identity and group, and refuses teardown's own group, so a recycled pid can
+# never redirect the signal at an unrelated group.
 reap_task_backend_process_group() {  # <label>
   local label=$1 leader leader_start pgid current_pgid own_pgid
   if [ "$BACKEND" != tmux ]; then
@@ -1709,9 +1740,9 @@ reap_task_backend_process_group() {  # <label>
   fi
 }
 
-# Reap every process rooted (by cwd) under this task's own worktree or tasktmp
-# - both unique per task and never shared - before either is removed. TERM
-# first, then KILL after a short grace period for anything still alive; a
+# Reap every non-browser process rooted (by cwd) under this task's own worktree
+# or tasktmp - both unique per task and never shared - before either is removed.
+# TERM first, then KILL after a short grace period for anything still alive; a
 # process that exits on its own between the two passes is simply absent from
 # the recheck. A missing lsof uses the backend process-group fallback; an lsof
 # scan error refuses before destructive teardown.
@@ -1837,6 +1868,27 @@ require_orca_worktree_path_match_if_present() {
   local worktree_id=$1 inspected=$2
   [ -n "$inspected" ] && [ -e "$inspected" ] || return 0
   require_orca_worktree_path_match "$worktree_id" "$inspected"
+}
+
+worktree_owned_by_task() {
+  local branch
+  worktree_registered_for_project "$PROJ" "$WT" || return 1
+  branch=$(git -C "$WT" symbolic-ref --quiet --short HEAD 2>/dev/null) || return 1
+  [ "$branch" = "fm/$ID" ]
+}
+
+backend_endpoint_shutdown_confirmed() {
+  local state
+  case "$BACKEND" in
+    tmux|herdr)
+      state=$(fm_backend_agent_state "$BACKEND" "$T" 2>/dev/null || true)
+      case "$state" in
+        dead|missing) return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
 }
 
 firstmate_home_has_treehouse_slot() {
@@ -2699,6 +2751,16 @@ if [ -d "$WT" ] && [ "$FORCE" != "--force" ]; then
   fi
 fi
 
+# Resolve an existing Orca worktree before closing its terminal. This is a
+# read-only identity check, so it does not weaken the endpoint-before-cleanup
+# ordering, and it leaves the destructive phase with one recorded response
+# sequence even when the terminal close itself is best-effort.
+if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ] && [ -e "$WT" ] \
+   && [ "$ORCA_PATH_MATCH_VERIFIED" != 1 ]; then
+  require_orca_worktree_path_match "$ORCA_WORKTREE_ID" "$WT" || exit 1
+  ORCA_PATH_MATCH_VERIFIED=1
+fi
+
 # A Herdr close may reposition shared workspace order, so the whole
 # destructive sequence below (worktree return, pane close, record removal)
 # runs under the named-session presentation lock, acquired BEFORE anything is
@@ -2742,12 +2804,97 @@ fi
 # kind=secondmate: a secondmate home's own runtime lifecycle is owned by the
 # dedicated process-event and firstmate-home removal machinery further below,
 # not by task-worktree cleanup.
-if [ "$KIND" != secondmate ]; then
-  conclude_task_no_mistakes_run "$WT"
-  reap_task_worktree_processes worktree "$WT" "$TASK_TMP"
+HERDR_PRESENTATION_JOURNAL="$STATE/$ID.herdr-presentation"
+HERDR_PRESENTATION_RETIRE_CANDIDATE=0
+HERDR_PRESENTATION_SESSION=
+HERDR_PRESENTATION_PANE=
+if [ "$BACKEND" = herdr ] \
+   && { [ -e "$HERDR_PRESENTATION_JOURNAL" ] || [ -L "$HERDR_PRESENTATION_JOURNAL" ]; }; then
+  fm_backend_source herdr || true
+  HERDR_PRESENTATION_SESSION=$(meta_value "$META" herdr_session)
+  HERDR_PRESENTATION_WORKSPACE=$(meta_value "$META" herdr_workspace_id)
+  HERDR_PRESENTATION_PANE=$(meta_value "$META" herdr_pane_id)
+  if [ -n "$HERDR_PRESENTATION_SESSION" ] \
+     && [ -n "$HERDR_PRESENTATION_WORKSPACE" ] \
+     && [ -n "$HERDR_PRESENTATION_PANE" ] \
+     && [ "$T" = "$HERDR_PRESENTATION_SESSION:$HERDR_PRESENTATION_PANE" ] \
+     && fm_backend_herdr_projection_endpoint_matches_journal \
+       "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_WORKSPACE" \
+       "$HERDR_PRESENTATION_JOURNAL" "$ID"; then
+    HERDR_PRESENTATION_RETIRE_CANDIDATE=1
+  fi
 fi
 
-# Fix 3 (see script header): sweep remote job workers abandoned by an already
+if [ "$KIND" != secondmate ]; then
+  conclude_task_no_mistakes_run "$WT"
+  BACKEND_STOPPED=0
+  if [ "$BACKEND" = herdr ] && [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
+    if teardown_herdr_session_lock_held "$HERDR_PRESENTATION_SESSION" \
+       && fm_backend_herdr_projection_close_pane_focus_preserving \
+         "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE" \
+       && backend_endpoint_shutdown_confirmed; then
+      BACKEND_STOPPED=1
+    else
+      echo "warning: herdr presentation focus lock unavailable or pane close was unconfirmed; skipping bridge sweep" >&2
+    fi
+  elif [ "$BACKEND" = herdr ]; then
+    if teardown_herdr_session_lock_held "$TEARDOWN_HERDR_SESSION" \
+       && fm_backend_herdr_kill_serialized "$TEARDOWN_HERDR_SESSION" "$TEARDOWN_HERDR_PANE" 2>/dev/null \
+       && backend_endpoint_shutdown_confirmed; then
+      BACKEND_STOPPED=1
+    else
+      echo "warning: herdr session presentation lock path is unavailable or pane close failed; skipping bridge sweep" >&2
+    fi
+  elif [ "$BACKEND" = orca ]; then
+    if [ -z "$T_ORCA" ]; then
+      echo "warning: Orca endpoint shutdown is unconfirmed; skipping browser bridge sweep for $ID" >&2
+    elif fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null \
+      && backend_endpoint_shutdown_confirmed; then
+      BACKEND_STOPPED=1
+    else
+      echo "warning: Orca endpoint shutdown is unconfirmed; skipping browser bridge sweep for $ID" >&2
+    fi
+  elif [ "$BACKEND" = zellij ] || [ "$BACKEND" = cmux ]; then
+    fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
+    echo "warning: $BACKEND endpoint shutdown confirmation is unsupported; skipping browser bridge sweep for $ID" >&2
+  elif fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null \
+       && backend_endpoint_shutdown_confirmed; then
+    BACKEND_STOPPED=1
+  fi
+  if [ "$BACKEND_STOPPED" -eq 1 ] && worktree_owned_by_task; then
+    "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --apply --worktree "$WT" >&2 || \
+      echo "warning: browser bridge inspection failed for $ID; no unverified bridge was signaled" >&2
+  elif [ "$BACKEND_STOPPED" -ne 1 ]; then
+    echo "warning: $BACKEND endpoint shutdown or current worktree ownership was not confirmed; skipping browser bridge sweep for $ID" >&2
+  else
+    echo "warning: $BACKEND browser bridge sweep skipped for $ID; current worktree ownership was not confirmed" >&2
+  fi
+  if [ "$BACKEND_STOPPED" -eq 1 ]; then
+    reap_task_worktree_processes worktree "$WT" "$TASK_TMP"
+  fi
+else
+  # A retiring secondmate home still has its own endpoint to close. It owns no
+  # task worktree, so it needs neither the bridge sweep nor the leaked-process
+  # reap above, but skipping the close entirely would leave its window running.
+  if [ "$BACKEND" = herdr ] && [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
+    if teardown_herdr_session_lock_held "$HERDR_PRESENTATION_SESSION"; then
+      fm_backend_herdr_projection_close_pane_focus_preserving \
+        "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE" || true
+    else
+      echo "warning: herdr presentation focus lock unavailable; refusing a concurrent focus-unsafe pane close" >&2
+    fi
+  elif [ "$BACKEND" = herdr ]; then
+    if teardown_herdr_session_lock_held "$TEARDOWN_HERDR_SESSION"; then
+      fm_backend_herdr_kill_serialized "$TEARDOWN_HERDR_SESSION" "$TEARDOWN_HERDR_PANE" 2>/dev/null || true
+    else
+      echo "warning: herdr session presentation lock path is unavailable; skipping the pane close rather than closing unlocked" >&2
+    fi
+  elif [ "$BACKEND" != orca ]; then
+    fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
+  fi
+fi
+
+# Fix 4 (see script header): sweep remote job workers abandoned by an already
 # pruned code root. Best effort - a sweep failure never blocks this teardown.
 "$SCRIPT_DIR/fm-remote-job-reap-orphans.sh" >&2 || true
 
@@ -2768,7 +2915,6 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
       "$WT/.opencode/plugins/fm-busy-state.js" \
       "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
   fi
-  [ -z "$T_ORCA" ] || fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
   fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID"
 elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
   branch=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
@@ -2794,53 +2940,6 @@ elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
   }
 fi
 
-HERDR_PRESENTATION_JOURNAL="$STATE/$ID.herdr-presentation"
-HERDR_PRESENTATION_RETIRE_CANDIDATE=0
-HERDR_PRESENTATION_SESSION=
-HERDR_PRESENTATION_PANE=
-if [ "$BACKEND" = herdr ] \
-   && { [ -e "$HERDR_PRESENTATION_JOURNAL" ] || [ -L "$HERDR_PRESENTATION_JOURNAL" ]; }; then
-  fm_backend_source herdr || true
-  HERDR_PRESENTATION_SESSION=$(meta_value "$META" herdr_session)
-  HERDR_PRESENTATION_WORKSPACE=$(meta_value "$META" herdr_workspace_id)
-  HERDR_PRESENTATION_PANE=$(meta_value "$META" herdr_pane_id)
-  if [ -n "$HERDR_PRESENTATION_SESSION" ] \
-     && [ -n "$HERDR_PRESENTATION_WORKSPACE" ] \
-     && [ -n "$HERDR_PRESENTATION_PANE" ] \
-     && [ "$T" = "$HERDR_PRESENTATION_SESSION:$HERDR_PRESENTATION_PANE" ] \
-     && fm_backend_herdr_projection_endpoint_matches_journal \
-       "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_WORKSPACE" \
-       "$HERDR_PRESENTATION_JOURNAL" "$ID"; then
-    HERDR_PRESENTATION_RETIRE_CANDIDATE=1
-  fi
-fi
-
-if [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
-  # The presentation lock was acquired before the worktree return above; a
-  # contended lock already refused this teardown while everything was intact.
-  if teardown_herdr_session_lock_held "$HERDR_PRESENTATION_SESSION"; then
-    # stderr is deliberately NOT discarded here. This is the highest-frequency
-    # projected-close call site, and the helper's only stderr output is a real
-    # warning - unverifiable workspace.move support, a refused focus-unsafe
-    # close, an unconfirmed repositioned-workspace removal, or a failed exact
-    # restore.
-    # Swallowing them left a wrong active workspace with no operator-visible
-    # signal at all. The close stays non-fatal exactly as before: the presence
-    # gate below is what decides whether any durable record may be removed.
-    fm_backend_herdr_projection_close_pane_focus_preserving \
-      "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE" || true
-  else
-    echo "warning: herdr presentation focus lock unavailable; refusing a concurrent focus-unsafe pane close" >&2
-  fi
-elif [ "$BACKEND" = herdr ]; then
-  if teardown_herdr_session_lock_held "$TEARDOWN_HERDR_SESSION"; then
-    fm_backend_herdr_kill_serialized "$TEARDOWN_HERDR_SESSION" "$TEARDOWN_HERDR_PANE" 2>/dev/null || true
-  else
-    echo "warning: herdr session presentation lock path is unavailable; skipping the pane close rather than closing unlocked" >&2
-  fi
-elif [ "$BACKEND" != orca ]; then
-  fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
-fi
 if [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
   if [ "$(fm_backend_herdr_pane_agent_state "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE")" = dead ]; then
     rm -f "$HERDR_PRESENTATION_JOURNAL"

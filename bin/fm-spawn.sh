@@ -3235,6 +3235,21 @@ if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
   spawn_herdr_presentation_order_lock_release
 fi
 spawn_send_key "$T" Enter
+# Bind the task's chrome-devtools-axi bridge to a durable ownership record.
+# This runs as a firstmate-side background watcher rather than a prefix on the
+# agent launch line: the launch command is a per-harness contract that adapters
+# and their regressions assert byte for byte, and the bridge starts long after
+# it anyway. The watcher exits on its own once the record is written, when the
+# task worktree is gone, or at its deadline, so it never outlives the task.
+if [ "$KIND" != secondmate ]; then
+  BRIDGE_SESSION_ROOT=$(fm_backend_pane_pid "$BACKEND" "$T" 2>/dev/null || true)
+  if [ -n "$BRIDGE_SESSION_ROOT" ]; then
+    (
+      "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --watch-owner "$ID" "$WT" "$STATE" "$BRIDGE_SESSION_ROOT" \
+        >/dev/null 2>&1 &
+    )
+  fi
+fi
 if [ "$HARNESS" = kimi ]; then
   if ! kimi_wait_for_ready; then
     kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"

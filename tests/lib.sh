@@ -83,8 +83,20 @@ FM_TEST_OWNER_IDENTITY=$(fm_test_pid_identity "$$") || {
   return 1
 }
 
+# Bridge-ownership watcher reap. Lives in its own file because the live-backend
+# suites that spawn the most real tasks do not source this library at all and
+# still need it (tests/bridge-watcher-reap.sh).
+# shellcheck source=tests/bridge-watcher-reap.sh
+. "$(dirname "${BASH_SOURCE[0]}")/bridge-watcher-reap.sh"
+
 fm_test_cleanup() {
   local d
+  fm_test_kill_bridge_watchers "${FM_TEST_CLEANUP_DIRS[@]:-}"
+  if [ -f "$FM_TEST_CLEANUP_REGISTRY" ]; then
+    while IFS= read -r d; do
+      [ -n "$d" ] && fm_test_kill_bridge_watchers "$d"
+    done < "$FM_TEST_CLEANUP_REGISTRY"
+  fi
   for d in "${FM_TEST_CLEANUP_DIRS[@]:-}"; do
     [ -n "$d" ] && rm -rf "$d"
   done

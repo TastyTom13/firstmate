@@ -447,6 +447,21 @@ The sampler restores an absent account home and discovers user-level `quota-axi`
 It reads Claude with `--provider claude --no-credential-refresh`, which avoids a background keychain prompt or credential mutation, writes no token to the history file, and records an unavailable reading as `null` without inventing or backfilling history.
 `FM_HOME`, `FM_QUOTA_SAMPLE_HISTORY`, `FM_QUOTA_SAMPLE_QUOTA_AXI`, `FM_QUOTA_SAMPLE_GPT_READER`, and `FM_QUOTA_SAMPLE_PYTHON` provide explicit installation and test overrides; the script header owns their exact behavior.
 
+## Browser bridge sweep
+
+[`bin/fm-chrome-bridge-sweep.sh`](../bin/fm-chrome-bridge-sweep.sh) inventories detached `chrome-devtools-axi` bridges with their age, cwd ownership, and cleanup eligibility.
+Each recorded bridge binds its task, worktree, bridge pid and identity, and owning session-root pid and identity at bridge start.
+It is dry-run by default, and global `--apply` selects only recorded bridges whose recorded task worktree is gone and whose recorded session-root identity is no longer live.
+Global cleanup also requires the live bridge start time and command line to match the record, so a reused PID is reported and never stopped.
+Task-scoped `--apply --worktree <path>` selects bridges whose cwd is that exact task worktree or below it after teardown confirms the endpoint is shut down.
+Backends without positive shutdown confirmation are skipped with a runtime-named message; Orca without a terminal remains unconfirmed for this cleanup.
+Unknown ownership and identity mismatches are reported and never stopped.
+`FM_BRIDGE_MAX_AGE_HOURS` defaults to 6 hours and is the reporting cutoff for long-running bridges whose owners remain protected.
+`FM_BRIDGE_TERM_GRACE_SECS` defaults to 1 second and controls the delay between TERM and KILL during an apply.
+The ownership watcher starts after a pane launch when the backend supplies its pane pid, and stops when the task record or worktree disappears or its bounded deadline expires.
+Task cleanup scopes attribution to that task's exact isolated copy so its bridge, MCP child, and Chrome descendants do not survive the worker.
+Session start runs only the bounded summary and prints the exact inspect and apply commands when orphan candidates exist.
+
 ## Watched tool updates (config/watched-tools.json)
 
 `config/watched-tools.json` is an optional local, gitignored list of the tools this home depends on.
@@ -815,6 +830,8 @@ FM_ZELLIJ_SESSION=firstmate  # zellij-only: named session for normal backend ops
 CMUX_SOCKET_PASSWORD=   # cmux-only: socket password fallback when config/cmux-socket-password is absent (docs/cmux-backend.md)
 FM_SESSION_START_STATUS_TAIL=5   # state/*.status lines printed per task in the session-start digest; each line is capped by bin/fm-line-cap-lib.sh
 FM_SESSION_START_QUEUED_LIMIT=20   # plain queued backlog rows in the session-start digest; in-flight, held, and blocked rows are never bounded and done rows are never listed
+FM_BRIDGE_MAX_AGE_HOURS=6   # reporting cutoff for long-running chrome-devtools-axi bridges in bin/fm-chrome-bridge-sweep.sh
+FM_BRIDGE_TERM_GRACE_SECS=1   # seconds between TERM and KILL for selected chrome-devtools-axi bridges
 FM_BOOTSTRAP_DETECT_ONLY=0   # internal/read-only session-start mode: skip bootstrap's mutating sweeps and print advisory TANGLE wording
 FM_BOOTSTRAP_NETWORK=all   # internal session-start phase split: all, skip (local steps only), or only (network steps only); see bin/fm-bootstrap.sh
 FM_STARTUP_NETWORK_TIMEOUT=120   # seconds bounding the whole deferred network stage; hitting it prints an actionable NETWORK_CHECKS line

@@ -689,8 +689,22 @@ else
       "$SCRIPT_DIR/fm-bootstrap.sh" 2>&1
   )
 fi
-if [ -n "$BOOT_OUT" ]; then
-  printf '%s\n' "$BOOT_OUT"
+BRIDGE_CANDIDATE_FILE=$(mktemp "${TMPDIR:-/tmp}/fm-bridge-candidates.XXXXXX" 2>/dev/null || true)
+if BRIDGE_SWEEP_OUT=$(FM_BRIDGE_CANDIDATE_FILE="$BRIDGE_CANDIDATE_FILE" \
+    fm_run_timed 5 "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --summary 2>&1); then
+  true
+else
+  if [ -s "$BRIDGE_CANDIDATE_FILE" ]; then
+    bridge_candidates=$(cat "$BRIDGE_CANDIDATE_FILE")
+    BRIDGE_SWEEP_OUT=$(printf 'BROWSER_BRIDGES: inspection failed; candidates:\n%s\ninspect: %s' "$bridge_candidates" "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh")
+  else
+    BRIDGE_SWEEP_OUT="BROWSER_BRIDGES: inspection failed; candidates: none found; inspect: $SCRIPT_DIR/fm-chrome-bridge-sweep.sh"
+  fi
+fi
+[ -z "$BRIDGE_CANDIDATE_FILE" ] || rm -f "$BRIDGE_CANDIDATE_FILE"
+if [ -n "$BOOT_OUT" ] || [ -n "$BRIDGE_SWEEP_OUT" ]; then
+  [ -z "$BOOT_OUT" ] || printf '%s\n' "$BOOT_OUT"
+  [ -z "$BRIDGE_SWEEP_OUT" ] || printf '%s\n' "$BRIDGE_SWEEP_OUT"
 else
   printf '(silent - all good)\n'
 fi

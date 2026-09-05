@@ -585,6 +585,52 @@ test_local_only_fork_remote_allows() {
   pass "local-only worktree with HEAD on a fork remote is torn down and the home summary is refreshed"
 }
 
+test_teardown_retires_its_browser_bridge_family() {
+  local case_dir rc expected
+  case_dir=$(make_case browser-bridge-family)
+  write_meta "$case_dir" local-only ship
+  cat > "$case_dir/bridge-ps.tsv" <<EOF
+9101	1	00:10:00	node /opt/chrome-devtools-axi-bridge.js
+9102	9101	00:09:59	node /opt/chrome-devtools-mcp.js
+9103	9102	00:09:58	/Applications/Google Chrome --headless
+9201	1	00:10:00	node /opt/chrome-devtools-axi-bridge.js
+EOF
+  cat > "$case_dir/bridge-cwd.tsv" <<EOF
+9101	$case_dir/wt
+9102	$case_dir/wt
+9103	$case_dir/wt
+9201	$case_dir/project
+EOF
+  : > "$case_dir/bridge-kills.log"
+  cat > "$case_dir/fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  display-message) exit 1 ;;
+  *) exit 0 ;;
+esac
+SH
+  chmod +x "$case_dir/fakebin/tmux"
+  export FM_BRIDGE_PS_FILE="$case_dir/bridge-ps.tsv"
+  export FM_BRIDGE_CWD_FILE="$case_dir/bridge-cwd.tsv"
+  export FM_BRIDGE_KILL_LOG="$case_dir/bridge-kills.log"
+  export FM_BRIDGE_TERM_GRACE_SECS=0
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  unset FM_BRIDGE_PS_FILE FM_BRIDGE_CWD_FILE FM_BRIDGE_KILL_LOG FM_BRIDGE_TERM_GRACE_SECS
+
+  expect_code 0 "$rc" "browser-bridge-family: teardown should succeed"
+  for expected in "TERM 9101" "TERM 9102" "TERM 9103"; do
+    grep -Fx "$expected" "$case_dir/bridge-kills.log" >/dev/null \
+      || fail "browser-bridge-family: missing $expected"
+  done
+  if grep -Eq ' 9201$' "$case_dir/bridge-kills.log"; then
+    fail "browser-bridge-family: teardown signaled another owner's bridge"
+  fi
+  pass "teardown retires only its browser bridge, MCP, and Chrome family"
+}
+
 test_teardown_closes_the_backlog_item_itself() {
   local case_dir out
   case_dir=$(make_case tasks-axi-close)
@@ -2606,6 +2652,7 @@ EOF
 }
 
 test_local_only_fork_remote_allows
+test_teardown_retires_its_browser_bridge_family
 test_teardown_closes_the_backlog_item_itself
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator
 test_local_only_truly_unpushed_refuses

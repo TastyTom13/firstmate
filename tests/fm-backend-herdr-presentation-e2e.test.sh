@@ -255,6 +255,10 @@ export FM_BACKEND_HERDR_WORKSPACE_MOVER="$FAKEBIN/herdr-workspace-mover"
 
 # shellcheck source=tests/herdr-test-safety.sh
 . "$ROOT/tests/herdr-test-safety.sh"
+# This suite does not source tests/lib.sh, so the shared reap has to be pulled
+# in directly; it spawns more real tasks than any other file here.
+# shellcheck source=tests/bridge-watcher-reap.sh
+. "$ROOT/tests/bridge-watcher-reap.sh"
 # This suite runs against its own isolated lab session, so a Herdr pane
 # inherited from the terminal it was launched in must not follow spawn into it
 # as a cross-session parent identity. Every projection below is anchored on the
@@ -269,6 +273,10 @@ RECORDED_WORKTREES=""
 LOCK_CONTENTION_OWNER_PID=
 cleanup_all() {
   local wt
+  # This suite owns the EXIT trap, so the shared library's cleanup never runs
+  # here. Every real fm-spawn in it starts a bridge-ownership watcher, so the
+  # reap has to be invoked explicitly or this suite alone leaves dozens behind.
+  fm_test_kill_bridge_watchers "$TMP_ROOT"
   if [ -n "$LOCK_CONTENTION_OWNER_PID" ]; then
     kill "$LOCK_CONTENTION_OWNER_PID" 2>/dev/null || true
     wait "$LOCK_CONTENTION_OWNER_PID" 2>/dev/null || true

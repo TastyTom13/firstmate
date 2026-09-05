@@ -119,6 +119,12 @@ RUN_STARTED_MS=$(now_ms)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
+if [ -f "$ROOT/tests/bridge-watcher-reap.sh" ]; then
+  # shellcheck source=tests/bridge-watcher-reap.sh
+  . "$ROOT/tests/bridge-watcher-reap.sh"
+else
+  fm_test_kill_bridge_watchers() { return 0; }
+fi
 
 MODE=
 LIST_ONLY=0
@@ -1882,6 +1888,9 @@ if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ]; then
 fi
 
 RUN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run.XXXXXX")
+REGISTRY_BASELINE="$RUN_TMP/cleanup-registry-baseline"
+find "${TMPDIR:-/tmp}" -maxdepth 1 -type f -name '.fm-test-cleanup.*' -print 2>/dev/null \
+  >"$REGISTRY_BASELINE"
 RECORDS="$RUN_TMP/records.tsv"
 FAMILIES_TSV="$RUN_TMP/families.tsv"
 : >"$RECORDS"
@@ -1934,9 +1943,37 @@ family_bump() {
   mv "$tmp" "$FAMILIES_TSV"
 }
 
+# Every real fm-spawn a test performs starts a backgrounded, reparented bridge
+# ownership watcher (bin/fm-spawn.sh). Most suites replace the shared library's
+# EXIT trap with their own, so the library reap cannot be the only guarantee:
+# without this, one live-backend suite can leave dozens of process-table
+# scanners running long after the run. Only watchers whose state directory is a
+# throwaway test fixture root are reaped, so a real task's watcher, in this home
+# or any other, is never matched.
+reap_leaked_bridge_watchers() {
+  local registry registry_dir root
+  local registry_dirs=("${TMPDIR:-/tmp}" "$RUN_TMP")
+  local -a roots=()
+  for registry_dir in "${registry_dirs[@]}"; do
+    [ -d "$registry_dir" ] || continue
+    while IFS= read -r -d '' registry; do
+      if [ "$registry_dir" = "${TMPDIR:-/tmp}" ] &&
+        grep -Fqx "$registry" "$REGISTRY_BASELINE" 2>/dev/null; then
+        continue
+      fi
+      while IFS= read -r root; do
+        [ -n "$root" ] && roots+=("$root")
+      done < "$registry"
+    done < <(find "$registry_dir" -type f -name '.fm-test-cleanup.*' -print0 2>/dev/null)
+  done
+  [ "${#roots[@]}" -gt 0 ] || return 0
+  fm_test_kill_bridge_watchers "${roots[@]}"
+}
+
 record_script_result() {
   local script=$1 rc=$2 duration=$3 out=$4 end_iso=$5
   local base family expected gate_skip fail_delta
+  reap_leaked_bridge_watchers
   base=$(basename "$script")
   family=$(family_for_basename "$base")
   expected=$(expected_gate_skip_for_family "$family")

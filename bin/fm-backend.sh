@@ -906,6 +906,14 @@ fm_backend_agent_alive() {  # <backend> <target>
   esac
 }
 
+fm_backend_pane_pid() {  # <backend> <target>
+  local backend=$1 target=$2
+  case "$backend" in
+    tmux) tmux display-message -p -t "$target" '#{pane_pid}' 2>/dev/null ;;
+    *) return 0 ;;
+  esac
+}
+
 # --- native event push (backend-extensible) ---------------------------------
 #
 # The watcher's event-wait splice (bin/fm-watch.sh) is backend-agnostic: it asks
