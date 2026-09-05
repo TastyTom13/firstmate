@@ -222,8 +222,8 @@ bridge_identity_matches() {  # <pid> <start-time> <command>
   [ "$current_start" = "$expected_start" ] && [ "$current_command" = "$expected_command" ]
 }
 
-owner_process_tree_state() {  # <session-root>
-  local root=$1 pid parent command row
+owner_process_tree_state() {  # <session-root> <bridge-pid>
+  local root=$1 bridge_pid=$2 pid parent command row
   case "$root" in ''|*[!0-9]*) return 2 ;; esac
   if awk -F '\t' -v pid="$root" '$1 == pid { found=1 } END { exit found ? 0 : 1 }' "$PS_TABLE"; then
     return 0
@@ -233,6 +233,7 @@ owner_process_tree_state() {  # <session-root>
     row=$pid
     while :; do
       parent=$(awk -F '\t' -v pid="$row" '$1 == pid { print $2; exit }' "$PS_TABLE")
+      [ "$row" = "$bridge_pid" ] && [ "$parent" = 1 ] && return 2
       [ "$parent" = "$root" ] && return 0
       case "$parent" in ''|*[!0-9]*) break ;; esac
       [ "$parent" = "$row" ] && break
@@ -286,13 +287,17 @@ while IFS=$'\t' read -r pid ppid elapsed command; do
       elif [ "$owner_session_root" = 1 ]; then
         reason=owner-unresolved
       else
-        owner_process_tree_state "$owner_session_root"
+        owner_process_tree_state "$owner_session_root" "$pid"
         owner_state=$?
         if [ "$owner_state" -eq 0 ]; then
           reason=owner-live
         elif [ "$owner_state" -eq 2 ]; then
-          disposition=unknown
-          reason=owner-unresolved
+          if [ -n "$age" ] && [ "$age" -ge "$((MAX_HOURS * 3600))" ]; then
+            reason=long-running
+          else
+            disposition=unknown
+            reason=owner-unresolved
+          fi
         elif [ ! -e "$owner_worktree" ]; then
           disposition=select
           reason=owner-missing
@@ -310,6 +315,14 @@ while IFS=$'\t' read -r pid ppid elapsed command; do
 done < "$PS_TABLE"
 
 selected_count=$(grep -c . "$SELECTED" 2>/dev/null || true)
+if [ -n "${FM_BRIDGE_CANDIDATE_FILE:-}" ]; then
+  visible_count=$(awk -F '\t' -v scoped="${WORKTREE:+1}" '!scoped || $5 != "keep" { n++ } END { print n + 0 }' "$BRIDGES")
+  : > "$FM_BRIDGE_CANDIDATE_FILE"
+  if [ "$visible_count" -gt 0 ]; then
+    printf 'PID\tAGE\tOWNER\tACTION\tREASON\n' > "$FM_BRIDGE_CANDIDATE_FILE"
+    awk -F '\t' -v scoped="${WORKTREE:+1}" 'BEGIN { OFS="\t" } !scoped || $5 != "keep" { action=($5 == "select" ? "would-stop" : $5); print $1, $3, $4, action, $6 }' "$BRIDGES" >> "$FM_BRIDGE_CANDIDATE_FILE"
+  fi
+fi
 unknown_count=$(awk -F '\t' '$5 == "unknown" { n++ } END { print n + 0 }' "$BRIDGES")
 long_running_count=$(awk -F '\t' '$6 == "long-running" { n++ } END { print n + 0 }' "$BRIDGES")
 if [ "$SUMMARY" -eq 1 ]; then

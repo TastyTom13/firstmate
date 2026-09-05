@@ -24,10 +24,12 @@ write_fixtures() {
 200	1	08:01:00	/bin/agent-owner
 201	200	08:00:00	node /opt/chrome-devtools-axi-bridge.js
 202	201	07:59:59	node /opt/chrome-devtools-mcp.js
-301	1	00:05:00	node /opt/chrome-devtools-axi-bridge.js
+301	997	00:05:00	node /opt/chrome-devtools-axi-bridge.js
 302	1	07:00:00	node /opt/chrome-devtools-axi-bridge.js
 601	600	00:05:00	/bin/agent-descendant
 602	600	00:05:00	node /opt/chrome-devtools-axi-bridge.js
+603	1	00:05:00	node /opt/chrome-devtools-axi-bridge.js
+604	1	00:05:00	node /opt/chrome-devtools-axi-bridge.js
 401	1	00:05:00	node /opt/chrome-devtools-axi-bridge.js
 501	1	1-02:03:04	node /opt/unrelated.js
 EOF
@@ -39,6 +41,8 @@ EOF
 301	$TMP_ROOT/gone
 302	$OTHER
 602	$TMP_ROOT/gone-descendant
+603	$TMP_ROOT/gone-reparented
+604	$TMP_ROOT/gone-reused
 EOF
 }
 write_fixtures
@@ -46,6 +50,8 @@ FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner task-missing "$TMP_ROOT
 FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner live-owner "$OTHER" 201 200 "$OWNER_DIR" fixture 'node /opt/chrome-devtools-axi-bridge.js' >/dev/null || fail "live-owner record is written"
 FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner existing-owner "$OTHER" 302 998 "$OWNER_DIR" fixture 'node /opt/chrome-devtools-axi-bridge.js' >/dev/null || fail "existing-owner record is written"
 FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner live-descendant "$TMP_ROOT/gone-descendant" 602 600 "$OWNER_DIR" fixture 'node /opt/chrome-devtools-axi-bridge.js' >/dev/null || fail "descendant-owner record is written"
+FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner live-reparented "$TMP_ROOT/gone-reparented" 603 700 "$OWNER_DIR" fixture 'node /opt/chrome-devtools-axi-bridge.js' >/dev/null || fail "reparented-owner record is written"
+FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner reused-bridge "$TMP_ROOT/gone-reused" 604 600 "$OWNER_DIR" fixture 'node /opt/other-bridge.js' >/dev/null || fail "reused-bridge record is written"
 
 out=$(FM_BRIDGE_PS_FILE="$PS_FILE" FM_BRIDGE_CWD_FILE="$CWD_FILE" \
   "$SWEEP" --worktree "$TASK") || fail "task inventory runs"
@@ -84,11 +90,15 @@ printf '%s\n' "$out" | grep -F $'401\t00:05:00' | grep -F $'unknown\towner-unrec
   || fail "unrecorded bridge is listed but not selected"
 printf '%s\n' "$out" | grep -F $'602\t00:05:00' | grep -F $'keep\towner-live' >/dev/null \
   || fail "live owner descendant remains protected"
+printf '%s\n' "$out" | grep -F $'603\t00:05:00' | grep -F $'unknown\towner-unresolved' >/dev/null \
+  || fail "reparented bridge remains protected"
+printf '%s\n' "$out" | grep -F $'604\t00:05:00' | grep -F $'unknown\towner-identity-mismatch' >/dev/null \
+  || fail "reused bridge remains protected"
 pass "global mode requires records and protects live owners"
 
 summary=$(FM_BRIDGE_PS_FILE="$PS_FILE" FM_BRIDGE_CWD_FILE="$CWD_FILE" \
   FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --summary) || fail "summary runs"
-printf '%s\n' "$summary" | grep -F 'BROWSER_BRIDGES: 1 orphan bridge(s), 2 unknown, 1 long-running and protected' >/dev/null \
+printf '%s\n' "$summary" | grep -F 'BROWSER_BRIDGES: 1 orphan bridge(s), 4 unknown, 1 long-running and protected' >/dev/null \
   || fail "summary reports candidate, unknown, and protected counts"
 printf '%s\n' "$summary" | grep -F "inspect: $SWEEP; apply: $SWEEP --apply" >/dev/null \
   || fail "summary gives exact commands"
