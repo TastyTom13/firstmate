@@ -122,7 +122,7 @@ watch_exits_within() {  # <pid> <seconds>
   return 0
 }
 
-FM_BRIDGE_WATCH_INTERVAL_SECS=1 "$SWEEP" --watch-owner watched "$watch_root/wt" "$watch_root/state" \
+FM_BRIDGE_WATCH_INTERVAL_SECS=1 "$SWEEP" --watch-owner watched "$watch_root/wt" "$watch_root/state" "$$" \
   >/dev/null 2>&1 &
 watch_pid=$!
 sleep 2
@@ -135,7 +135,7 @@ watch_exits_within "$watch_pid" 15 || {
 pass "the ownership watcher stops when the task record is removed"
 
 : > "$watch_root/state/watched.meta"
-FM_BRIDGE_WATCH_INTERVAL_SECS=1 "$SWEEP" --watch-owner watched "$watch_root/wt" "$watch_root/state" \
+FM_BRIDGE_WATCH_INTERVAL_SECS=1 "$SWEEP" --watch-owner watched "$watch_root/wt" "$watch_root/state" "$$" \
   >/dev/null 2>&1 &
 watch_pid=$!
 sleep 2
@@ -148,7 +148,7 @@ pass "the ownership watcher stops when the task worktree is removed"
 
 mkdir -p "$watch_root/wt"
 FM_BRIDGE_WATCH_INTERVAL_SECS=1 FM_BRIDGE_WATCH_MAX_SECS=2 \
-  "$SWEEP" --watch-owner watched "$watch_root/wt" "$watch_root/state" >/dev/null 2>&1 &
+  "$SWEEP" --watch-owner watched "$watch_root/wt" "$watch_root/state" "$$" >/dev/null 2>&1 &
 watch_pid=$!
 watch_exits_within "$watch_pid" 20 || {
   kill -KILL "$watch_pid" 2>/dev/null || true

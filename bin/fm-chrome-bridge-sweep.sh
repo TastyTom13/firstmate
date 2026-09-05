@@ -24,10 +24,11 @@
 set -u
 
 if [ "${1:-}" = --watch-owner ]; then
-  [ "$#" -ge 4 ] || { echo "error: --watch-owner requires task-id, worktree, and state-dir" >&2; exit 2; }
+  [ "$#" -ge 5 ] || { echo "error: --watch-owner requires task-id, worktree, state-dir, and session-root-pid" >&2; exit 2; }
   WATCH_TASK=$2
   WATCH_WORKTREE=$3
   WATCH_STATE=$4
+  WATCH_SESSION_ROOT=$5
   WATCH_SELF=$$
   # Bounded three ways, because a watcher that outlives its task is exactly the
   # leak this script exists to clean up. It stops when the task record is gone
@@ -43,7 +44,6 @@ if [ "${1:-}" = --watch-owner ]; then
   while [ -e "$WATCH_META" ] && [ -d "$WATCH_WORKTREE" ] \
      && [ "$(date +%s)" -lt "$WATCH_DEADLINE" ]; do
     WATCH_BRIDGE_PID=
-    WATCH_OWNER_PID=
     while IFS= read -r WATCH_ROW; do
       read -r WATCH_PID WATCH_COMMAND <<< "$WATCH_ROW"
       case "$WATCH_COMMAND" in
@@ -54,17 +54,7 @@ if [ "${1:-}" = --watch-owner ]; then
       case "$WATCH_CWD" in "$WATCH_WORKTREE"|"$WATCH_WORKTREE"/*) WATCH_BRIDGE_PID=$WATCH_PID; break ;; esac
     done < <(ps -axo pid=,command= 2>/dev/null)
     if [ -n "$WATCH_BRIDGE_PID" ]; then
-      while IFS= read -r WATCH_ROW; do
-        read -r WATCH_PID WATCH_COMMAND <<< "$WATCH_ROW"
-        [ "$WATCH_PID" = "$WATCH_SELF" ] && continue
-        case "$WATCH_COMMAND" in
-          node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*|\
-          node\ *chrome-devtools-mcp.js*|*/node\ *chrome-devtools-mcp.js*|*Google\ Chrome*--headless*|*fm-chrome-bridge-sweep.sh*) continue ;;
-        esac
-        WATCH_CWD=$(lsof -a -p "$WATCH_PID" -d cwd -Fn 2>/dev/null | awk '/^n/ { sub(/^n/, ""); print; exit }') || continue
-        case "$WATCH_CWD" in "$WATCH_WORKTREE"|"$WATCH_WORKTREE"/*) WATCH_OWNER_PID=$WATCH_PID; break ;; esac
-      done < <(ps -axo pid=,command= 2>/dev/null)
-      [ -n "$WATCH_OWNER_PID" ] && "$0" --record-owner "$WATCH_TASK" "$WATCH_WORKTREE" "$WATCH_BRIDGE_PID" "$WATCH_OWNER_PID" "$WATCH_STATE" && exit 0
+      "$0" --record-owner "$WATCH_TASK" "$WATCH_WORKTREE" "$WATCH_BRIDGE_PID" "$WATCH_SESSION_ROOT" "$WATCH_STATE" && exit 0
     fi
     sleep "$WATCH_INTERVAL"
   done
@@ -168,12 +158,14 @@ elapsed_seconds() {  # [[dd-]hh:]mm:ss
 }
 
 load_processes() {
+  local raw="$TMP_ROOT/ps-raw"
   if [ -n "${FM_BRIDGE_PS_FILE:-}" ]; then
     cp "$FM_BRIDGE_PS_FILE" "$PS_TABLE"
   else
-    LC_ALL=C ps -axo pid=,ppid=,etime=,command= | while read -r pid ppid elapsed command; do
+    LC_ALL=C ps -axo pid=,ppid=,etime=,command= > "$raw" || return 1
+    while read -r pid ppid elapsed command; do
       printf '%s\t%s\t%s\t%s\n' "$pid" "$ppid" "$elapsed" "$command"
-    done > "$PS_TABLE"
+    done < "$raw" > "$PS_TABLE"
   fi
 }
 
@@ -205,7 +197,10 @@ capture_identity() {  # <pid> <command> <cwd>
   printf '%s\t%s\t%s\t%s\n' "$pid" "$identity" "$command" "$cwd" >> "$IDENTITIES"
 }
 
-load_processes
+if ! load_processes; then
+  echo "error: bridge process inspection failed (inspect command: ps -axo pid=,ppid=,etime=,command=)" >&2
+  exit 1
+fi
 
 owner_record_for_pid() {  # <bridge-pid>
   local bridge_pid=$1 record task_id worktree record_pid session_root session_start_time start_time bridge_command

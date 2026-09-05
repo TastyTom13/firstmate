@@ -3201,10 +3201,13 @@ spawn_send_key "$T" Enter
 # it anyway. The watcher exits on its own once the record is written, when the
 # task worktree is gone, or at its deadline, so it never outlives the task.
 if [ "$KIND" != secondmate ]; then
-  (
-    "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --watch-owner "$ID" "$WT" "$STATE" \
-      >/dev/null 2>&1 &
-  )
+  BRIDGE_SESSION_ROOT=$(fm_backend_pane_pid "$BACKEND" "$T" 2>/dev/null || true)
+  if [ -n "$BRIDGE_SESSION_ROOT" ]; then
+    (
+      "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --watch-owner "$ID" "$WT" "$STATE" "$BRIDGE_SESSION_ROOT" \
+        >/dev/null 2>&1 &
+    )
+  fi
 fi
 if [ "$HARNESS" = kimi ]; then
   if ! kimi_wait_for_ready; then

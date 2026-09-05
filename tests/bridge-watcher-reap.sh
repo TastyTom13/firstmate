@@ -14,7 +14,7 @@
 # Only watchers whose state-dir argument is one of THIS run's fixture roots are
 # killed, so a concurrent suite's or a real task's watcher is never touched.
 fm_test_kill_bridge_watchers() {  # <fixture-root>...
-  local root real pid args
+  local root real pid args watch_args watch_state
   command -v pgrep >/dev/null 2>&1 || return 0
   for root in "$@"; do
     [ -n "$root" ] || continue
@@ -29,13 +29,14 @@ fm_test_kill_bridge_watchers() {  # <fixture-root>...
         *"fm-chrome-bridge-sweep.sh --watch-owner "*) ;;
         *) continue ;;
       esac
-      case "$args" in
-        *"$root"*) kill "$pid" 2>/dev/null || true; continue ;;
-      esac
-      if [ -n "$real" ] && [ "$real" != "$root" ]; then
-        case "$args" in
-          *"$real"*) kill "$pid" 2>/dev/null || true ;;
-        esac
+      watch_args=${args#*fm-chrome-bridge-sweep.sh --watch-owner }
+      watch_state=$(printf '%s\n' "$watch_args" | awk '{ print $3; exit }')
+      if [ "$watch_state" = "$root" ]; then
+        kill "$pid" 2>/dev/null || true
+        continue
+      fi
+      if [ -n "$real" ] && [ "$real" != "$root" ] && [ "$watch_state" = "$real" ]; then
+        kill "$pid" 2>/dev/null || true
       fi
     done < <(pgrep -f "fm-chrome-bridge-sweep.sh --watch-owner" 2>/dev/null)
   done
