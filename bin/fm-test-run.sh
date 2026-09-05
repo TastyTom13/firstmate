@@ -119,6 +119,12 @@ RUN_STARTED_MS=$(now_ms)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
+if [ -f "$ROOT/tests/bridge-watcher-reap.sh" ]; then
+  # shellcheck source=tests/bridge-watcher-reap.sh
+  . "$ROOT/tests/bridge-watcher-reap.sh"
+else
+  fm_test_kill_bridge_watchers() { return 0; }
+fi
 
 MODE=
 LIST_ONLY=0
@@ -1882,6 +1888,9 @@ if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ]; then
 fi
 
 RUN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run.XXXXXX")
+REGISTRY_BASELINE="$RUN_TMP/cleanup-registry-baseline"
+find "${TMPDIR:-/tmp}" -maxdepth 1 -type f -name '.fm-test-cleanup.*' -print 2>/dev/null \
+  >"$REGISTRY_BASELINE"
 RECORDS="$RUN_TMP/records.tsv"
 FAMILIES_TSV="$RUN_TMP/families.tsv"
 : >"$RECORDS"
@@ -1942,27 +1951,23 @@ family_bump() {
 # throwaway test fixture root are reaped, so a real task's watcher, in this home
 # or any other, is never matched.
 reap_leaked_bridge_watchers() {
-  local tmpdir pid args real
-  command -v pgrep >/dev/null 2>&1 || return 0
-  tmpdir=${TMPDIR:-/tmp}
-  tmpdir=${tmpdir%/}
-  real=$(cd "$tmpdir" 2>/dev/null && pwd -P) || real=
-  while IFS= read -r pid; do
-    [ -n "$pid" ] || continue
-    args=$(ps -p "$pid" -o command= 2>/dev/null) || continue
-    case "$args" in
-      *"fm-chrome-bridge-sweep.sh --watch-owner "*) ;;
-      *) continue ;;
-    esac
-    case "$args" in
-      *"$tmpdir"/fm-*) kill "$pid" 2>/dev/null || true; continue ;;
-    esac
-    if [ -n "$real" ] && [ "$real" != "$tmpdir" ]; then
-      case "$args" in
-        *"$real"/fm-*) kill "$pid" 2>/dev/null || true ;;
-      esac
-    fi
-  done < <(pgrep -f "fm-chrome-bridge-sweep.sh --watch-owner" 2>/dev/null)
+  local registry registry_dir root
+  local registry_dirs=("${TMPDIR:-/tmp}" "$RUN_TMP")
+  local -a roots=()
+  for registry_dir in "${registry_dirs[@]}"; do
+    [ -d "$registry_dir" ] || continue
+    while IFS= read -r -d '' registry; do
+      if [ "$registry_dir" = "${TMPDIR:-/tmp}" ] &&
+        grep -Fqx "$registry" "$REGISTRY_BASELINE" 2>/dev/null; then
+        continue
+      fi
+      while IFS= read -r root; do
+        [ -n "$root" ] && roots+=("$root")
+      done < "$registry"
+    done < <(find "$registry_dir" -type f -name '.fm-test-cleanup.*' -print0 2>/dev/null)
+  done
+  [ "${#roots[@]}" -gt 0 ] || return 0
+  fm_test_kill_bridge_watchers "${roots[@]}"
 }
 
 record_script_result() {
