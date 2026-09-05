@@ -335,7 +335,8 @@ while :; do
   before=$(wc -l < "$TARGETS" | tr -d ' ')
   awk -F '\t' 'NR == FNR { wanted[$1]=1; next } ($2 in wanted) { print $1 }' "$TARGETS" "$PS_TABLE" >> "$TARGETS.next"
   cat "$TARGETS" >> "$TARGETS.next"
-  sort -un "$TARGETS.next" > "$TARGETS"
+  sort -un "$TARGETS.next" > "$TARGETS.sorted"
+  mv -f "$TARGETS.sorted" "$TARGETS"
   rm -f "$TARGETS.next"
   after=$(wc -l < "$TARGETS" | tr -d ' ')
   [ "$after" -eq "$before" ] && break
