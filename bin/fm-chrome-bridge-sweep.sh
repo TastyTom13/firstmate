@@ -116,6 +116,10 @@ capture_identity() {  # <pid> <command> <cwd>
 load_processes
 while IFS=$'\t' read -r pid ppid elapsed command; do
   case "$pid:$ppid" in *[!0-9:]*) continue ;; esac
+  case "$command" in
+    node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*) ;;
+    *) continue ;;
+  esac
   cwd=$(process_cwd "$pid" 2>/dev/null || true)
   capture_identity "$pid" "$command" "${cwd:-unknown}" || true
 done < "$PS_TABLE"
@@ -183,6 +187,17 @@ while :; do
   after=$(wc -l < "$TARGETS" | tr -d ' ')
   [ "$after" -eq "$before" ] && break
 done
+
+# Descendants are discovered from the bounded process snapshot above, but their
+# identities must be captured before they can be signaled.
+while IFS= read -r pid; do
+  awk -F '\t' -v pid="$pid" '$1 == pid { print; exit }' "$IDENTITIES" | grep -q . && continue
+  process_row=$(awk -F '\t' -v pid="$pid" '$1 == pid { print; exit }' "$PS_TABLE")
+  [ -n "$process_row" ] || continue
+  process_command=$(printf '%s\n' "$process_row" | cut -f4-)
+  process_cwd_value=$(process_cwd "$pid" 2>/dev/null || true)
+  capture_identity "$pid" "$process_command" "${process_cwd_value:-unknown}" || true
+done < "$TARGETS"
 
 pid_identity_matches() {  # <pid>
   local pid=$1 expected expected_identity expected_command expected_cwd current current_command current_cwd
