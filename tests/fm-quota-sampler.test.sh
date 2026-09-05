@@ -59,6 +59,27 @@ test_launchd_environment_discovers_node_install_and_passes_read_only_args() {
   pass "a launchd-like environment discovers quota-axi and passes noninteractive provider arguments"
 }
 
+test_missing_quota_axi_preserves_independent_chatgpt_sample() {
+  local home="$TMP_ROOT/missing-quota" history="$TMP_ROOT/missing-quota/history.jsonl"
+  mkdir -p "$home"
+  cat > "$home/gpt-reader" <<'SH'
+#!/bin/sh
+printf '%s\n' '{"schema":"fm-gpt-quota.v1","status":"known","windows":[]}'
+SH
+  chmod +x "$home/gpt-reader"
+
+  env -i \
+    HOME="$home" \
+    PATH=/usr/bin:/bin \
+    FM_QUOTA_SAMPLE_HISTORY="$history" \
+    FM_QUOTA_SAMPLE_GPT_READER="$home/gpt-reader" \
+    /bin/sh "$SAMPLER" || fail "the sampler failed without quota-axi"
+
+  jq -e '.claude == null and .gpt.status == "known"' "$history" \
+    >/dev/null || fail "the sampler did not preserve the independent ChatGPT reading"
+  pass "missing quota-axi records null Claude and preserves ChatGPT"
+}
+
 test_explicit_reader_overrides_work_with_an_empty_path() {
   local home="$TMP_ROOT/overrides" history="$TMP_ROOT/overrides/history.jsonl"
   make_fake_readers "$home"
@@ -83,4 +104,5 @@ test_explicit_reader_overrides_work_with_an_empty_path() {
 }
 
 test_launchd_environment_discovers_node_install_and_passes_read_only_args
+test_missing_quota_axi_preserves_independent_chatgpt_sample
 test_explicit_reader_overrides_work_with_an_empty_path

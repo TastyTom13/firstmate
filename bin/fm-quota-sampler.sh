@@ -72,16 +72,20 @@ resolve_quota_axi() {
   printf '%s\n' "$found"
 }
 
-QUOTA_AXI=$(resolve_quota_axi) || {
-  printf 'fm-quota-sampler: quota-axi was not found for HOME=%s\n' "$HOME" >&2
-  exit 1
-}
-PATH=$(dirname -- "$QUOTA_AXI"):$BASE_PATH
-export PATH
+QUOTA_AXI=
+if ! QUOTA_AXI=$(resolve_quota_axi); then
+  printf 'fm-quota-sampler: quota-axi was not found for HOME=%s; recording Claude as null\n' "$HOME" >&2
+else
+  PATH=$(dirname -- "$QUOTA_AXI"):$BASE_PATH
+  export PATH
+fi
 
 mkdir -p "$(dirname -- "$OUT")"
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-CLAUDE=$("$QUOTA_AXI" --provider claude --no-credential-refresh --json 2>/dev/null || :)
+CLAUDE=
+if [ -n "$QUOTA_AXI" ]; then
+  CLAUDE=$("$QUOTA_AXI" --provider claude --no-credential-refresh --json 2>/dev/null || :)
+fi
 GPT=$("$GPT_READER" --json 2>/dev/null || :)
 export TS CLAUDE GPT
 
