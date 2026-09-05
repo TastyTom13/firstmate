@@ -600,6 +600,14 @@ EOF
 9201	$case_dir/project
 EOF
   : > "$case_dir/bridge-kills.log"
+  cat > "$case_dir/fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  display-message) exit 1 ;;
+  *) exit 0 ;;
+esac
+SH
+  chmod +x "$case_dir/fakebin/tmux"
   export FM_BRIDGE_PS_FILE="$case_dir/bridge-ps.tsv"
   export FM_BRIDGE_CWD_FILE="$case_dir/bridge-cwd.tsv"
   export FM_BRIDGE_KILL_LOG="$case_dir/bridge-kills.log"

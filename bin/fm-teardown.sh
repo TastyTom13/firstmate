@@ -1859,6 +1859,21 @@ require_orca_worktree_path_match_if_present() {
   require_orca_worktree_path_match "$worktree_id" "$inspected"
 }
 
+worktree_owned_by_task() {
+  local branch
+  worktree_registered_for_project "$PROJ" "$WT" || return 1
+  branch=$(git -C "$WT" symbolic-ref --quiet --short HEAD 2>/dev/null) || return 1
+  [ "$branch" = "fm/$ID" ]
+}
+
+backend_endpoint_shutdown_confirmed() {
+  if [ "$BACKEND" = herdr ]; then
+    fm_backend_herdr_endpoint_confirmed_gone "$T"
+  else
+    ! fm_backend_target_exists "$BACKEND" "$T" "fm-$ID"
+  fi
+}
+
 firstmate_home_has_treehouse_slot() {
   local home=$1
   worktree_registered_for_project "$FM_ROOT" "$home"
@@ -2790,26 +2805,30 @@ if [ "$KIND" != secondmate ]; then
   if [ "$BACKEND" = herdr ] && [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
     if teardown_herdr_session_lock_held "$HERDR_PRESENTATION_SESSION" \
        && fm_backend_herdr_projection_close_pane_focus_preserving \
-         "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE"; then
+         "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE" \
+       && backend_endpoint_shutdown_confirmed; then
       BACKEND_STOPPED=1
     else
       echo "warning: herdr presentation focus lock unavailable or pane close was unconfirmed; skipping bridge sweep" >&2
     fi
   elif [ "$BACKEND" = herdr ]; then
     if teardown_herdr_session_lock_held "$TEARDOWN_HERDR_SESSION" \
-       && fm_backend_herdr_kill_serialized "$TEARDOWN_HERDR_SESSION" "$TEARDOWN_HERDR_PANE" 2>/dev/null; then
+       && fm_backend_herdr_kill_serialized "$TEARDOWN_HERDR_SESSION" "$TEARDOWN_HERDR_PANE" 2>/dev/null \
+       && backend_endpoint_shutdown_confirmed; then
       BACKEND_STOPPED=1
     else
       echo "warning: herdr session presentation lock path is unavailable or pane close failed; skipping bridge sweep" >&2
     fi
   elif [ "$BACKEND" = orca ]; then
-    if [ -z "$T_ORCA" ] || fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null; then
+    if [ -z "$T_ORCA" ] || { fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null \
+      && backend_endpoint_shutdown_confirmed; }; then
       BACKEND_STOPPED=1
     fi
-  elif fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null; then
+  elif fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null \
+       && backend_endpoint_shutdown_confirmed; then
     BACKEND_STOPPED=1
   fi
-  if [ "$BACKEND_STOPPED" -eq 1 ] && worktree_registered_for_project "$PROJ" "$WT"; then
+  if [ "$BACKEND_STOPPED" -eq 1 ] && worktree_owned_by_task; then
     "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --apply --worktree "$WT" >&2 || \
       echo "warning: browser bridge inspection failed for $ID; no unverified bridge was signaled" >&2
   else
