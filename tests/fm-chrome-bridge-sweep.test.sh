@@ -103,3 +103,55 @@ printf '%s\n' "$summary" | grep -F 'BROWSER_BRIDGES: 3 orphan bridge(s), 3 unkno
 printf '%s\n' "$summary" | grep -F "inspect: $SWEEP; apply: $SWEEP --apply" >/dev/null \
   || fail "summary gives exact commands"
 pass "startup summary is concise and actionable"
+
+# The ownership watcher runs backgrounded and reparented for the life of a task,
+# so its exit conditions are the only thing standing between a spawned fleet and
+# a host full of process-table scanners. Exercise each one through the real
+# script rather than by reading it.
+watch_root=$(mktemp -d "$TMP_ROOT/watch.XXXXXX") || fail "watch fixture root"
+mkdir -p "$watch_root/state" "$watch_root/wt"
+: > "$watch_root/state/watched.meta"
+
+watch_exits_within() {  # <pid> <seconds>
+  local pid=$1 limit=$2 waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    [ "$waited" -lt "$limit" ] || return 1
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 0
+}
+
+FM_BRIDGE_WATCH_INTERVAL_SECS=1 "$SWEEP" --watch-owner watched "$watch_root/wt" "$watch_root/state" \
+  >/dev/null 2>&1 &
+watch_pid=$!
+sleep 2
+kill -0 "$watch_pid" 2>/dev/null || fail "watcher exited while its task record and worktree were present"
+rm -f "$watch_root/state/watched.meta"
+watch_exits_within "$watch_pid" 15 || {
+  kill -KILL "$watch_pid" 2>/dev/null || true
+  fail "watcher outlived its task record"
+}
+pass "the ownership watcher stops when the task record is removed"
+
+: > "$watch_root/state/watched.meta"
+FM_BRIDGE_WATCH_INTERVAL_SECS=1 "$SWEEP" --watch-owner watched "$watch_root/wt" "$watch_root/state" \
+  >/dev/null 2>&1 &
+watch_pid=$!
+sleep 2
+rm -rf "$watch_root/wt"
+watch_exits_within "$watch_pid" 15 || {
+  kill -KILL "$watch_pid" 2>/dev/null || true
+  fail "watcher outlived its task worktree"
+}
+pass "the ownership watcher stops when the task worktree is removed"
+
+mkdir -p "$watch_root/wt"
+FM_BRIDGE_WATCH_INTERVAL_SECS=1 FM_BRIDGE_WATCH_MAX_SECS=2 \
+  "$SWEEP" --watch-owner watched "$watch_root/wt" "$watch_root/state" >/dev/null 2>&1 &
+watch_pid=$!
+watch_exits_within "$watch_pid" 20 || {
+  kill -KILL "$watch_pid" 2>/dev/null || true
+  fail "watcher outlived its deadline"
+}
+pass "the ownership watcher stops at its deadline"

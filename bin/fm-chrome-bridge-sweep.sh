@@ -29,13 +29,19 @@ if [ "${1:-}" = --watch-owner ]; then
   WATCH_WORKTREE=$3
   WATCH_STATE=$4
   WATCH_SELF=$$
-  # Bounded on purpose: a task that never opens a browser must not leave a
-  # watcher spinning for the life of the host. The watcher also stops as soon
-  # as the task worktree is gone, which is what teardown removes.
-  WATCH_DEADLINE=$(( $(date +%s) + ${FM_BRIDGE_WATCH_MAX_SECS:-3600} ))
+  # Bounded three ways, because a watcher that outlives its task is exactly the
+  # leak this script exists to clean up. It stops when the task record is gone
+  # (teardown removes it, and a test fixture's state dir disappears with the
+  # fixture), when the task worktree is gone, and at a hard deadline. The poll
+  # interval is deliberately slow: each pass walks the full process table, so a
+  # one-second loop across a fleet of tasks is a measurable share of the host.
+  WATCH_META="$WATCH_STATE/$WATCH_TASK.meta"
+  WATCH_INTERVAL=${FM_BRIDGE_WATCH_INTERVAL_SECS:-5}
+  WATCH_DEADLINE=$(( $(date +%s) + ${FM_BRIDGE_WATCH_MAX_SECS:-900} ))
   command -v lsof >/dev/null 2>&1 || exit 1
   cd / || exit 1
-  while [ -d "$WATCH_WORKTREE" ] && [ "$(date +%s)" -lt "$WATCH_DEADLINE" ]; do
+  while [ -e "$WATCH_META" ] && [ -d "$WATCH_WORKTREE" ] \
+     && [ "$(date +%s)" -lt "$WATCH_DEADLINE" ]; do
     WATCH_BRIDGE_PID=
     WATCH_OWNER_PID=
     while IFS= read -r WATCH_ROW; do
@@ -60,7 +66,7 @@ if [ "${1:-}" = --watch-owner ]; then
       done < <(ps -axo pid=,command= 2>/dev/null)
       [ -n "$WATCH_OWNER_PID" ] && "$0" --record-owner "$WATCH_TASK" "$WATCH_WORKTREE" "$WATCH_BRIDGE_PID" "$WATCH_OWNER_PID" "$WATCH_STATE" && exit 0
     fi
-    sleep 1
+    sleep "$WATCH_INTERVAL"
   done
   exit 0
 fi
