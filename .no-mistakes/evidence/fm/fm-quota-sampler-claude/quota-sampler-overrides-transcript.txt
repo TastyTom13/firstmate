@@ -1,0 +1,15 @@
+$ env -i HOME omitted, PATH empty, explicit readers
+
+reader-observation:
+quota-argv=--provider claude --no-credential-refresh --json
+HOME=/Users/tomas
+PATH=/tmp/fm-quota-override.JAwD1e/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+gpt-argv=--json
+quota-argv=--provider claude --no-credential-refresh --json
+HOME=/Users/tomas
+PATH=/tmp/fm-quota-override.JAwD1e/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+gpt-argv=--json
+
+resulting-JSONL:
+{"ts":"2026-09-05T00:54:49Z","claude":{"schemaVersion":5,"providers":[{"provider":"claude","windows":[]}]},"gpt":{"schema":"fm-gpt-quota.v1","status":"known","windows":[]}}
+{"ts":"2026-09-05T00:54:49Z","claude":{"schemaVersion":5,"providers":[{"provider":"claude","windows":[]}]},"gpt":{"schema":"fm-gpt-quota.v1","status":"known","windows":[]}}

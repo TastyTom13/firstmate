@@ -1,0 +1,11 @@
+launchd-equivalent environment: HOME=, PATH=/usr/bin:/bin
+quota-axi argv:
+--provider
+claude
+--no-credential-refresh
+--json
+quota-axi HOME:
+/Users/tomas
+two persisted samples:
+{"ts":"2026-09-05T00:57:11Z","claude":{"schemaVersion":5,"providers":[{"provider":"claude","windows":[{"scope":"session","effectivePercentRemaining":73}]}]},"gpt":{"schema":"fm-gpt-quota.v1","status":"known","windows":[{"scope":"session","remainingPercent":81}]}}
+{"ts":"2026-09-05T00:57:12Z","claude":{"schemaVersion":5,"providers":[{"provider":"claude","windows":[{"scope":"session","effectivePercentRemaining":73}]}]},"gpt":{"schema":"fm-gpt-quota.v1","status":"known","windows":[{"scope":"session","remainingPercent":81}]}}
