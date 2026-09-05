@@ -1,0 +1,5 @@
+$ tests/fm-turnend-guard.test.sh
+ok - fm-turnend-guard: away mode allows while a live daemon sits between watcher runs
+ok - fm-turnend-guard: away mode blocks a dead or identity-mismatched daemon
+ok - fm-turnend-guard: the away-mode daemon predicate never fires with away mode off
+exit=0
