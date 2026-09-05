@@ -597,6 +597,8 @@ test_teardown_retires_its_browser_bridge_family() {
 EOF
   cat > "$case_dir/bridge-cwd.tsv" <<EOF
 9101	$case_dir/wt
+9102	$case_dir/wt
+9103	$case_dir/wt
 9201	$case_dir/project
 EOF
   : > "$case_dir/bridge-kills.log"
