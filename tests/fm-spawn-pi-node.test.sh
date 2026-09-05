@@ -168,6 +168,25 @@ test_relative_path_refuses_the_spawn() {
   pass "a relative config/pi-node path refuses before any launch command"
 }
 
+test_directory_node_refuses_the_spawn() {
+  local rec id out status node
+  id=pi-node-directory-z1
+  rec=$(make_case directory "$id")
+  read_case_record "$rec"
+  node="$CASE_DIR/fm-node"
+  mkdir -p "$node"
+  printf '%s\n' "$node" > "$HOME_DIR/config/pi-node"
+
+  out=$(run_pi_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --effort low)
+  status=$?
+  expect_code 1 "$status" "config/pi-node naming an executable directory should refuse the spawn"
+  assert_contains "$out" "$node" "the refusal did not name the configured directory"
+  [ ! -s "$LAUNCH_LOG" ] || fail "a spawn refused for a directory node still sent a launch command"
+
+  pass "config/pi-node naming a directory refuses before any launch command"
+}
+
 test_comments_and_whitespace_are_ignored() {
   local rec id out status launch node
   id=pi-node-comments-z1
@@ -218,5 +237,6 @@ test_valid_config_prefixes_the_configured_node
 test_missing_node_refuses_the_spawn
 test_non_executable_node_refuses_the_spawn
 test_relative_path_refuses_the_spawn
+test_directory_node_refuses_the_spawn
 test_comments_and_whitespace_are_ignored
 test_raw_launch_command_is_left_alone

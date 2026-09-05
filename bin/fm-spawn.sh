@@ -1324,6 +1324,7 @@ free_lane_preflight() {
 pi_supports_tui_mode() {
   local executable=$1 node=${2:-} help
   if [ -n "$node" ]; then
+    [ -f "$node" ] && [ -x "$node" ] || return 1
     help=$("$node" "$executable" --help 2>&1) || return 1
   else
     help=$("$executable" --help 2>&1) || return 1
@@ -1490,7 +1491,7 @@ case "$HARNESS" in
           exit 1
           ;;
       esac
-      [ -x "$PI_NODE_PATH" ] || {
+      [ -f "$PI_NODE_PATH" ] && [ -x "$PI_NODE_PATH" ] || {
         echo "error: config/pi-node names '$PI_NODE_PATH', which is not executable; point it at an executable node or remove config/pi-node to launch pi through PATH" >&2
         exit 1
       }
