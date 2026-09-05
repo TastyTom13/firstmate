@@ -436,6 +436,14 @@ The sampler restores an absent account home and discovers user-level `quota-axi`
 It reads Claude with `--provider claude --no-credential-refresh`, which avoids a background keychain prompt or credential mutation, writes no token to the history file, and records an unavailable reading as `null` without inventing or backfilling history.
 `FM_HOME`, `FM_QUOTA_SAMPLE_HISTORY`, `FM_QUOTA_SAMPLE_QUOTA_AXI`, `FM_QUOTA_SAMPLE_GPT_READER`, and `FM_QUOTA_SAMPLE_PYTHON` provide explicit installation and test overrides; the script header owns their exact behavior.
 
+## Browser bridge sweep
+
+[`bin/fm-chrome-bridge-sweep.sh`](../bin/fm-chrome-bridge-sweep.sh) inventories detached `chrome-devtools-axi` bridges with their age, cwd owner, and cleanup eligibility.
+It is dry-run by default, and `--apply` stops only bridge families whose owner is missing or whose age meets `FM_BRIDGE_MAX_AGE_HOURS`, which defaults to 6 hours.
+Unknown ownership is reported and never stopped.
+Task cleanup applies the same ownership check against that task's exact isolated copy so its bridge, MCP child, and Chrome descendants do not survive the worker.
+Session start runs only the bounded summary and prints the exact inspect and apply commands when cleanup candidates or unknown owners exist.
+
 ## Watched tool updates (config/watched-tools.json)
 
 `config/watched-tools.json` is an optional local, gitignored list of the tools this home depends on.
@@ -804,6 +812,7 @@ FM_ZELLIJ_SESSION=firstmate  # zellij-only: named session for normal backend ops
 CMUX_SOCKET_PASSWORD=   # cmux-only: socket password fallback when config/cmux-socket-password is absent (docs/cmux-backend.md)
 FM_SESSION_START_STATUS_TAIL=5   # state/*.status lines printed per task in the session-start digest; each line is capped by bin/fm-line-cap-lib.sh
 FM_SESSION_START_QUEUED_LIMIT=20   # plain queued backlog rows in the session-start digest; in-flight, held, and blocked rows are never bounded and done rows are never listed
+FM_BRIDGE_MAX_AGE_HOURS=6   # chrome-devtools-axi bridge age eligible for bin/fm-chrome-bridge-sweep.sh --apply
 FM_BOOTSTRAP_DETECT_ONLY=0   # internal/read-only session-start mode: skip bootstrap's mutating sweeps and print advisory TANGLE wording
 FM_BOOTSTRAP_NETWORK=all   # internal session-start phase split: all, skip (local steps only), or only (network steps only); see bin/fm-bootstrap.sh
 FM_STARTUP_NETWORK_TIMEOUT=120   # seconds bounding the whole deferred network stage; hitting it prints an actionable NETWORK_CHECKS line

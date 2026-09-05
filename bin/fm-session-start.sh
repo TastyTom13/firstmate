@@ -689,8 +689,14 @@ else
       "$SCRIPT_DIR/fm-bootstrap.sh" 2>&1
   )
 fi
-if [ -n "$BOOT_OUT" ]; then
-  printf '%s\n' "$BOOT_OUT"
+BRIDGE_SWEEP_OUT=$(fm_run_timed 5 "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --summary 2>&1)
+BRIDGE_SWEEP_RC=$?
+if [ "$BRIDGE_SWEEP_RC" -ne 0 ]; then
+  BRIDGE_SWEEP_OUT="BROWSER_BRIDGES: inspection failed; inspect: $SCRIPT_DIR/fm-chrome-bridge-sweep.sh"
+fi
+if [ -n "$BOOT_OUT" ] || [ -n "$BRIDGE_SWEEP_OUT" ]; then
+  [ -z "$BOOT_OUT" ] || printf '%s\n' "$BOOT_OUT"
+  [ -z "$BRIDGE_SWEEP_OUT" ] || printf '%s\n' "$BRIDGE_SWEEP_OUT"
 else
   printf '(silent - all good)\n'
 fi

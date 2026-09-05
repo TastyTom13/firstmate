@@ -141,8 +141,15 @@
 #     grace period to any survivor whose process identity still matches. Both
 #     roots are unique per task and never
 #     shared, so this can never reach another task's or the primary's
-#     processes. Idempotent: nothing left to find is a silent no-op.
-#   Fix 3 - sweep abandoned remote job workers. A remote job worker started
+#     processes. Browser bridge leaders are reserved for Fix 3 so their
+#     detached child family remains attributable after the worker stops.
+#     Idempotent: nothing left to find is a silent no-op.
+#   Fix 3 - retire the task's browser bridge family. chrome-devtools-axi
+#     detaches its bridge, MCP child, and Chrome descendants from the worker's
+#     process group. bin/fm-chrome-bridge-sweep.sh attributes the bridge by its
+#     cwd under this task's exact worktree and signals that captured family.
+#     Unknown ownership is reported and never signaled.
+#   Fix 4 - sweep abandoned remote job workers. A remote job worker started
 #     from a worktree's own bin/ outlives that worktree's removal without
 #     being reachable by Fix 2, because its working directory is wherever it
 #     was launched rather than the task worktree (observed 2026-08-07: 29
@@ -1649,10 +1656,19 @@ task_pid_list_contains() {  # <pid-list> <pid>
   printf '%s\n' "$1" | grep -Fxq "$2"
 }
 
+task_pid_is_chrome_bridge() {  # <pid>
+  local command
+  command=$(ps -p "$1" -o command= 2>/dev/null) || return 1
+  case "$command" in
+    node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 task_pids_under_roots() {  # <dir>...
   TASK_PIDS=
   TASK_PIDS_FAILED_DIR=
-  local dir dir_pids pids=""
+  local dir dir_pids pids="" pid
   for dir in "$@"; do
     [ -n "$dir" ] || continue
     if ! dir_pids=$(pids_with_cwd_under "$dir"); then
@@ -1662,7 +1678,11 @@ task_pids_under_roots() {  # <dir>...
     pids="$pids
 $dir_pids"
   done
-  TASK_PIDS=$(printf '%s\n' "$pids" | grep -E '^[0-9]+$' | sort -un || true)
+  TASK_PIDS=$(
+    printf '%s\n' "$pids" | grep -E '^[0-9]+$' | sort -un | while IFS= read -r pid; do
+      task_pid_is_chrome_bridge "$pid" || printf '%s\n' "$pid"
+    done
+  )
 }
 
 reap_task_backend_process_group() {  # <label>
@@ -2745,9 +2765,11 @@ fi
 if [ "$KIND" != secondmate ]; then
   conclude_task_no_mistakes_run "$WT"
   reap_task_worktree_processes worktree "$WT" "$TASK_TMP"
+  "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --apply --worktree "$WT" >&2 || \
+    echo "warning: browser bridge inspection failed for $ID; no unverified bridge was signaled" >&2
 fi
 
-# Fix 3 (see script header): sweep remote job workers abandoned by an already
+# Fix 4 (see script header): sweep remote job workers abandoned by an already
 # pruned code root. Best effort - a sweep failure never blocks this teardown.
 "$SCRIPT_DIR/fm-remote-job-reap-orphans.sh" >&2 || true
 
