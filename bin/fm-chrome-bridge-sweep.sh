@@ -69,13 +69,17 @@ if [ "${1:-}" = --record-owner ]; then
   OWNER_STATE=${6:-${FM_BRIDGE_OWNER_DIR:-${FM_STATE_OVERRIDE:-${FM_HOME:-$PWD}/state}}}
   OWNER_START_TIME=${7:-${FM_BRIDGE_OWNER_START_TIME:-}}
   OWNER_COMMAND=${8:-${FM_BRIDGE_OWNER_COMMAND:-}}
+  OWNER_SESSION_START_TIME=${9:-${FM_BRIDGE_OWNER_SESSION_START_TIME:-}}
   if [ -z "$OWNER_START_TIME" ]; then
     OWNER_START_TIME=$(LC_ALL=C ps -p "$OWNER_BRIDGE_PID" -o lstart= 2>/dev/null || true)
   fi
   if [ -z "$OWNER_COMMAND" ]; then
     OWNER_COMMAND=$(LC_ALL=C ps -p "$OWNER_BRIDGE_PID" -o command= 2>/dev/null || true)
   fi
-  [ -n "$OWNER_START_TIME" ] && [ -n "$OWNER_COMMAND" ] || { echo "error: bridge process identity could not be captured" >&2; exit 1; }
+  if [ -z "$OWNER_SESSION_START_TIME" ]; then
+    OWNER_SESSION_START_TIME=$(LC_ALL=C ps -p "$OWNER_SESSION_ROOT" -o lstart= 2>/dev/null || true)
+  fi
+  [ -n "$OWNER_START_TIME" ] && [ -n "$OWNER_COMMAND" ] && [ -n "$OWNER_SESSION_START_TIME" ] || { echo "error: bridge process identity could not be captured" >&2; exit 1; }
   case "$OWNER_TASK:$OWNER_BRIDGE_PID:$OWNER_SESSION_ROOT" in
     *[!A-Za-z0-9_.:-]*) echo "error: invalid ownership record identity" >&2; exit 2 ;;
   esac
@@ -86,6 +90,7 @@ if [ "${1:-}" = --record-owner ]; then
     printf 'worktree=%s\n' "$OWNER_WORKTREE"
     printf 'bridge_pid=%s\n' "$OWNER_BRIDGE_PID"
     printf 'session_root=%s\n' "$OWNER_SESSION_ROOT"
+    printf 'session_root_start_time=%s\n' "$OWNER_SESSION_START_TIME"
     printf 'bridge_start_time=%s\n' "$OWNER_START_TIME"
     printf 'bridge_command=%s\n' "$OWNER_COMMAND"
   } > "$OWNER_TMP" || ! mv -f "$OWNER_TMP" "$OWNER_STATE/$OWNER_TASK.bridge-owner"; then
@@ -192,22 +197,35 @@ capture_identity() {  # <pid> <command> <cwd>
 load_processes
 
 owner_record_for_pid() {  # <bridge-pid>
-  local bridge_pid=$1 record task_id worktree record_pid session_root start_time bridge_command
+  local bridge_pid=$1 record task_id worktree record_pid session_root session_start_time start_time bridge_command
   for record in "$OWNER_DIR"/*.bridge-owner; do
     [ -f "$record" ] || continue
     task_id=$(awk -F= '$1 == "task_id" { print substr($0, index($0, "=") + 1); exit }' "$record")
     worktree=$(awk -F= '$1 == "worktree" { print substr($0, index($0, "=") + 1); exit }' "$record")
     record_pid=$(awk -F= '$1 == "bridge_pid" { print substr($0, index($0, "=") + 1); exit }' "$record")
     session_root=$(awk -F= '$1 == "session_root" { print substr($0, index($0, "=") + 1); exit }' "$record")
+    session_start_time=$(awk -F= '$1 == "session_root_start_time" { print substr($0, index($0, "=") + 1); exit }' "$record")
     start_time=$(awk -F= '$1 == "bridge_start_time" { print substr($0, index($0, "=") + 1); exit }' "$record")
     bridge_command=$(awk -F= '$1 == "bridge_command" { print substr($0, index($0, "=") + 1); exit }' "$record")
     if [ "$record_pid" = "$bridge_pid" ] && [ -n "$task_id" ] && [ -n "$worktree" ] \
-       && [ -n "$session_root" ] && [ -n "$start_time" ] && [ -n "$bridge_command" ]; then
-      printf '%s\t%s\t%s\t%s\t%s\n' "$task_id" "$worktree" "$session_root" "$start_time" "$bridge_command"
+       && [ -n "$session_root" ] && [ -n "$session_start_time" ] && [ -n "$start_time" ] \
+       && [ -n "$bridge_command" ]; then
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$task_id" "$worktree" "$session_root" "$session_start_time" "$start_time" "$bridge_command"
       return 0
     fi
   done
   return 1
+}
+
+owner_identity_alive() {  # <pid> <start-time>
+  local pid=$1 expected_start=$2 current_start
+  if [ -n "${FM_BRIDGE_PS_FILE:-}" ]; then
+    awk -F '\t' -v pid="$pid" '$1 == pid { found=1 } END { exit found ? 0 : 1 }' "$PS_TABLE" || return 1
+    current_start=fixture
+  else
+    current_start=$(LC_ALL=C ps -p "$pid" -o lstart= 2>/dev/null || true)
+  fi
+  [ "$current_start" = "$expected_start" ]
 }
 
 bridge_identity_matches() {  # <pid> <start-time> <command>
@@ -220,27 +238,6 @@ bridge_identity_matches() {  # <pid> <start-time> <command>
     current_command=$(LC_ALL=C ps -p "$pid" -o command= 2>/dev/null || true)
   fi
   [ "$current_start" = "$expected_start" ] && [ "$current_command" = "$expected_command" ]
-}
-
-owner_process_tree_state() {  # <session-root> <bridge-pid>
-  local root=$1 bridge_pid=$2 pid parent command row
-  case "$root" in ''|*[!0-9]*) return 2 ;; esac
-  if awk -F '\t' -v pid="$root" '$1 == pid { found=1 } END { exit found ? 0 : 1 }' "$PS_TABLE"; then
-    return 0
-  fi
-  while IFS=$'\t' read -r pid parent _ command; do
-    [ "$pid" = "$root" ] && continue
-    row=$pid
-    while :; do
-      parent=$(awk -F '\t' -v pid="$row" '$1 == pid { print $2; exit }' "$PS_TABLE")
-      [ "$row" = "$bridge_pid" ] && [ "$parent" = 1 ] && return 2
-      [ "$parent" = "$root" ] && return 0
-      case "$parent" in ''|*[!0-9]*) break ;; esac
-      [ "$parent" = "$row" ] && break
-      row=$parent
-    done
-  done < "$PS_TABLE"
-  return 1
 }
 
 while IFS=$'\t' read -r pid ppid elapsed command; do
@@ -278,35 +275,23 @@ while IFS=$'\t' read -r pid ppid elapsed command; do
     else
       owner_worktree=$(printf '%s\n' "$owner_record" | cut -f2)
       owner_session_root=$(printf '%s\n' "$owner_record" | cut -f3)
-      owner_start_time=$(printf '%s\n' "$owner_record" | cut -f4)
-      owner_command=$(printf '%s\n' "$owner_record" | cut -f5-)
+      owner_session_start_time=$(printf '%s\n' "$owner_record" | cut -f4)
+      owner_start_time=$(printf '%s\n' "$owner_record" | cut -f5)
+      owner_command=$(printf '%s\n' "$owner_record" | cut -f6-)
       if ! bridge_identity_matches "$pid" "$owner_start_time" "$owner_command" \
          || ! path_belongs_to_worktree "$cwd" "$owner_worktree"; then
         disposition=unknown
         reason=owner-identity-mismatch
-      elif [ "$owner_session_root" = 1 ]; then
-        reason=owner-unresolved
-      else
-        owner_process_tree_state "$owner_session_root" "$pid"
-        owner_state=$?
-        if [ "$owner_state" -eq 0 ]; then
-          reason=owner-live
-        elif [ "$owner_state" -eq 2 ]; then
-          if [ -n "$age" ] && [ "$age" -ge "$((MAX_HOURS * 3600))" ]; then
-            reason=long-running
-          else
-            disposition=unknown
-            reason=owner-unresolved
-          fi
-        elif [ ! -e "$owner_worktree" ]; then
-          disposition=select
-          reason=owner-missing
-        elif [ -n "$age" ] && [ "$age" -ge "$((MAX_HOURS * 3600))" ]; then
-          reason=long-running
-        elif [ -z "$age" ]; then
-          disposition=unknown
-          reason='age-unresolved'
-        fi
+      elif owner_identity_alive "$owner_session_root" "$owner_session_start_time"; then
+        reason=owner-live
+      elif [ ! -e "$owner_worktree" ]; then
+        disposition=select
+        reason=owner-missing
+      elif [ -n "$age" ] && [ "$age" -ge "$((MAX_HOURS * 3600))" ]; then
+        reason=long-running
+      elif [ -z "$age" ]; then
+        disposition=unknown
+        reason='age-unresolved'
       fi
     fi
   fi

@@ -2769,7 +2769,6 @@ fi
 
 if [ "$KIND" != secondmate ]; then
   conclude_task_no_mistakes_run "$WT"
-  reap_task_worktree_processes worktree "$WT" "$TASK_TMP"
   BACKEND_STOPPED=0
   if [ "$BACKEND" = herdr ] && [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
     if teardown_herdr_session_lock_held "$HERDR_PRESENTATION_SESSION" \
@@ -2811,6 +2810,9 @@ if [ "$KIND" != secondmate ]; then
     echo "warning: $BACKEND endpoint shutdown or current worktree ownership was not confirmed; skipping browser bridge sweep for $ID" >&2
   else
     echo "warning: $BACKEND browser bridge sweep skipped for $ID; current worktree ownership was not confirmed" >&2
+  fi
+  if [ "$BACKEND_STOPPED" -eq 1 ]; then
+    reap_task_worktree_processes worktree "$WT" "$TASK_TMP"
   fi
 fi
 
