@@ -1,0 +1,1 @@
+BROWSER_BRIDGES: 1 orphan bridge(s), 0 unknown, 0 long-running and protected; inspect: /Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M1RBHRBBKZVP53TD3H8RRCZ9/bin/fm-chrome-bridge-sweep.sh; apply: /Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M1RBHRBBKZVP53TD3H8RRCZ9/bin/fm-chrome-bridge-sweep.sh --apply

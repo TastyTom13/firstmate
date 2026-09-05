@@ -1,0 +1,2 @@
+BROWSER_BRIDGES: 0 orphan bridges detected (0 unknown, 0 long-running and protected).
+NEXT STEP
