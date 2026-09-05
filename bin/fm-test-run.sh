@@ -1934,9 +1934,41 @@ family_bump() {
   mv "$tmp" "$FAMILIES_TSV"
 }
 
+# Every real fm-spawn a test performs starts a backgrounded, reparented bridge
+# ownership watcher (bin/fm-spawn.sh). Most suites replace the shared library's
+# EXIT trap with their own, so the library reap cannot be the only guarantee:
+# without this, one live-backend suite can leave dozens of process-table
+# scanners running long after the run. Only watchers whose state directory is a
+# throwaway test fixture root are reaped, so a real task's watcher, in this home
+# or any other, is never matched.
+reap_leaked_bridge_watchers() {
+  local tmpdir pid args real
+  command -v pgrep >/dev/null 2>&1 || return 0
+  tmpdir=${TMPDIR:-/tmp}
+  tmpdir=${tmpdir%/}
+  real=$(cd "$tmpdir" 2>/dev/null && pwd -P) || real=
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    args=$(ps -p "$pid" -o command= 2>/dev/null) || continue
+    case "$args" in
+      *"fm-chrome-bridge-sweep.sh --watch-owner "*) ;;
+      *) continue ;;
+    esac
+    case "$args" in
+      *"$tmpdir"/fm-*) kill "$pid" 2>/dev/null || true; continue ;;
+    esac
+    if [ -n "$real" ] && [ "$real" != "$tmpdir" ]; then
+      case "$args" in
+        *"$real"/fm-*) kill "$pid" 2>/dev/null || true ;;
+      esac
+    fi
+  done < <(pgrep -f "fm-chrome-bridge-sweep.sh --watch-owner" 2>/dev/null)
+}
+
 record_script_result() {
   local script=$1 rc=$2 duration=$3 out=$4 end_iso=$5
   local base family expected gate_skip fail_delta
+  reap_leaked_bridge_watchers
   base=$(basename "$script")
   family=$(family_for_basename "$base")
   expected=$(expected_gate_skip_for_family "$family")

@@ -83,27 +83,11 @@ FM_TEST_OWNER_IDENTITY=$(fm_test_pid_identity "$$") || {
   return 1
 }
 
-# Any test that runs a real fm-spawn also starts a real bridge-ownership
-# watcher for that task (bin/fm-spawn.sh). Those watchers are backgrounded and
-# reparented, so nothing else in the run reaps them: without this, a suite that
-# spawns dozens of tasks leaves dozens of process-table scanners behind and
-# buries the host. Only watchers whose state-dir argument is one of THIS run's
-# fixture roots are killed, so a concurrent suite's or a real task's watcher is
-# never touched.
-fm_test_kill_bridge_watchers() {  # <fixture-root>...
-  local root pid args
-  command -v pgrep >/dev/null 2>&1 || return 0
-  for root in "$@"; do
-    [ -n "$root" ] || continue
-    while IFS= read -r pid; do
-      [ -n "$pid" ] || continue
-      args=$(ps -p "$pid" -o command= 2>/dev/null) || continue
-      case "$args" in
-        *"fm-chrome-bridge-sweep.sh --watch-owner "*"$root"*) kill "$pid" 2>/dev/null || true ;;
-      esac
-    done < <(pgrep -f "fm-chrome-bridge-sweep.sh --watch-owner" 2>/dev/null)
-  done
-}
+# Bridge-ownership watcher reap. Lives in its own file because the live-backend
+# suites that spawn the most real tasks do not source this library at all and
+# still need it (tests/bridge-watcher-reap.sh).
+# shellcheck source=tests/bridge-watcher-reap.sh
+. "$(dirname "${BASH_SOURCE[0]}")/bridge-watcher-reap.sh"
 
 fm_test_cleanup() {
   local d
