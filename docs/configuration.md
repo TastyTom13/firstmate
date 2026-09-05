@@ -438,13 +438,16 @@ It reads Claude with `--provider claude --no-credential-refresh`, which avoids a
 
 ## Browser bridge sweep
 
-[`bin/fm-chrome-bridge-sweep.sh`](../bin/fm-chrome-bridge-sweep.sh) inventories detached `chrome-devtools-axi` bridges with their age, cwd owner, and cleanup eligibility.
+[`bin/fm-chrome-bridge-sweep.sh`](../bin/fm-chrome-bridge-sweep.sh) inventories detached `chrome-devtools-axi` bridges with their age, cwd ownership, and cleanup eligibility.
+Each recorded bridge binds its task, worktree, bridge pid and identity, and owning session-root pid and identity at bridge start.
 It is dry-run by default, and global `--apply` selects only recorded bridges whose recorded task worktree is gone and whose recorded session-root identity is no longer live.
 Global cleanup also requires the live bridge start time and command line to match the record, so a reused PID is reported and never stopped.
 Task-scoped `--apply --worktree <path>` selects bridges whose cwd is that exact task worktree or below it after teardown confirms the endpoint is shut down.
+Backends without positive shutdown confirmation are skipped with a runtime-named message; Orca without a terminal remains unconfirmed for this cleanup.
 Unknown ownership and identity mismatches are reported and never stopped.
 `FM_BRIDGE_MAX_AGE_HOURS` defaults to 6 hours and is the reporting cutoff for long-running bridges whose owners remain protected.
 `FM_BRIDGE_TERM_GRACE_SECS` defaults to 1 second and controls the delay between TERM and KILL during an apply.
+The ownership watcher starts after a pane launch when the backend supplies its pane pid, and stops when the task record or worktree disappears or its bounded deadline expires.
 Task cleanup scopes attribution to that task's exact isolated copy so its bridge, MCP child, and Chrome descendants do not survive the worker.
 Session start runs only the bounded summary and prints the exact inspect and apply commands when orphan candidates exist.
 
