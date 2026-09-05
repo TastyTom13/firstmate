@@ -29,9 +29,13 @@ if [ "${1:-}" = --watch-owner ]; then
   WATCH_WORKTREE=$3
   WATCH_STATE=$4
   WATCH_SELF=$$
+  # Bounded on purpose: a task that never opens a browser must not leave a
+  # watcher spinning for the life of the host. The watcher also stops as soon
+  # as the task worktree is gone, which is what teardown removes.
+  WATCH_DEADLINE=$(( $(date +%s) + ${FM_BRIDGE_WATCH_MAX_SECS:-3600} ))
   command -v lsof >/dev/null 2>&1 || exit 1
   cd / || exit 1
-  while :; do
+  while [ -d "$WATCH_WORKTREE" ] && [ "$(date +%s)" -lt "$WATCH_DEADLINE" ]; do
     WATCH_BRIDGE_PID=
     WATCH_OWNER_PID=
     while IFS= read -r WATCH_ROW; do
@@ -58,6 +62,7 @@ if [ "${1:-}" = --watch-owner ]; then
     fi
     sleep 1
   done
+  exit 0
 fi
 
 if [ "${1:-}" = --record-owner ]; then

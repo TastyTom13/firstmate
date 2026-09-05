@@ -3101,12 +3101,6 @@ case "$HARNESS" in
   cursor) LAUNCH=${LAUNCH//__CURSORBIN__/"$(shell_quote "$CURSOR_BIN")"} ;;
 esac
 LAUNCH=${LAUNCH//__WORKTREE__/$sq_worktree}
-if [ "$KIND" != secondmate ]; then
-  sq_state=$(shell_quote "$STATE")
-  sq_bridge_sweep=$(shell_quote "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh")
-  bridge_owner_watch="$sq_bridge_sweep --watch-owner $(shell_quote "$ID") $sq_worktree $sq_state"
-  LAUNCH="( $bridge_owner_watch >/dev/null 2>&1 & ); $LAUNCH"
-fi
 case "$HARNESS" in
   claude|codex|opencode|pi|pi-signed|grok|kimi|muse)
     LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS $LAUNCH"
@@ -3200,6 +3194,18 @@ if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
   spawn_herdr_presentation_order_lock_release
 fi
 spawn_send_key "$T" Enter
+# Bind the task's chrome-devtools-axi bridge to a durable ownership record.
+# This runs as a firstmate-side background watcher rather than a prefix on the
+# agent launch line: the launch command is a per-harness contract that adapters
+# and their regressions assert byte for byte, and the bridge starts long after
+# it anyway. The watcher exits on its own once the record is written, when the
+# task worktree is gone, or at its deadline, so it never outlives the task.
+if [ "$KIND" != secondmate ]; then
+  (
+    "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --watch-owner "$ID" "$WT" "$STATE" \
+      >/dev/null 2>&1 &
+  )
+fi
 if [ "$HARNESS" = kimi ]; then
   if ! kimi_wait_for_ready; then
     kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"

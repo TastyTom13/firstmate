@@ -1652,10 +1652,16 @@ task_pid_list_contains() {  # <pid-list> <pid>
   printf '%s\n' "$1" | grep -Fxq "$2"
 }
 
+# Answers only "is this pid provably part of the browser family", so that the
+# non-browser reap can skip bridges the dedicated sweep already owns. An
+# unreadable command line is NOT such a proof: answering yes there would drop an
+# unidentifiable process out of the reap list entirely and turn a refusal into a
+# silent success. Leave it in the list instead - the reap's own identity checks
+# re-verify it and refuse rather than signal anything they cannot confirm.
 task_pid_is_browser_family() {  # <pid>
   local command
-  command=$(ps -p "$1" -o command= 2>/dev/null) || return 0
-  [ -n "$command" ] || return 0
+  command=$(ps -p "$1" -o command= 2>/dev/null) || return 1
+  [ -n "$command" ] || return 1
   case "$command" in
     node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*|\
     node\ *chrome-devtools-mcp.js*|*/node\ *chrome-devtools-mcp.js*|\
@@ -1684,8 +1690,54 @@ $dir_pids"
   )
 }
 
+# Fallback for a host without lsof. Only reachable after endpoint shutdown is
+# confirmed (see the single call site), so the earlier pre-shutdown objection to
+# signalling a whole process group no longer applies: the agent and its backend
+# endpoint are already stopped. Every step still revalidates the leader's
+# identity and group, and refuses teardown's own group, so a recycled pid can
+# never redirect the signal at an unrelated group.
 reap_task_backend_process_group() {  # <label>
-  echo "warning: lsof is unavailable; skipping pre-shutdown leaked-process cleanup for $BACKEND task $ID; browser-family cleanup requires confirmed endpoint shutdown" >&2
+  local label=$1 leader leader_start pgid current_pgid own_pgid
+  if [ "$BACKEND" != tmux ]; then
+    echo "warning: lsof is unavailable; cannot resolve a process-group fallback for $BACKEND task $ID" >&2
+    return 0
+  fi
+  leader=$(tmux display-message -p -t "$T" '#{pane_pid}' 2>/dev/null) || leader=""
+  case "$leader" in ''|*[!0-9]*)
+    echo "warning: lsof is unavailable; cannot resolve the tmux pane process group for $ID" >&2
+    return 0
+    ;;
+  esac
+  leader_start=$(task_process_identity "$leader") || {
+    echo "warning: lsof is unavailable; cannot identify the tmux pane process group for $ID" >&2
+    return 0
+  }
+  pgid=$(ps -o pgid= -p "$leader" 2>/dev/null) || pgid=""
+  pgid=$(printf '%s' "$pgid" | tr -d '[:space:]')
+  case "$pgid" in ''|*[!0-9]*|0|1)
+    echo "warning: lsof is unavailable; cannot resolve the tmux pane process group for $ID" >&2
+    return 0
+    ;;
+  esac
+  own_pgid=$(ps -o pgid= -p "$$" 2>/dev/null) || own_pgid=""
+  own_pgid=$(printf '%s' "$own_pgid" | tr -d '[:space:]')
+  if [ "$pgid" = "$own_pgid" ]; then
+    echo "warning: lsof is unavailable; refusing to signal teardown's own process group for $ID" >&2
+    return 0
+  fi
+  task_process_identity_matches "$leader" "$leader_start" || return 0
+  current_pgid=$(ps -o pgid= -p "$leader" 2>/dev/null) || current_pgid=""
+  current_pgid=$(printf '%s' "$current_pgid" | tr -d '[:space:]')
+  [ "$current_pgid" = "$pgid" ] || return 0
+  echo "teardown: reaping leaked $label process group for $ID: $pgid" >&2
+  kill -TERM -- "-$pgid" 2>/dev/null || true
+  sleep 1
+  if task_process_identity_matches "$leader" "$leader_start" \
+     && [ "$(ps -o pgid= -p "$leader" 2>/dev/null | tr -d '[:space:]')" = "$pgid" ] \
+     && kill -0 -- "-$pgid" 2>/dev/null; then
+    echo "teardown: force-killing leaked $label process group for $ID: $pgid" >&2
+    kill -KILL -- "-$pgid" 2>/dev/null || true
+  fi
 }
 
 # Reap every non-browser process rooted (by cwd) under this task's own worktree
@@ -2703,7 +2755,8 @@ fi
 # read-only identity check, so it does not weaken the endpoint-before-cleanup
 # ordering, and it leaves the destructive phase with one recorded response
 # sequence even when the terminal close itself is best-effort.
-if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ] && [ -e "$WT" ]; then
+if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ] && [ -e "$WT" ] \
+   && [ "$ORCA_PATH_MATCH_VERIFIED" != 1 ]; then
   require_orca_worktree_path_match "$ORCA_WORKTREE_ID" "$WT" || exit 1
   ORCA_PATH_MATCH_VERIFIED=1
 fi
@@ -2818,6 +2871,26 @@ if [ "$KIND" != secondmate ]; then
   fi
   if [ "$BACKEND_STOPPED" -eq 1 ]; then
     reap_task_worktree_processes worktree "$WT" "$TASK_TMP"
+  fi
+else
+  # A retiring secondmate home still has its own endpoint to close. It owns no
+  # task worktree, so it needs neither the bridge sweep nor the leaked-process
+  # reap above, but skipping the close entirely would leave its window running.
+  if [ "$BACKEND" = herdr ] && [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
+    if teardown_herdr_session_lock_held "$HERDR_PRESENTATION_SESSION"; then
+      fm_backend_herdr_projection_close_pane_focus_preserving \
+        "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE" || true
+    else
+      echo "warning: herdr presentation focus lock unavailable; refusing a concurrent focus-unsafe pane close" >&2
+    fi
+  elif [ "$BACKEND" = herdr ]; then
+    if teardown_herdr_session_lock_held "$TEARDOWN_HERDR_SESSION"; then
+      fm_backend_herdr_kill_serialized "$TEARDOWN_HERDR_SESSION" "$TEARDOWN_HERDR_PANE" 2>/dev/null || true
+    else
+      echo "warning: herdr session presentation lock path is unavailable; skipping the pane close rather than closing unlocked" >&2
+    fi
+  elif [ "$BACKEND" != orca ]; then
+    fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
   fi
 fi
 
