@@ -1867,11 +1867,17 @@ worktree_owned_by_task() {
 }
 
 backend_endpoint_shutdown_confirmed() {
-  if [ "$BACKEND" = herdr ]; then
-    fm_backend_herdr_endpoint_confirmed_gone "$T"
-  else
-    ! fm_backend_target_exists "$BACKEND" "$T" "fm-$ID"
-  fi
+  local state
+  case "$BACKEND" in
+    tmux|herdr)
+      state=$(fm_backend_agent_state "$BACKEND" "$T" 2>/dev/null || true)
+      case "$state" in
+        dead|missing) return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
 }
 
 firstmate_home_has_treehouse_slot() {

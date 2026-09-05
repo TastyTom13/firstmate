@@ -27,6 +27,8 @@ write_fixtures() {
 EOF
   cat > "$CWD_FILE" <<EOF
 101	$TASK/subdir
+102	$TASK/subdir
+103	$TASK/subdir
 201	$OTHER
 301	$TMP_ROOT/gone
 EOF

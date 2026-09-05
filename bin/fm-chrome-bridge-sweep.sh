@@ -52,8 +52,10 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 PS_TABLE="$TMP_ROOT/ps"
 BRIDGES="$TMP_ROOT/bridges"
 SELECTED="$TMP_ROOT/selected"
+IDENTITIES="$TMP_ROOT/identities"
 : > "$BRIDGES"
 : > "$SELECTED"
+: > "$IDENTITIES"
 
 elapsed_seconds() {  # [[dd-]hh:]mm:ss
   local value=$1 days=0 hours=0 minutes=0 seconds=0 left
@@ -100,7 +102,23 @@ path_belongs_to_worktree() {  # <path> <worktree>
   case "$1" in "$2"|"$2"/*) return 0 ;; *) return 1 ;; esac
 }
 
+capture_identity() {  # <pid> <command> <cwd>
+  local pid=$1 command=$2 cwd=$3 identity
+  if [ -n "${FM_BRIDGE_PS_FILE:-}" ]; then
+    identity=fixture
+  else
+    identity=$(LC_ALL=C ps -p "$pid" -o lstart= 2>/dev/null || true)
+    [ -n "$identity" ] || return 1
+  fi
+  printf '%s\t%s\t%s\t%s\n' "$pid" "$identity" "$command" "$cwd" >> "$IDENTITIES"
+}
+
 load_processes
+while IFS=$'\t' read -r pid ppid elapsed command; do
+  case "$pid:$ppid" in *[!0-9:]*) continue ;; esac
+  cwd=$(process_cwd "$pid" 2>/dev/null || true)
+  capture_identity "$pid" "$command" "${cwd:-unknown}" || true
+done < "$PS_TABLE"
 while IFS=$'\t' read -r pid ppid elapsed command; do
   case "$pid:$ppid" in *[!0-9:]*) continue ;; esac
   case "$command" in
@@ -166,24 +184,26 @@ while :; do
   [ "$after" -eq "$before" ] && break
 done
 
-IDENTITIES="$TMP_ROOT/identities"
-: > "$IDENTITIES"
-while IFS= read -r pid; do
-  if [ -n "${FM_BRIDGE_PS_FILE:-}" ]; then
-    printf '%s\tfixture\n' "$pid" >> "$IDENTITIES"
-  else
-    identity=$(LC_ALL=C ps -p "$pid" -o lstart= 2>/dev/null || true)
-    [ -n "$identity" ] && printf '%s\t%s\n' "$pid" "$identity" >> "$IDENTITIES"
-  fi
-done < "$TARGETS"
-
 pid_identity_matches() {  # <pid>
-  local pid=$1 expected current
-  expected=$(awk -F '\t' -v pid="$pid" '$1 == pid { sub(/^[^\t]*\t/, ""); print; exit }' "$IDENTITIES")
+  local pid=$1 expected expected_identity expected_command expected_cwd current current_command current_cwd
+  expected=$(awk -F '\t' -v pid="$pid" '$1 == pid { print; exit }' "$IDENTITIES")
   [ -n "$expected" ] || return 1
-  [ "$expected" = fixture ] && return 0
-  current=$(LC_ALL=C ps -p "$pid" -o lstart= 2>/dev/null || true)
-  [ -n "$current" ] && [ "$current" = "$expected" ]
+  expected_identity=$(printf '%s\n' "$expected" | cut -f2)
+  expected_command=$(printf '%s\n' "$expected" | cut -f3)
+  expected_cwd=$(printf '%s\n' "$expected" | cut -f4-)
+  if [ "$expected_identity" != fixture ]; then
+    current=$(LC_ALL=C ps -p "$pid" -o lstart= 2>/dev/null || true)
+    [ -n "$current" ] && [ "$current" = "$expected_identity" ] || return 1
+    current_command=$(LC_ALL=C ps -p "$pid" -o command= 2>/dev/null || true)
+  else
+    current_command=$(awk -F '\t' -v pid="$pid" '$1 == pid { sub(/^[^\t]*\t[^\t]*\t[^\t]*\t/, ""); print; exit }' "$PS_TABLE")
+  fi
+  [ "$current_command" = "$expected_command" ] || return 1
+  current_cwd=$(process_cwd "$pid" 2>/dev/null || true)
+  [ -n "$current_cwd" ] && [ "$current_cwd" = "$expected_cwd" ] || return 1
+  if [ -n "$WORKTREE" ]; then
+    path_belongs_to_worktree "$current_cwd" "$WORKTREE" || return 1
+  fi
 }
 
 signal_pid() {  # <signal> <pid>
