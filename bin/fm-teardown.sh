@@ -2699,6 +2699,15 @@ if [ -d "$WT" ] && [ "$FORCE" != "--force" ]; then
   fi
 fi
 
+# Resolve an existing Orca worktree before closing its terminal. This is a
+# read-only identity check, so it does not weaken the endpoint-before-cleanup
+# ordering, and it leaves the destructive phase with one recorded response
+# sequence even when the terminal close itself is best-effort.
+if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ] && [ -e "$WT" ]; then
+  require_orca_worktree_path_match "$ORCA_WORKTREE_ID" "$WT" || exit 1
+  ORCA_PATH_MATCH_VERIFIED=1
+fi
+
 # A Herdr close may reposition shared workspace order, so the whole
 # destructive sequence below (worktree return, pane close, record removal)
 # runs under the named-session presentation lock, acquired BEFORE anything is
