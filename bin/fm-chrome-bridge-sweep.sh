@@ -35,8 +35,7 @@ if [ "${1:-}" = --watch-owner ]; then
     WATCH_BRIDGE_PID=
     WATCH_OWNER_PID=
     while IFS= read -r WATCH_ROW; do
-      WATCH_PID=${WATCH_ROW%% *}
-      WATCH_COMMAND=${WATCH_ROW#* }
+      read -r WATCH_PID WATCH_COMMAND <<< "$WATCH_ROW"
       case "$WATCH_COMMAND" in
         node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*) ;;
         *) continue ;;
@@ -46,8 +45,7 @@ if [ "${1:-}" = --watch-owner ]; then
     done < <(ps -axo pid=,command= 2>/dev/null)
     if [ -n "$WATCH_BRIDGE_PID" ]; then
       while IFS= read -r WATCH_ROW; do
-        WATCH_PID=${WATCH_ROW%% *}
-        WATCH_COMMAND=${WATCH_ROW#* }
+        read -r WATCH_PID WATCH_COMMAND <<< "$WATCH_ROW"
         [ "$WATCH_PID" = "$WATCH_SELF" ] && continue
         case "$WATCH_COMMAND" in
           node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*|\
@@ -69,6 +67,15 @@ if [ "${1:-}" = --record-owner ]; then
   OWNER_BRIDGE_PID=$4
   OWNER_SESSION_ROOT=$5
   OWNER_STATE=${6:-${FM_BRIDGE_OWNER_DIR:-${FM_STATE_OVERRIDE:-${FM_HOME:-$PWD}/state}}}
+  OWNER_START_TIME=${7:-${FM_BRIDGE_OWNER_START_TIME:-}}
+  OWNER_COMMAND=${8:-${FM_BRIDGE_OWNER_COMMAND:-}}
+  if [ -z "$OWNER_START_TIME" ]; then
+    OWNER_START_TIME=$(LC_ALL=C ps -p "$OWNER_BRIDGE_PID" -o lstart= 2>/dev/null || true)
+  fi
+  if [ -z "$OWNER_COMMAND" ]; then
+    OWNER_COMMAND=$(LC_ALL=C ps -p "$OWNER_BRIDGE_PID" -o command= 2>/dev/null || true)
+  fi
+  [ -n "$OWNER_START_TIME" ] && [ -n "$OWNER_COMMAND" ] || { echo "error: bridge process identity could not be captured" >&2; exit 1; }
   case "$OWNER_TASK:$OWNER_BRIDGE_PID:$OWNER_SESSION_ROOT" in
     *[!A-Za-z0-9_.:-]*) echo "error: invalid ownership record identity" >&2; exit 2 ;;
   esac
@@ -79,6 +86,8 @@ if [ "${1:-}" = --record-owner ]; then
     printf 'worktree=%s\n' "$OWNER_WORKTREE"
     printf 'bridge_pid=%s\n' "$OWNER_BRIDGE_PID"
     printf 'session_root=%s\n' "$OWNER_SESSION_ROOT"
+    printf 'bridge_start_time=%s\n' "$OWNER_START_TIME"
+    printf 'bridge_command=%s\n' "$OWNER_COMMAND"
   } > "$OWNER_TMP" || ! mv -f "$OWNER_TMP" "$OWNER_STATE/$OWNER_TASK.bridge-owner"; then
     rm -f "$OWNER_TMP"
     exit 1
@@ -183,27 +192,34 @@ capture_identity() {  # <pid> <command> <cwd>
 load_processes
 
 owner_record_for_pid() {  # <bridge-pid>
-  local bridge_pid=$1 record task_id worktree record_pid session_root
+  local bridge_pid=$1 record task_id worktree record_pid session_root start_time bridge_command
   for record in "$OWNER_DIR"/*.bridge-owner; do
     [ -f "$record" ] || continue
     task_id=$(awk -F= '$1 == "task_id" { print substr($0, index($0, "=") + 1); exit }' "$record")
     worktree=$(awk -F= '$1 == "worktree" { print substr($0, index($0, "=") + 1); exit }' "$record")
     record_pid=$(awk -F= '$1 == "bridge_pid" { print substr($0, index($0, "=") + 1); exit }' "$record")
     session_root=$(awk -F= '$1 == "session_root" { print substr($0, index($0, "=") + 1); exit }' "$record")
-    if [ "$record_pid" = "$bridge_pid" ] && [ -n "$task_id" ] && [ -n "$worktree" ] && [ -n "$session_root" ]; then
-      printf '%s\t%s\t%s\n' "$task_id" "$worktree" "$session_root"
+    start_time=$(awk -F= '$1 == "bridge_start_time" { print substr($0, index($0, "=") + 1); exit }' "$record")
+    bridge_command=$(awk -F= '$1 == "bridge_command" { print substr($0, index($0, "=") + 1); exit }' "$record")
+    if [ "$record_pid" = "$bridge_pid" ] && [ -n "$task_id" ] && [ -n "$worktree" ] \
+       && [ -n "$session_root" ] && [ -n "$start_time" ] && [ -n "$bridge_command" ]; then
+      printf '%s\t%s\t%s\t%s\t%s\n' "$task_id" "$worktree" "$session_root" "$start_time" "$bridge_command"
       return 0
     fi
   done
   return 1
 }
 
-process_is_browser_family() {  # <command>
-  case "$1" in
-    node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*|\
-    node\ *chrome-devtools-mcp.js*|*/node\ *chrome-devtools-mcp.js*|*Google\ Chrome*--headless*) return 0 ;;
-    *) return 1 ;;
-  esac
+bridge_identity_matches() {  # <pid> <start-time> <command>
+  local pid=$1 expected_start=$2 expected_command=$3 current_start current_command
+  if [ -n "${FM_BRIDGE_PS_FILE:-}" ]; then
+    current_start=fixture
+    current_command=$(awk -F '\t' -v pid="$pid" '$1 == pid { print substr($0, index($0, "\t") + 1); exit }' "$PS_TABLE" | cut -f3-)
+  else
+    current_start=$(LC_ALL=C ps -p "$pid" -o lstart= 2>/dev/null || true)
+    current_command=$(LC_ALL=C ps -p "$pid" -o command= 2>/dev/null || true)
+  fi
+  [ "$current_start" = "$expected_start" ] && [ "$current_command" = "$expected_command" ]
 }
 
 owner_process_tree_state() {  # <session-root>
@@ -217,7 +233,7 @@ owner_process_tree_state() {  # <session-root>
     row=$pid
     while :; do
       parent=$(awk -F '\t' -v pid="$row" '$1 == pid { print $2; exit }' "$PS_TABLE")
-      [ "$parent" = "$root" ] && { process_is_browser_family "$command" || return 0; break; }
+      [ "$parent" = "$root" ] && return 0
       case "$parent" in ''|*[!0-9]*) break ;; esac
       [ "$parent" = "$row" ] && break
       row=$parent
@@ -261,7 +277,13 @@ while IFS=$'\t' read -r pid ppid elapsed command; do
     else
       owner_worktree=$(printf '%s\n' "$owner_record" | cut -f2)
       owner_session_root=$(printf '%s\n' "$owner_record" | cut -f3)
-      if [ "$owner_session_root" = 1 ]; then
+      owner_start_time=$(printf '%s\n' "$owner_record" | cut -f4)
+      owner_command=$(printf '%s\n' "$owner_record" | cut -f5-)
+      if ! bridge_identity_matches "$pid" "$owner_start_time" "$owner_command" \
+         || ! path_belongs_to_worktree "$cwd" "$owner_worktree"; then
+        disposition=unknown
+        reason=owner-identity-mismatch
+      elif [ "$owner_session_root" = 1 ]; then
         reason=owner-unresolved
       else
         owner_process_tree_state "$owner_session_root"

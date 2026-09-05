@@ -42,10 +42,10 @@ EOF
 EOF
 }
 write_fixtures
-FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner task-missing "$TMP_ROOT/gone" 301 999 >/dev/null || fail "missing-owner record is written"
-FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner live-owner "$OTHER" 201 200 >/dev/null || fail "live-owner record is written"
-FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner existing-owner "$OTHER" 302 998 >/dev/null || fail "existing-owner record is written"
-FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner live-descendant "$TMP_ROOT/gone-descendant" 602 600 >/dev/null || fail "descendant-owner record is written"
+FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner task-missing "$TMP_ROOT/gone" 301 999 "$OWNER_DIR" fixture 'node /opt/chrome-devtools-axi-bridge.js' >/dev/null || fail "missing-owner record is written"
+FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner live-owner "$OTHER" 201 200 "$OWNER_DIR" fixture 'node /opt/chrome-devtools-axi-bridge.js' >/dev/null || fail "live-owner record is written"
+FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner existing-owner "$OTHER" 302 998 "$OWNER_DIR" fixture 'node /opt/chrome-devtools-axi-bridge.js' >/dev/null || fail "existing-owner record is written"
+FM_BRIDGE_OWNER_DIR="$OWNER_DIR" "$SWEEP" --record-owner live-descendant "$TMP_ROOT/gone-descendant" 602 600 "$OWNER_DIR" fixture 'node /opt/chrome-devtools-axi-bridge.js' >/dev/null || fail "descendant-owner record is written"
 
 out=$(FM_BRIDGE_PS_FILE="$PS_FILE" FM_BRIDGE_CWD_FILE="$CWD_FILE" \
   "$SWEEP" --worktree "$TASK") || fail "task inventory runs"
