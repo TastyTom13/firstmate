@@ -171,6 +171,10 @@
 #   $vars and silently breaks ad-hoc `for ... in $pairs` loops).
 #   Launch templates live in launch_template() below; placeholders replaced before launch:
 #     __BRIEF__    absolute path to data/<task-id>/brief.md
+#     __PINODE__   quoted node interpreter from config/pi-node, plus a trailing space,
+#                  prefixed to __PIBIN__ so pi runs under that node instead of the one
+#                  its `#!/usr/bin/env node` shebang would find on PATH; empty when
+#                  config/pi-node is absent
 #     __PIBIN__    quoted concrete Pi-family executable path resolved from PATH
 #     __PITUIMODE__ optional --tui-mode regular when that executable advertises it
 #     __TURNEND__  absolute path to state/<task-id>.turn-ended (for harnesses whose
@@ -1314,10 +1318,17 @@ free_lane_preflight() {
 
 # Pi's CLI surface is version-dependent, so probe the resolved executable's help
 # before composing the optional regular-TUI flag. An absent or inconclusive probe
-# omits the flag so older Pi versions can still spawn.
+# omits the flag so older Pi versions can still spawn. The optional second
+# argument is the config/pi-node interpreter, so the probe runs under the same
+# node the launch will use rather than whichever one PATH resolves.
 pi_supports_tui_mode() {
-  local executable=$1 help
-  help=$("$executable" --help 2>&1) || return 1
+  local executable=$1 node=${2:-} help
+  if [ -n "$node" ]; then
+    [ -f "$node" ] && [ -x "$node" ] || return 1
+    help=$("$node" "$executable" --help 2>&1) || return 1
+  else
+    help=$("$executable" --help 2>&1) || return 1
+  fi
   printf '%s\n' "$help" | grep -Eq -- '(^|[[:space:]])--tui-mode([[:space:]=]|$)'
 }
 
@@ -1346,7 +1357,7 @@ launch_template() {
       ;;
     opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     pi|pi-signed)
-      printf '%s' '__FREELANE____PIBIN____PITUIMODE__'
+      printf '%s' '__FREELANE____PINODE____PIBIN____PITUIMODE__'
       if [ "$kind" = secondmate ]; then
         printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PITURNEND__ -e __PIWATCH__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
       else
@@ -1459,8 +1470,35 @@ case "$HARNESS" in
       echo "error: $HARNESS executable not found on PATH; install it or select a different verified harness" >&2
       exit 1
     }
+    # pi is a JavaScript file whose `#!/usr/bin/env node` shebang resolves node
+    # through PATH. config/pi-node names one node explicitly instead, so a Pi
+    # worker can be launched under a chosen node (a pinned version, a
+    # container's node, or one an authorisation gate has already blessed)
+    # without depending on PATH ordering. Absent file = the pre-existing behavior, byte for byte. A
+    # configured-but-broken path refuses the spawn rather than silently falling
+    # back to the PATH node the configuration exists to avoid.
+    # A raw launch command carries no __PINODE__ placeholder, so the node could
+    # never be applied to it; that escape hatch stays exactly as it was, the
+    # same boundary the free-lane wrap below draws.
+    PI_NODE=
+    PI_NODE_PATH=
+    if [ "${RAW_LAUNCH:-0}" = 0 ] && [ -f "$CONFIG/pi-node" ]; then
+      PI_NODE_PATH=$(sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$CONFIG/pi-node" | grep -v '^$' | head -1)
+      case "$PI_NODE_PATH" in
+        /*) ;;
+        *)
+          echo "error: config/pi-node must hold one absolute path; got '$PI_NODE_PATH'" >&2
+          exit 1
+          ;;
+      esac
+      [ -f "$PI_NODE_PATH" ] && [ -x "$PI_NODE_PATH" ] || {
+        echo "error: config/pi-node names '$PI_NODE_PATH', which is not executable; point it at an executable node or remove config/pi-node to launch pi through PATH" >&2
+        exit 1
+      }
+      PI_NODE="$(shell_quote "$PI_NODE_PATH") "
+    fi
     PI_TUI_MODE=
-    if pi_supports_tui_mode "$PI_BIN"; then
+    if pi_supports_tui_mode "$PI_BIN" "$PI_NODE_PATH"; then
       PI_TUI_MODE=' --tui-mode regular'
     fi
     LAUNCH=${LAUNCH//__PITUIMODE__/$PI_TUI_MODE}
@@ -3097,7 +3135,10 @@ LAUNCH=${LAUNCH//__PITURNEND__/$sq_piturnend}
 LAUNCH=${LAUNCH//__PIWATCH__/$sq_piwatch}
 LAUNCH=${LAUNCH//__OPINPUT__/$sq_opinput}
 case "$HARNESS" in
-  pi|pi-signed) LAUNCH=${LAUNCH//__PIBIN__/"$(shell_quote "$PI_BIN")"} ;;
+  pi|pi-signed)
+    LAUNCH=${LAUNCH//__PIBIN__/"$(shell_quote "$PI_BIN")"}
+    LAUNCH=${LAUNCH//__PINODE__/$PI_NODE}
+    ;;
   cursor) LAUNCH=${LAUNCH//__CURSORBIN__/"$(shell_quote "$CURSOR_BIN")"} ;;
 esac
 LAUNCH=${LAUNCH//__WORKTREE__/$sq_worktree}

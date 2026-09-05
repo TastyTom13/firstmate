@@ -331,6 +331,17 @@ The Kimi installer requires an existing regular non-symlink `~/.kimi-code/config
 Its `remove` action excises only the marker-delimited Firstmate region and removes Firstmate's hook files.
 For Pi and pi-signed secondmate launches, `fm-spawn.sh` starts the selected executable with `-e` pointed at the secondmate home's own tracked `.pi/extensions/fm-primary-pi-watch.ts` and `.pi/extensions/fm-primary-turnend-guard.ts`, both already present from the secondmate home's git worktree.
 
+## Pi node interpreter (config/pi-node)
+
+`config/pi-node` is an optional local, gitignored file holding one absolute path to the node interpreter that Pi-family crewmate, scout, and secondmate launches must run under.
+`pi` is a JavaScript file whose `#!/usr/bin/env node` shebang otherwise resolves node through `PATH`, so this file is how a Pi worker is launched under a chosen interpreter, such as a pinned version or one an authorisation gate has already blessed, without depending on `PATH` ordering.
+The first non-empty, non-comment line is read as the path, with surrounding whitespace trimmed; everything after a `#` on a line is a comment.
+When the file is absent, Pi launches through `PATH` exactly as before.
+When it is present, `fm-spawn.sh` prefixes the resolved Pi executable with that node and probes the executable's regular-TUI support through the same node.
+A relative path, a missing path, or a path that is not executable refuses the spawn with a named error and creates no endpoint, rather than silently falling back to the `PATH` node the setting exists to avoid.
+A raw launch command passed to `fm-spawn.sh` is the unverified-adapter escape hatch and is neither rewritten nor refused by this setting.
+It is not inherited by secondmate homes, so a secondmate that launches Pi workers sets its own; [`bin/fm-spawn.sh`](../bin/fm-spawn.sh) owns the exact launch mechanics.
+
 ## Crew dispatch profiles (config/crew-dispatch.json)
 
 `config/crew-dispatch.json` is an optional local, gitignored file containing natural-language rules that firstmate reads before dispatching a crewmate or scout.
