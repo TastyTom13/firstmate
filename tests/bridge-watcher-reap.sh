@@ -21,7 +21,15 @@ fm_test_kill_bridge_watchers() {  # <fixture-root>...
     # A spawn records the physical path, while mktemp hands back the symlinked
     # one (/var/folders vs /private/var/folders on macOS), so match both or the
     # reap silently matches nothing on the platform that needs it most.
+    while [[ "$root" == */ || "$root" == *//* ]]; do
+      [ "$root" = / ] || root=${root%/}
+      root=${root//\/\//\/}
+    done
     real=$(cd "$root" 2>/dev/null && pwd -P) || real=
+    while [[ "$real" == */ || "$real" == *//* ]]; do
+      [ "$real" = / ] || real=${real%/}
+      real=${real//\/\//\/}
+    done
     while IFS= read -r pid; do
       [ -n "$pid" ] || continue
       args=$(ps -p "$pid" -o command= 2>/dev/null) || continue
@@ -30,14 +38,13 @@ fm_test_kill_bridge_watchers() {  # <fixture-root>...
         *) continue ;;
       esac
       watch_args=${args#*fm-chrome-bridge-sweep.sh --watch-owner }
-      watch_state=$(printf '%s\n' "$watch_args" | awk '{ print $3; exit }')
-      if [ "$watch_state" = "$root" ]; then
-        kill "$pid" 2>/dev/null || true
-        continue
-      fi
-      if [ -n "$real" ] && [ "$real" != "$root" ] && [ "$watch_state" = "$real" ]; then
-        kill "$pid" 2>/dev/null || true
-      fi
+      read -r _ _ watch_state _ <<< "$watch_args"
+      case "$watch_state" in
+        "$root"|"$root"/*) kill "$pid" 2>/dev/null || true ;;
+        "$real"|"$real"/*)
+          [ -n "$real" ] && [ "$real" != "$root" ] && kill "$pid" 2>/dev/null || true
+          ;;
+      esac
     done < <(pgrep -f "fm-chrome-bridge-sweep.sh --watch-owner" 2>/dev/null)
   done
 }

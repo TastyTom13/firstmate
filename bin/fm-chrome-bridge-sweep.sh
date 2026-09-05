@@ -29,7 +29,6 @@ if [ "${1:-}" = --watch-owner ]; then
   WATCH_WORKTREE=$3
   WATCH_STATE=$4
   WATCH_SESSION_ROOT=$5
-  WATCH_SELF=$$
   # Bounded three ways, because a watcher that outlives its task is exactly the
   # leak this script exists to clean up. It stops when the task record is gone
   # (teardown removes it, and a test fixture's state dir disappears with the
@@ -38,14 +37,15 @@ if [ "${1:-}" = --watch-owner ]; then
   # one-second loop across a fleet of tasks is a measurable share of the host.
   WATCH_META="$WATCH_STATE/$WATCH_TASK.meta"
   WATCH_INTERVAL=${FM_BRIDGE_WATCH_INTERVAL_SECS:-5}
-  WATCH_DEADLINE=$(( $(date +%s) + ${FM_BRIDGE_WATCH_MAX_SECS:-900} ))
+  WATCH_DEADLINE=$(( $(date +%s) + ${FM_BRIDGE_WATCH_MAX_SECS:-300} ))
   command -v lsof >/dev/null 2>&1 || exit 1
   cd / || exit 1
-  while [ -e "$WATCH_META" ] && [ -d "$WATCH_WORKTREE" ] \
+  while [ -d "$WATCH_STATE" ] && [ -e "$WATCH_META" ] && [ -d "$WATCH_WORKTREE" ] \
      && [ "$(date +%s)" -lt "$WATCH_DEADLINE" ]; do
     WATCH_BRIDGE_PID=
     while IFS= read -r WATCH_ROW; do
-      read -r WATCH_PID WATCH_COMMAND <<< "$WATCH_ROW"
+      WATCH_PID=${WATCH_ROW%% *}
+      WATCH_COMMAND=${WATCH_ROW#* }
       case "$WATCH_COMMAND" in
         node\ *chrome-devtools-axi-bridge.js*|*/node\ *chrome-devtools-axi-bridge.js*) ;;
         *) continue ;;

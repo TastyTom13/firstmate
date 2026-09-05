@@ -139,6 +139,40 @@ FM_BRIDGE_WATCH_INTERVAL_SECS=1 "$SWEEP" --watch-owner watched "$watch_root/wt" 
   >/dev/null 2>&1 &
 watch_pid=$!
 sleep 2
+rm -rf "$watch_root/state"
+watch_exits_within "$watch_pid" 15 || {
+  kill -KILL "$watch_pid" 2>/dev/null || true
+  fail "watcher outlived its state directory"
+}
+pass "the ownership watcher stops when its state directory is removed"
+
+mkdir -p "$watch_root/state-desc" "$watch_root/wt-desc"
+: > "$watch_root/state-desc/watched.meta"
+FM_BRIDGE_WATCH_INTERVAL_SECS=10 "$SWEEP" --watch-owner watched "$watch_root/wt-desc" "$watch_root/state-desc" "$$" \
+  >/dev/null 2>&1 &
+watch_pid=$!
+sleep 1
+fm_test_kill_bridge_watchers "$watch_root"
+watch_exits_within "$watch_pid" 15 || fail "fixture-root reap missed descendant state directory"
+
+mkdir -p "$watch_root-real/state" "$watch_root-real/wt"
+: > "$watch_root-real/state/watched.meta"
+FM_BRIDGE_WATCH_INTERVAL_SECS=10 "$SWEEP" --watch-owner watched "$watch_root-real/wt" "$watch_root-real/state" "$$" \
+  >/dev/null 2>&1 &
+watch_pid=$!
+sleep 1
+fm_test_kill_bridge_watchers "$watch_root"
+kill -0 "$watch_pid" 2>/dev/null || fail "fixture-root reap matched a prefix-only state directory"
+kill "$watch_pid" 2>/dev/null || true
+wait "$watch_pid" 2>/dev/null || true
+pass "fixture-root watcher reap uses path boundaries"
+
+mkdir -p "$watch_root/state" "$watch_root/wt"
+: > "$watch_root/state/watched.meta"
+FM_BRIDGE_WATCH_INTERVAL_SECS=1 "$SWEEP" --watch-owner watched "$watch_root/wt" "$watch_root/state" "$$" \
+  >/dev/null 2>&1 &
+watch_pid=$!
+sleep 2
 rm -rf "$watch_root/wt"
 watch_exits_within "$watch_pid" 15 || {
   kill -KILL "$watch_pid" 2>/dev/null || true
