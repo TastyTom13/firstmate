@@ -43,6 +43,9 @@ Without that proof an unheld lock alarms exactly as it did before, so an unloade
 Under every persistent-watcher harness a live identity-matched watcher with a fresh beacon is still required, so the pull guard keeps the same strict semantics there.
 Its banner names the true failing condition, either a missing live watcher process or a genuinely stale beacon with its real age, and keys the once-per-episode dedup on that condition rather than the beacon mtime.
 
+While `state/.afk` exists the away-mode daemon owns watcher supervision and runs `bin/fm-watch.sh` one-shot, so between two of those runs no watcher process holds the home lock and the strict watcher check is legitimately false; the guard therefore also accepts a live away-mode daemon as supervision when `state/.supervise-daemon.lock` names a live pid whose recorded `pid-identity` still matches that pid, plus a liveness signal within grace from either the watcher beacon or the daemon's own `state/.subsuper-last-housekeep` tick.
+A dead, identity-mismatched, or silent daemon fails that predicate and keeps every existing block, and the predicate never applies with away mode off.
+
 `FM_STATE_OVERRIDE` wins over `FM_HOME/state`, and `FM_HOME` wins over repository-root `state/`.
 `FM_GUARD_GRACE` controls beacon freshness and defaults to 300 seconds.
 If `jq` is missing or hook stdin is empty, the guard exits 0 because it cannot safely read loop-guard fields.
