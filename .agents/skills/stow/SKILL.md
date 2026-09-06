@@ -336,7 +336,7 @@ Promised:
 
 You told me this session:
 - "Do not merge anything on the payments project without asking me first."
-- "Keep the daily brief short."
+- "Keep the daily update short."
 
 Pools:
 - The main coding provider is close to its weekly limit, so heavy work goes to the backup one until Monday.
