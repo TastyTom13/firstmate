@@ -265,10 +265,10 @@ Create replaces only a confidently dead or no-agent husk, creates the replacemen
 This prevents closing the workspace's last tab before a replacement exists.
 
 The generic Herdr agent-liveness probe reuses the same classifier.
-A structurally gone pane becomes `missing`, a restored agent-less shell becomes `dead`, a registered agent becomes `alive`, and an unexpected read becomes `unreadable`.
-A terminal `done` registration is also `dead` when the pane's process tree has returned to one verified lone idle shell, because Herdr can retain that record after a crashed Pi process exits.
-The same `done` registration stays `alive` while any live process remains in the pane, so a stale status never authorizes recovery over a running process.
-Unlike tmux process-name inspection, native registration can classify Pi without guessing from a generic interpreter name.
+A structurally gone pane becomes `missing`, a restored agent-less shell becomes `dead`, and an unexpected read becomes `unreadable`.
+For any registered status, including `working`, `idle`, `blocked`, and `done`, a pane whose sole foreground process is its own recognized shell becomes `dead`, because Herdr can retain the registry record after a Pi or Claude process exits.
+A registered status stays `alive` while the pane's foreground belongs to a running agent or another non-shell process, so a stale status never authorizes recovery over a running process.
+Unlike tmux process-name inspection, Herdr combines native registration with its pane foreground process group rather than guessing from a generic interpreter name.
 
 The session-start sweep uses this probe.
 Mid-session secondmate agent-process liveness is not implemented because idle secondmates are deliberately exempt from stale-pane escalation and need a separate periodic identity signal.
