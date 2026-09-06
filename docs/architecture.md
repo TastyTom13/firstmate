@@ -357,7 +357,7 @@ The full ownership rule - what is project-intrinsic versus fleet-private, and ho
 
 ## Operational memory routing
 
-`/stow` sweeps the current session for durable knowledge that only exists in conversation and routes each finding to the most specific disk home.
+`/stow` sweeps the current session for durable knowledge that only exists in conversation, routes each finding to the most specific disk home, and prints one final copyable continuation prompt for the next session.
 Home-domain captain preferences go to `data/captain.md`, cross-domain shared captain preferences go to the primary home's `data/captain-shared.md`, fleet-local operational facts and gotchas go to home-local `data/learnings.md`, project-intrinsic knowledge goes through normal crewmate delivery into that project's committed `AGENTS.md`, and task-scoped notes or undone next steps go to the backlog.
 Memory writes use inspect-then-update rather than blind append; the internal [`stow` skill](../.agents/skills/stow/SKILL.md) owns tier markers, decay, cold archival, and offload.
 The same pass also persists open-work record state the session is holding - filing a thread that was never recorded and correcting one the session knows went stale - bounded to the open work that session is actually holding.

@@ -39,7 +39,7 @@ The command structure stays flat: every layer between the captain's intent and t
 
 ## A restart is a non-event
 
-Everything that matters survives the death of any conversation: work in flight, promises made, decisions pending, and the captain's preferences live in durable records, never in chat memory.
+Everything needed to continue survives the death of any conversation: work in flight, promises made, decisions pending, and the captain's preferences live in durable records, while any remaining conversation-only handoff is printed by `/stow` for the fresh session.
 The fleet reconciles from disk and from live session state, so killing any session, including the first mate's own, loses nothing and surprises no one.
 Obligations are closed by records, not by recollection: a promised reply, an open decision, or a queued wake is retired only by the durable event that answers it.
 This durability is how the experience holds when attention leaves: confidence that everything is under control, and ease of mind that nothing falls through the cracks the moment the captain looks away.

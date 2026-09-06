@@ -271,6 +271,7 @@ State what reset-safe means in the same breath as the claim: nothing this sessio
 It is never a claim that the home's durable records are correct, because this pass checks no record the session did not name.
 Do not hide an over-budget result behind a reset-safe claim.
 In a primary home the receipt is written after the cascade below, not instead of it.
+The continuation prompt below is printed after both, as the pass's final output.
 
 ## Automatic cascade to secondmates
 
@@ -299,6 +300,52 @@ Offload proposals and the cold archive are per-home: file proposals only in the 
 Extend the completion receipt with one entry per secondmate alongside the primary's own, carrying that home's budget before and after, its per-file actions, its exceptions, and whether that home swept itself or was curated from here.
 Keep those entries in the same plain captain-facing language the rest of the receipt uses.
 The session is reset-safe only when every home is within its own budget with no unresolved exception.
+
+## Continuation prompt
+
+Finish every `/stow` by printing exactly one fenced text block the captain can copy straight into a fresh terminal.
+It is the last thing the pass prints, after the completion receipt and, in a primary home, after the cascade.
+
+A fresh session already rebuilds the work queue, each worker's state, the captain's saved preferences, and the saved learnings from disk on its own.
+So this block carries only what lives in the conversation and nowhere else:
+
+- the open threads this session was holding: each decision waiting on the captain with the exact key that closes it, each worker waiting on a reply or a time box, and each promised follow-up with the event that triggers it;
+- the captain's standing instructions given during this session, in his own words;
+- current pool or quota notes, such as which provider is near a limit and what that forced;
+- the first three actions the new session should take, in order.
+
+Keep the block under 40 lines and write it in the same plain captain-facing language the receipt uses.
+Drop a heading that has nothing under it rather than printing it empty.
+Never restate what the fresh session reloads by itself, and never carry a raw path or an internal label into it.
+A decision key is the single exception, because the captain's answer only closes that decision when the key is exact.
+
+Worked example:
+
+```text
+Continuing the previous session.
+
+Waiting on you:
+- Whether the billing rewrite keeps the old invoice numbers. Answer key: invoice-numbering.
+
+Waiting on something else:
+- The search worker has my reply about the ranking change and has not answered yet; ring it again if it stays quiet for an hour.
+- The website release is on hold until the domain transfer finishes on Friday.
+
+Promised:
+- Post the public reply on the plugin request thread once its pull request lands.
+
+You told me this session:
+- "Do not merge anything on the payments project without asking me first."
+- "Keep the daily update short."
+
+Pools:
+- The main coding provider is close to its weekly limit, so heavy work goes to the backup one until Monday.
+
+Do first:
+1. Ask me the invoice numbering question.
+2. Check whether the search worker replied.
+3. Re-check the payments pull request for a green result.
+```
 
 ## Scope exclusion: no skill storage by the pass
 
