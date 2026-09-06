@@ -171,6 +171,39 @@ if fm_watcher_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME"; then
   exit 2
 fi
 
+# --- away-mode daemon ownership ----------------------------------------------
+# While state/.afk exists the away-mode daemon (bin/fm-supervise-daemon.sh) owns
+# watcher supervision: it runs bin/fm-watch.sh one-shot and restarts the child on
+# every wake, so between two of those runs no watcher process holds this home's
+# lock and the PID-strict fm_watcher_healthy is legitimately false even though
+# supervision is fully alive. Accept the daemon itself as supervision here, on
+# the same evidence grade the watcher must meet: its singleton lock names a live
+# pid whose recorded identity still matches that pid, plus a fresh liveness
+# signal the daemon already maintains - the watcher beacon it keeps restarting,
+# or its own housekeeping tick. A dead, identity-mismatched, or silent daemon
+# fails this and keeps every existing block.
+# bin/fm-afk-start.sh owns the daemon lock's own liveness helpers, but they admit
+# a command-name fallback when no identity was recorded, which is the right
+# tolerance for "do not double-start a daemon" and the wrong one for "allow a
+# turn to end unattended", so this decision requires the recorded identity.
+afk_daemon_healthy() {
+  local lockdir pid recorded current
+  [ -e "$STATE/.afk" ] || return 1
+  lockdir="$STATE/.supervise-daemon.lock"
+  pid=$(cat "$lockdir/pid" 2>/dev/null || true)
+  fm_pid_alive "$pid" || return 1
+  recorded=$(cat "$lockdir/pid-identity" 2>/dev/null || true)
+  [ -n "$recorded" ] || return 1
+  current=$(fm_pid_identity "$pid") || return 1
+  [ "$current" = "$recorded" ] || return 1
+  [ "$(fm_path_age "$STATE/.last-watcher-beat")" -lt "$GRACE" ] && return 0
+  [ "$(fm_path_age "$STATE/.subsuper-last-housekeep")" -lt "$GRACE" ] && return 0
+  return 1
+}
+if afk_daemon_healthy; then
+  exit 0
+fi
+
 block_stop() {
   local afk x_mode reason rule
   afk=0

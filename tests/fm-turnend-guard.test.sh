@@ -284,6 +284,94 @@ test_hook_silent_with_live_lock_and_fresh_beacon() {
   pass "fm-turnend-guard: silent no-op with a live watcher lock and fresh beacon"
 }
 
+# The away-mode daemon's singleton lock, as bin/fm-supervise-daemon.sh records
+# it: the portable lock helper's pid file plus the pid-identity the daemon writes
+# for itself right after acquiring the lock.
+record_daemon_lock() {
+  local dir=$1 pid=$2 identity=$3
+  mkdir -p "$dir/state/.supervise-daemon.lock"
+  printf '%s\n' "$pid" > "$dir/state/.supervise-daemon.lock/pid"
+  printf '%s\n' "$identity" > "$dir/state/.supervise-daemon.lock/pid-identity"
+}
+
+test_hook_afk_live_daemon_allows_between_watcher_runs() {
+  local dir pid identity out status out_claude status_claude
+  dir=$(make_primary_dir "$TMP_ROOT/hook-afk-daemon-live")
+  : > "$dir/state/task1.meta"
+  : > "$dir/state/.afk"
+  sleep 60 &
+  pid=$!
+  identity=$(watcher_identity "$dir" "$pid") || {
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    fail "could not identify live away-mode daemon holder"
+  }
+  # No .watch.lock at all: the daemon's one-shot watcher child has exited and its
+  # replacement is not up yet, which is the state the PID-strict watcher check
+  # legitimately fails.
+  record_daemon_lock "$dir" "$pid" "$identity"
+  touch "$dir/state/.subsuper-last-housekeep"
+  out=$(run_hook "$dir" false); status=$?
+  out_claude=$(FM_CLAUDE_AUTOARM_SYNC_WAIT_MS=100 run_hook_claude "$dir" true); status_claude=$?
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  expect_code 0 "$status" "away mode with a live identity-matched daemon must allow the stop"
+  [ -z "$out" ] || fail "away-mode daemon allow produced output: $out"
+  expect_code 0 "$status_claude" "--claude away mode with a live daemon must allow the stop"
+  [ -z "$out_claude" ] || fail "--claude away-mode daemon allow produced output: $out_claude"
+  pass "fm-turnend-guard: away mode allows while a live daemon sits between watcher runs"
+}
+
+test_hook_afk_dead_or_mismatched_daemon_still_blocks() {
+  local dir dead pid identity out status
+  dir=$(make_primary_dir "$TMP_ROOT/hook-afk-daemon-dead")
+  dead=$(nonexistent_pid)
+  : > "$dir/state/task1.meta"
+  : > "$dir/state/.afk"
+  record_daemon_lock "$dir" "$dead" "dead daemon identity"
+  touch "$dir/state/.subsuper-last-housekeep"
+  touch "$dir/state/.last-watcher-beat"
+  out=$(run_hook "$dir" false); status=$?
+  expect_code 2 "$status" "away mode must still block when the daemon pid is dead"
+  assert_contains "$out" "TURN WOULD END BLIND" "dead-daemon away-mode block lost its banner"
+  # A live pid whose recorded identity no longer matches is pid reuse, not the
+  # daemon this home recorded, and must block exactly like a dead one.
+  sleep 60 &
+  pid=$!
+  identity=$(watcher_identity "$dir" "$pid") || {
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    fail "could not identify mismatch-case holder"
+  }
+  record_daemon_lock "$dir" "$pid" "$identity mismatched"
+  out=$(run_hook "$dir" false); status=$?
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  expect_code 2 "$status" "away mode must still block when the daemon identity does not match"
+  pass "fm-turnend-guard: away mode blocks a dead or identity-mismatched daemon"
+}
+
+test_hook_live_daemon_without_afk_still_blocks() {
+  local dir pid identity out status
+  dir=$(make_primary_dir "$TMP_ROOT/hook-daemon-no-afk")
+  : > "$dir/state/task1.meta"
+  sleep 60 &
+  pid=$!
+  identity=$(watcher_identity "$dir" "$pid") || {
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    fail "could not identify no-afk daemon holder"
+  }
+  record_daemon_lock "$dir" "$pid" "$identity"
+  touch "$dir/state/.subsuper-last-housekeep"
+  out=$(run_hook "$dir" false); status=$?
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  expect_code 2 "$status" "without away mode a live daemon must not stand in for the watcher"
+  assert_contains "$out" "$REQUIRED_REASON" "non-away block reason must be unchanged"
+  pass "fm-turnend-guard: the away-mode daemon predicate never fires with away mode off"
+}
+
 test_hook_non_claude_health_ignores_claude_budget_contention() {
   local dir home pid identity holder harness payload out status
   dir=$(make_primary_dir "$TMP_ROOT/hook-non-claude-budget-contention")
@@ -1762,6 +1850,9 @@ test_hook_blocks_when_fresh_beacon_has_no_live_lock
 test_hook_blocks_source_only_home
 test_hook_blocks_when_dead_lock_has_fresh_beacon
 test_hook_silent_with_live_lock_and_fresh_beacon
+test_hook_afk_live_daemon_allows_between_watcher_runs
+test_hook_afk_dead_or_mismatched_daemon_still_blocks
+test_hook_live_daemon_without_afk_still_blocks
 test_hook_non_claude_health_ignores_claude_budget_contention
 test_hook_blocks_with_live_lock_and_stale_beacon
 test_hook_blocks_when_unhealthy_in_primary
