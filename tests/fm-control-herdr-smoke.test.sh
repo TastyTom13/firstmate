@@ -10,8 +10,15 @@
 # comes from herdr's own agent registry.
 #
 # No real agent is launched. herdr's `pane report-agent` is the same registry
-# the adapter reads, so registering and not registering an agent on a plain
-# shell pane exercises exactly the classification the control plane gates on.
+# the adapter reads, so registering and not registering an agent exercises
+# exactly the classification the control plane gates on. The registry alone is
+# not enough, though: since the 2026-09-06 Pi defect the classifier also reads
+# the pane's own foreground process group, because a herdr agent record can
+# outlive its agent process. The registered-agent cases therefore run over a
+# real foreground process, and the last case returns that pane to its bare
+# shell with the record still registered - the exact shape a Pi or Claude
+# worker leaves when its session ends - and proves the control plane now reads
+# it as agent-gone instead of typing an exit command into a shell.
 #
 # Always runs on a private, named, throwaway lab session, never the default
 # one (tests/herdr-test-safety.sh; the 2026-07-02 incident). Skips cleanly
@@ -113,14 +120,36 @@ case "$OUT" in
 esac
 pass "real herdr: interrupt refuses when herdr's own agent registry reports no agent"
 
-# --- a registered agent: classification flips, and the verbs follow ---------
+# --- a registered agent over a running process: classification flips --------
+# The foreground process stands in for the agent's own process. It is what
+# makes the registry record believable: a record over a bare shell prompt is a
+# record whose agent has already exited.
+
+pane_runs_sleep() {
+  fm_backend_herdr_cli "$SESSION" pane process-info --pane "$PANE_ID" 2>/dev/null \
+    | jq -e '[.result.process_info.foreground_processes[]?.name] | any(. == "sleep")' >/dev/null 2>&1
+}
+
+fm_backend_herdr_send_text_line "$SESSION:$PANE_ID" 'sleep 600' \
+  || fail "could not start a foreground process in the task pane"
+i=0
+while [ "$i" -lt 100 ]; do
+  pane_runs_sleep && break
+  sleep 0.2
+  i=$((i + 1))
+done
+pane_runs_sleep \
+  || fail "the task pane never started its foreground process, so the registered-agent cases would prove nothing"
+if fm_backend_herdr_pane_foreground_shell_pid "$SESSION" "$PANE_ID" >/dev/null 2>&1; then
+  fail "a pane running a foreground process must not read as shell-only, or this case proves nothing"
+fi
 
 herdr pane report-agent "$PANE_ID" --source fm-control-smoke --agent fm-control-smoke-agent \
   --state idle --session "$SESSION" >/dev/null 2>&1 \
   || fail "could not register a live agent on the task pane"
 
 STATE=$(fm_backend_agent_state herdr "$SESSION:$PANE_ID")
-[ "$STATE" = alive ] || fail "herdr should classify a registered agent as alive, got '$STATE'"
+[ "$STATE" = alive ] || fail "herdr should classify a registered agent over a running process as alive, got '$STATE'"
 
 OUT=$(run_control hsmoke interrupt) || fail "interrupt against a registered agent should succeed: $OUT"
 case "$OUT" in
@@ -134,9 +163,9 @@ herdr pane get "$PANE_ID" --session "$SESSION" >/dev/null 2>&1 \
 [ -d "$WT" ] || fail "the control plane must never remove the task's local copy"
 pass "real herdr: no control verb removed the endpoint or the task's local copy"
 
-# Last, because it deliberately types a harness command into a pane that hosts
-# a plain shell: the registered agent cannot actually be stopped that way, and
-# the control plane must say so rather than report a stop it did not achieve.
+# Deliberately types a harness command into a pane that is running an ordinary
+# process: the registered agent cannot actually be stopped that way, and the
+# control plane must say so rather than report a stop it did not achieve.
 if OUT=$(run_control hsmoke exit 2>&1); then
   fail "exit should fail closed when the agent does not stop: $OUT"
 fi
@@ -145,5 +174,42 @@ case "$OUT" in
   *) fail "the exit failure should say the agent did not stop, got: $OUT" ;;
 esac
 pass "real herdr: an agent that does not stop fails closed instead of being reported as stopped"
+
+# --- the registry record outlives its process ------------------------------
+# The pane returns to its own bare shell while the agent record stays
+# registered - what a Pi or Claude worker leaves behind when its session ends.
+# Before the 2026-09-06 fix this still read alive, so exit typed its command
+# into the shell and relaunch refused the endpoint; now it is agent-gone and
+# exit is idempotent success, which is what lets relaunch adopt the pane.
+
+fm_backend_herdr_send_key "$SESSION:$PANE_ID" C-c \
+  || fail "could not stop the pane's foreground process"
+i=0
+while [ "$i" -lt 100 ]; do
+  fm_backend_herdr_pane_foreground_shell_pid "$SESSION" "$PANE_ID" >/dev/null 2>&1 && break
+  sleep 0.2
+  i=$((i + 1))
+done
+fm_backend_herdr_pane_foreground_shell_pid "$SESSION" "$PANE_ID" >/dev/null 2>&1 \
+  || fail "the pane never returned to its bare shell, so this case would prove nothing"
+IDENTITY=$(fm_backend_herdr_agent_identity_raw "$SESSION" "$PANE_ID") \
+  || fail "the agent record could not be read back, so this case would prove nothing"
+case "$IDENTITY" in
+  *idle*|*working*|*blocked*|*done*) : ;;
+  *) fail "the agent record disappeared on its own ('$IDENTITY'), so this case would prove nothing" ;;
+esac
+
+STATE=$(fm_backend_agent_state herdr "$SESSION:$PANE_ID")
+[ "$STATE" = dead ] \
+  || fail "a registered agent record over a bare shell must classify agent-free, got '$STATE'"
+pass "real herdr: an agent record left over a bare shell classifies agent-free, not alive"
+
+OUT=$(run_control hsmoke exit) \
+  || fail "exit over a shell-only pane should be idempotent success: $OUT"
+case "$OUT" in
+  "already-stopped hsmoke"*) : ;;
+  *) fail "exit over a shell-only pane should report already-stopped, got: $OUT" ;;
+esac
+pass "real herdr: exit over a pane whose agent has exited to a shell is idempotent success"
 
 fm_backend_herdr_kill "$SESSION:$PANE_ID" 2>/dev/null || true

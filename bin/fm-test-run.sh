@@ -1951,7 +1951,7 @@ family_bump() {
 # throwaway test fixture root are reaped, so a real task's watcher, in this home
 # or any other, is never matched.
 reap_leaked_bridge_watchers() {
-  local registry registry_dir root
+  local registry registry_dir root registry_body
   local registry_dirs=("${TMPDIR:-/tmp}" "$RUN_TMP")
   local -a roots=()
   for registry_dir in "${registry_dirs[@]}"; do
@@ -1961,9 +1961,16 @@ reap_leaked_bridge_watchers() {
         grep -Fqx "$registry" "$REGISTRY_BASELINE" 2>/dev/null; then
         continue
       fi
+      # The shared temp directory holds every concurrent run's registry, and a
+      # sibling run removes its own between this find and this read, so the
+      # file is read through a capture that can fail instead of a redirection
+      # that would abort the whole run under set -e.
+      registry_body=$(cat "$registry" 2>/dev/null) || continue
       while IFS= read -r root; do
         [ -n "$root" ] && roots+=("$root")
-      done < "$registry"
+      done <<EOF
+$registry_body
+EOF
     done < <(find "$registry_dir" -type f -name '.fm-test-cleanup.*' -print0 2>/dev/null)
   done
   [ "${#roots[@]}" -gt 0 ] || return 0
