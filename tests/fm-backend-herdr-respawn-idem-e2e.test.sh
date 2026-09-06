@@ -162,7 +162,24 @@ pass "fixed: the workspace holds exactly the 2 replacement tabs after both respa
 # Register a real agent (herdr's own native registration primitive) on one of
 # the freshly-respawned panes, then confirm a further same-labeled spawn
 # attempt refuses exactly as before - the husk fix must never touch a pane
-# that actually has something registered in it.
+# that actually has something registered in it. The classifier now correctly
+# treats a registry record over a bare shell as agent-gone, so put a real
+# foreground process in the pane before registering the agent.
+
+fm_backend_herdr_send_text_line "$SESSION:$NEW_CREW_PANE_ID" 'sleep 600' \
+  || fail "could not start a foreground process for the live-agent duplicate"
+i=0
+while [ "$i" -lt 100 ]; do
+  if fm_backend_herdr_cli "$SESSION" pane process-info --pane "$NEW_CREW_PANE_ID" 2>/dev/null \
+    | jq -e '[.result.process_info.foreground_processes[]?.name] | any(. == "sleep")' >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.2
+  i=$((i + 1))
+done
+fm_backend_herdr_cli "$SESSION" pane process-info --pane "$NEW_CREW_PANE_ID" 2>/dev/null \
+  | jq -e '[.result.process_info.foreground_processes[]?.name] | any(. == "sleep")' >/dev/null 2>&1 \
+  || fail "the live-agent duplicate pane never started its foreground process"
 
 herdr pane report-agent "$NEW_CREW_PANE_ID" --source fm-respawn-e2e --agent fm-respawn-live-agent --state idle --session "$SESSION" >/dev/null 2>&1 \
   || fail "could not register a live agent on the respawned crewmate-shaped pane"

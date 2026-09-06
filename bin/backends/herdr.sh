@@ -1175,11 +1175,99 @@ fm_backend_herdr_pid_is_bare_shell() {  # <ps-bin> <pid>
   return 1
 }
 
+# fm_backend_herdr_pane_foreground_shell_pid: print <pane-id>'s shell pid from
+# ONE strict instantaneous sample, and only when the pane's terminal foreground
+# is exactly that one bare recognized shell: pane process-info agrees on the
+# pane id, the shell pid is both the foreground process group and the sole
+# foreground process, and that process's name and argv0 resolve to the same
+# recognized shell.
+#
+# This is the STRUCTURAL "no agent has this terminal" fact, and it is the half
+# of the idle-shell proof that answers that question: a TUI agent owns its
+# pane's foreground process group for as long as it runs, so a pane whose
+# foreground is the bare shell has no agent attached, whatever herdr's own
+# agent registry still reports. The remaining, stricter half of the idle-shell
+# proof below (no child process anywhere in the OS process table, shell
+# sleeping) answers the different and harder question "is this shell safe to
+# KILL", and stays with that owner.
+#
+# Sets FM_BACKEND_HERDR_FOREGROUND_SHELL_SEEN=1 when a recognized shell appears
+# among the sampled foreground processes at all. That is the transient
+# prompt-helper shape (verified on the real 0.7.5 lab: a zsh prompt redraw
+# spawns starship as a second foreground process for a few samples), and it is
+# the only failure a caller should spend a retry on; a foreground with no shell
+# in it is a running program and must fail fast.
+FM_BACKEND_HERDR_FOREGROUND_SHELL_SEEN=0
+fm_backend_herdr_pane_foreground_shell_pid() {  # <session> <pane-id>
+  local session=$1 pane=$2 info shell_pid foreground_pgid count
+  local process_pid name argv0 shell_name
+  FM_BACKEND_HERDR_FOREGROUND_SHELL_SEEN=0
+  info=$(fm_backend_herdr_cli "$session" pane process-info --pane "$pane" 2>/dev/null) || return 1
+  printf '%s' "$info" | jq -e --arg pane "$pane" '
+    .result.type == "pane_process_info"
+    and .result.process_info.pane_id == $pane
+  ' >/dev/null 2>&1 || return 1
+  if printf '%s' "$info" | jq -e '
+    [ .result.process_info.foreground_processes[]?
+      | (.argv0 // .argv[0] // .name // "")
+      | sub("^-"; "") | split("/") | last ]
+    | any(. == "sh" or . == "bash" or . == "zsh" or . == "dash" or . == "ksh" or . == "fish")
+  ' >/dev/null 2>&1; then
+    FM_BACKEND_HERDR_FOREGROUND_SHELL_SEEN=1
+  fi
+  shell_pid=$(printf '%s' "$info" | jq -er \
+    '.result.process_info.shell_pid | select(type == "number" and . > 1) | floor' 2>/dev/null) || return 1
+  foreground_pgid=$(printf '%s' "$info" | jq -er \
+    '.result.process_info.foreground_process_group_id | select(type == "number" and . > 1) | floor' 2>/dev/null) || return 1
+  [ "$foreground_pgid" = "$shell_pid" ] || return 1
+  count=$(printf '%s' "$info" | jq -er \
+    '.result.process_info.foreground_processes | select(type == "array") | length' 2>/dev/null) || return 1
+  [ "$count" -eq 1 ] || return 1
+  process_pid=$(printf '%s' "$info" | jq -er \
+    '.result.process_info.foreground_processes[0].pid | select(type == "number") | floor' 2>/dev/null) || return 1
+  [ "$process_pid" = "$shell_pid" ] || return 1
+  name=$(printf '%s' "$info" | jq -er \
+    '.result.process_info.foreground_processes[0].name | select(type == "string" and length > 0)' 2>/dev/null) || return 1
+  argv0=$(printf '%s' "$info" | jq -er '
+    .result.process_info.foreground_processes[0] as $process
+    | ($process.argv0 // $process.argv[0])
+    | select(type == "string" and length > 0)
+  ' 2>/dev/null) || return 1
+  shell_name=${name##*/}
+  argv0=${argv0#-}
+  argv0=${argv0##*/}
+  [ "$argv0" = "$shell_name" ] || return 1
+  case "$shell_name" in sh|bash|zsh|dash|ksh|fish) ;; *) return 1 ;; esac
+  printf '%s\n' "$shell_pid"
+}
+
+# fm_backend_herdr_pane_agent_gone: 0 when <pane-id>'s terminal foreground is
+# provably just its own bare shell, so no agent is attached to it. This is the
+# recovery-grade classifier's process-tree override, and it exists because
+# herdr's agent registry can outlive the agent process: a Pi worker that exits
+# to its shell (printing its resume line) leaves an `agent get` record still
+# reporting idle, working, or blocked, and reading that record alone made
+# `bin/fm-control.sh <id> exit|relaunch` type an exit command into a shell and
+# `bin/fm-spawn.sh <id> --relaunch` refuse a pane that had no agent left.
+#
+# Retries only the transient prompt-helper shape (a recognized shell seen among
+# several foreground processes), so a pane genuinely running an agent costs one
+# sample and no sleep, while a shell pane redrawing its prompt still settles.
+fm_backend_herdr_pane_agent_gone() {  # <session> <pane-id>
+  local attempt=1 attempts=${FM_BACKEND_HERDR_SHELL_ONLY_PROOF_POLLS:-3}
+  case "$attempts" in ''|*[!0-9]*|0) attempts=3 ;; esac
+  while :; do
+    fm_backend_herdr_pane_foreground_shell_pid "$1" "$2" >/dev/null && return 0
+    [ "$FM_BACKEND_HERDR_FOREGROUND_SHELL_SEEN" = 1 ] || return 1
+    [ "$attempt" -lt "$attempts" ] || return 1
+    attempt=$((attempt + 1))
+    sleep 0.1
+  done
+}
+
 # fm_backend_herdr_pane_idle_shell_pid: print the shell pid of <pane-id> only
-# when the exact pane provably holds one lone idle recognized shell: pane
-# process-info agrees on the pane id, the shell pid is both the foreground
-# process group and the sole foreground process, the foreground process name
-# and argv0 resolve to the same recognized shell, the operating-system
+# when the exact pane provably holds one lone idle recognized shell: the
+# foreground-shell sample above holds, and in addition the operating-system
 # process table shows exactly that one shell row with no child process, and
 # the shell sits in a sleeping or idle state.
 # An idle interactive shell transiently hosts short-lived prompt helpers
@@ -1206,36 +1294,8 @@ fm_backend_herdr_pane_idle_shell_pid() {  # <session> <pane-id>
 # observation for fm_backend_herdr_pane_idle_shell_pid, which owns the proof
 # contract and the settle retry.
 fm_backend_herdr_pane_idle_shell_sample() {  # <session> <pane-id>
-  local session=$1 pane=$2 info shell_pid foreground_pgid count
-  local process_pid name argv0 shell_name rows stat ps_bin
-  info=$(fm_backend_herdr_cli "$session" pane process-info --pane "$pane" 2>/dev/null) || return 1
-  printf '%s' "$info" | jq -e --arg pane "$pane" '
-    .result.type == "pane_process_info"
-    and .result.process_info.pane_id == $pane
-  ' >/dev/null 2>&1 || return 1
-  shell_pid=$(printf '%s' "$info" | jq -er \
-    '.result.process_info.shell_pid | select(type == "number" and . > 1) | floor' 2>/dev/null) || return 1
-  foreground_pgid=$(printf '%s' "$info" | jq -er \
-    '.result.process_info.foreground_process_group_id | select(type == "number" and . > 1) | floor' 2>/dev/null) || return 1
-  [ "$foreground_pgid" = "$shell_pid" ] || return 1
-  count=$(printf '%s' "$info" | jq -er \
-    '.result.process_info.foreground_processes | select(type == "array") | length' 2>/dev/null) || return 1
-  [ "$count" -eq 1 ] || return 1
-  process_pid=$(printf '%s' "$info" | jq -er \
-    '.result.process_info.foreground_processes[0].pid | select(type == "number") | floor' 2>/dev/null) || return 1
-  [ "$process_pid" = "$shell_pid" ] || return 1
-  name=$(printf '%s' "$info" | jq -er \
-    '.result.process_info.foreground_processes[0].name | select(type == "string" and length > 0)' 2>/dev/null) || return 1
-  argv0=$(printf '%s' "$info" | jq -er '
-    .result.process_info.foreground_processes[0] as $process
-    | ($process.argv0 // $process.argv[0])
-    | select(type == "string" and length > 0)
-  ' 2>/dev/null) || return 1
-  shell_name=${name##*/}
-  argv0=${argv0#-}
-  argv0=${argv0##*/}
-  [ "$argv0" = "$shell_name" ] || return 1
-  case "$shell_name" in sh|bash|zsh|dash|ksh|fish) ;; *) return 1 ;; esac
+  local shell_pid rows stat ps_bin
+  shell_pid=$(fm_backend_herdr_pane_foreground_shell_pid "$1" "$2") || return 1
 
   ps_bin=${FM_HERDR_PS_BIN:-ps}
   command -v "$ps_bin" >/dev/null 2>&1 || return 1
@@ -1868,16 +1928,21 @@ fm_backend_herdr_explicit_close_pane_confirmed() {  # <session> <pane_id>
 #              on a live server makes herdr immediately drop both the pane
 #              and its tab from `pane get`/`tab list`).
 #   no-agent - `pane get` succeeds and `agent get` either responds with
-#              agent_not_found or reports done after the pane has returned to
-#              its lone idle shell. The first shape is what a Herdr session
-#              restore produces when agents are not resumed. The second shape
-#              can remain after a Pi provider failure even though the Pi
-#              process has exited, so the process-tree proof overrides that
-#              stale terminal status.
+#              agent_not_found, or reports any status at all while the pane
+#              has provably returned to its own bare shell
+#              (fm_backend_herdr_pane_agent_gone). The first shape is what a
+#              Herdr session restore produces when agents are not resumed. The
+#              second is a registry record that outlived its agent process:
+#              done after a Pi provider failure, and equally idle, blocked, or
+#              working after a Pi or Claude session ends and leaves the pane
+#              sitting at a shell prompt. The process-tree fact overrides the
+#              registry status in every one of those cases, because an agent
+#              that is really running owns its pane's foreground.
 #   live     - `agent get` succeeds and reports working, idle, or blocked, or
-#              reports done while a process still occupies the pane. An idle
-#              or blocked agent is still genuine and registered, and a done
-#              record cannot make a live process safe to replace.
+#              reports done, while a process other than the pane's own bare
+#              shell still occupies the pane. An idle or blocked agent is
+#              still genuine and registered, and no registry record can make a
+#              live process safe to replace.
 #   unknown  - anything else: an unparseable/unexpected response from either
 #              call, or a `pane get` success whose own echoed pane_id does not
 #              round-trip (guards against misreading a herdr response shape
@@ -1902,9 +1967,8 @@ fm_backend_herdr_pane_agent_state() {  # <session> <pane_id>
   fi
   status=$(printf '%s' "$out" | jq -r '.result.agent.agent_status // empty' 2>/dev/null)
   case "$status" in
-    working|idle|blocked) printf 'live' ;;
-    done)
-      if fm_backend_herdr_pane_idle_shell_pid "$session" "$pane_id" >/dev/null; then
+    working|idle|blocked|done)
+      if fm_backend_herdr_pane_agent_gone "$session" "$pane_id"; then
         printf 'no-agent'
       else
         printf 'live'

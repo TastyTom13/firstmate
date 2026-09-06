@@ -96,6 +96,12 @@ Switching harness is therefore one ordinary relaunch rather than a separate mech
   Orca's terminal API exposes only an interrupt and an Enter, so it can deliver neither Escape nor Ctrl+U.
 - `exit` and `relaunch` require a backend with a recovery-grade agent-state classifier - tmux and herdr - because without one the "the agent stopped" postcondition cannot be proven.
   zellij, orca, and cmux are refused rather than reported as successful blind.
+- A pane whose agent has exited to a bare shell is agent-gone, whatever the backend's own agent registry still says.
+  Herdr registers an agent per pane and that record can outlive the process: a Pi worker that ends its session prints its resume line, returns the pane to a shell prompt, and leaves `agent get` still reporting idle, working, or blocked.
+  Reading that record alone made `exit` type its exit command into the shell and report the old agent still running, and made `fm-spawn --relaunch` refuse the same pane as alive, so a worker in that state had no supported way back.
+  The classifier now overrides the registry with the pane's own foreground process group: a pane whose sole foreground process is its own bare shell has no agent attached, because a running TUI agent owns that group for as long as it lives.
+  `exit` is then idempotent success and `relaunch` launches the recorded harness into the same pane and local copy with the instructions plus the progress note, exactly as after a clean exit; a pane still running its agent keeps classifying alive and both verbs refuse as before.
+  The tmux backend needs no such override: its classifier already reads the foreground process group directly and reports a shell-only pane as agent-free.
 - An ambiguous or unreadable endpoint state refuses.
   Only a positively classified state acts.
 - `fm-spawn --relaunch` independently refuses unless the recorded endpoint is positively agent-free and its shell is sitting in the recorded worktree, so a replacement can never join a live agent or start outside the copy holding the work.
@@ -120,3 +126,5 @@ The empirical basis for each adapter's value is the `harness-adapters` skill's v
 - `tests/fm-control.test.sh` - the adapter contract for every verified harness, the backend capability matrix, exact-id scoping, the closed verb list, the busy, idle, dead, and idempotent lifecycle cases, and marker non-regression, all against a stubbed session provider.
 - `tests/fm-control-relaunch.test.sh` - the relaunch transaction: identity preservation, harness switching, the progress note, checkpoint refusals, and rollback after a failed launch.
 - `tests/fm-control-herdr-smoke.test.sh` - the second state-verified backend against the real herdr binary, on an isolated throwaway lab session.
+- `tests/fm-backend-herdr.test.sh` - the recovery-grade verdict over a shell-only pane: a Pi and a Claude registry record left behind by an ended session both classify agent-free, and a pane still running its agent stays alive.
+- `tests/fm-tmux-agent-liveness.test.sh` - the same shell-only verdict on tmux, with real processes in a private tmux server.

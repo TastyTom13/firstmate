@@ -129,6 +129,20 @@ EOF
 if [ -z "$LIVE_DUP_TAB_ID" ] || [ -z "$LIVE_DUP_PANE_ID" ]; then
   fail "live-duplicate scenario tab creation did not return ids"
 fi
+fm_backend_herdr_send_text_line "$SESSION:$LIVE_DUP_PANE_ID" 'sleep 600' \
+  || fail "could not start a foreground process for the live-duplicate scenario"
+i=0
+while [ "$i" -lt 100 ]; do
+  if fm_backend_herdr_cli "$SESSION" pane process-info --pane "$LIVE_DUP_PANE_ID" 2>/dev/null \
+    | jq -e '[.result.process_info.foreground_processes[]?.name] | any(. == "sleep")' >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.2
+  i=$((i + 1))
+done
+fm_backend_herdr_cli "$SESSION" pane process-info --pane "$LIVE_DUP_PANE_ID" 2>/dev/null \
+  | jq -e '[.result.process_info.foreground_processes[]?.name] | any(. == "sleep")' >/dev/null 2>&1 \
+  || fail "the live-duplicate scenario never started its foreground process"
 herdr pane report-agent "$LIVE_DUP_PANE_ID" --source fm-smoke-test --agent fm-smoke-live-agent --state idle --session "$SESSION" >/dev/null 2>&1 \
   || fail "could not register a live agent on the live-duplicate scenario's pane"
 if fm_backend_herdr_create_task "$CONTAINER" "$LIVE_DUP_LABEL" /tmp >/dev/null 2>&1; then

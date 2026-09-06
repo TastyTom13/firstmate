@@ -1409,6 +1409,20 @@ assert_no_projection_mutation_since "$START" "agent-free duplicate-token recover
 lab workspace get "$DUP1_WSID" >/dev/null 2>&1 || fail "duplicate-token recovery removed the first quarantined workspace"
 lab workspace get "$DUP2_WSID" >/dev/null 2>&1 || fail "duplicate-token recovery removed the second quarantined workspace"
 
+fm_backend_herdr_send_text_line "$HERDR_LAB_SESSION:$DUP1_PANE" 'sleep 600' \
+  || fail "could not start a foreground process for the duplicate-live-agent risk fixture"
+i=0
+while [ "$i" -lt 100 ]; do
+  if lab pane process-info --pane "$DUP1_PANE" 2>/dev/null \
+    | jq -e '[.result.process_info.foreground_processes[]?.name] | any(. == "sleep")' >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.2
+  i=$((i + 1))
+done
+lab pane process-info --pane "$DUP1_PANE" 2>/dev/null \
+  | jq -e '[.result.process_info.foreground_processes[]?.name] | any(. == "sleep")' >/dev/null 2>&1 \
+  || fail "the duplicate-live-agent fixture never started its foreground process"
 lab pane report-agent "$DUP1_PANE" --source fm-projection-e2e --agent test-agent --state idle >/dev/null \
   || fail "could not register the duplicate-live-agent risk fixture"
 START=$(log_line_count)

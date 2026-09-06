@@ -576,6 +576,10 @@ test_create_task_refuses_duplicate_label_when_agent_live() {
   printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/3.out"
   # 4: agent get -> a genuinely registered, live agent (idle, not just working)
   printf '{"result":{"agent":{"agent_status":"idle"}}}\n' > "$resp/4.out"
+  # 5: pane process-info -> a non-shell foreground process proves the agent
+  # is still occupying the pane, rather than leaving a registry record over a
+  # bare shell.
+  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_process_group_id":4343,"foreground_processes":[{"pid":4343,"name":"node","argv0":"pi"}]}}}\n' > "$resp/5.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_create_task fmtest:w1 fm-dup1 /tmp/proj' "$ROOT" 2>&1 )
@@ -619,6 +623,60 @@ test_done_agent_record_with_live_process_stays_alive() {
   pass "fm_backend_herdr_agent_state: a done record cannot hide a live Pi process"
 }
 
+# --- a registry record that outlived its agent process -----------------------
+# The defect (2026-09-06): a Pi worker printed its resume line and exited to a
+# zsh prompt, but herdr's `agent get` still reported a registered agent, so the
+# recovery-grade classifier said alive. `bin/fm-control.sh <id> relaunch` then
+# typed /quit into that shell and reported the old agent still running, and
+# `bin/fm-spawn.sh <id> --relaunch` refused the endpoint as alive - leaving a
+# shell-only pane with no supported way back. These cases pin the fix in both
+# directions: a shell-only pane is agent-gone whatever the registry says, and a
+# pane still running its agent is untouched.
+
+shell_only_process_info_fixture() {  # <pane> <pid> [shell]
+  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":%s,"foreground_process_group_id":%s,"foreground_processes":[{"pid":%s,"name":"%s","argv0":"-%s"}]}}}\n' \
+    "$1" "$2" "$2" "$2" "${3:-zsh}" "${3:-zsh}"
+}
+
+herdr_agent_state_over_shell() {  # <case-name> <agent-json> <process-info-json>
+  local dir log resp fb
+  dir="$TMP_ROOT/$1"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '%s\n' "$2" > "$resp/2.out"
+  printf '%s\n' "$3" > "$resp/3.out"
+  fb=$(make_herdr_fakebin "$dir")
+  PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    FM_BACKEND_HERDR_SHELL_ONLY_PROOF_POLLS=1 \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_agent_state fmtest:w1:p2' "$ROOT"
+}
+
+test_idle_pi_record_over_bare_shell_is_dead() {
+  local out
+  out=$(herdr_agent_state_over_shell pi-bare-shell \
+    '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' \
+    "$(shell_only_process_info_fixture w1:p2 4242 zsh)")
+  [ "$out" = dead ] || fail "a Pi pane that exited to its own shell must be recovery-grade dead, got '$out'"
+  pass "fm_backend_herdr_agent_state: a Pi record left behind by an ended session over a bare shell is dead"
+}
+
+test_idle_claude_record_over_bare_shell_is_dead() {
+  local out
+  out=$(herdr_agent_state_over_shell claude-bare-shell \
+    '{"result":{"agent":{"agent":"claude","agent_status":"idle"}}}' \
+    "$(shell_only_process_info_fixture w1:p2 4343 bash)")
+  [ "$out" = dead ] || fail "a Claude pane that exited to its own shell must be recovery-grade dead, got '$out'"
+  pass "fm_backend_herdr_agent_state: a Claude record left behind by an ended session over a bare shell is dead"
+}
+
+test_live_pi_composer_pane_still_refuses() {
+  local out
+  out=$(herdr_agent_state_over_shell pi-live-composer \
+    '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' \
+    '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_process_group_id":4343,"foreground_processes":[{"pid":4343,"name":"node","argv0":"pi"}]}}}')
+  [ "$out" = alive ] || fail "a Pi pane still running its agent must stay alive, got '$out'"
+  pass "fm_backend_herdr_agent_state: a pane whose foreground is still the Pi process stays alive"
+}
+
 test_create_task_refuses_when_any_duplicate_label_is_live() {
   local dir log resp fb out status
   dir="$TMP_ROOT/dup-mixed-live"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -629,6 +687,9 @@ test_create_task_refuses_when_any_duplicate_label_is_live() {
   printf '{"result":{"panes":[{"pane_id":"w1:p2","tab_id":"w1:t2"},{"pane_id":"w1:p3","tab_id":"w1:t3"}]}}\n' > "$resp/5.out"
   printf '{"result":{"pane":{"pane_id":"w1:p3"}}}\n' > "$resp/6.out"
   printf '{"result":{"agent":{"agent_status":"idle"}}}\n' > "$resp/7.out"
+  # The second duplicate is live too, so its process-info sample must not
+  # look like an empty response (which correctly classifies it unknown).
+  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p3","shell_pid":4243,"foreground_process_group_id":4344,"foreground_processes":[{"pid":4344,"name":"node","argv0":"pi"}]}}}\n' > "$resp/8.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_create_task fmtest:w1 fm-mixed1 /tmp/proj' "$ROOT" 2>&1 )
@@ -4496,6 +4557,9 @@ test_create_task_refuses_when_preexisting_husk_tab_remains
 test_create_task_refuses_when_agent_state_ambiguous
 test_done_agent_record_without_agent_process_is_dead
 test_done_agent_record_with_live_process_stays_alive
+test_idle_pi_record_over_bare_shell_is_dead
+test_idle_claude_record_over_bare_shell_is_dead
+test_live_pi_composer_pane_still_refuses
 test_create_task_husk_replacement_creates_before_closing
 test_create_task_creates_and_parses_ids
 test_create_task_creates_with_no_focus_flag
