@@ -317,15 +317,16 @@ REPORTING_SECTION=${REPORTING_SECTION%$'\n'}
 # Its placeholders stay in the {TASK}-style until firstmate replaces them.
 INTENT_LINE='Intent: this is for {who}; it enables {what}; done means {finish line}.'
 
-# Working discipline: the three standing lines from fable-prompting-2026-09-03 P2
-# (grounded claims, scope discipline, surgical edits), shared by ship and scout so
-# the two cannot drift. Deliberately just these three lines: they replace older
-# prescriptive rules rather than stacking on top of them.
+# Working discipline: the four standing lines from fable-prompting-2026-09-03 P2
+# (grounded claims, scope discipline, surgical edits) plus the shared-machine rule,
+# shared by ship and scout so the two cannot drift. Deliberately just these four
+# lines: they replace older prescriptive rules rather than stacking on top of them.
 IFS= read -r -d '' WORKING_DISCIPLINE_SECTION <<'EOF' || true
 # Working discipline
 1. Grounded claims: before you report progress or done, audit each claim against a tool result from this session; report only work you can point to evidence for, and say plainly when something is not yet verified, a test failed (with its output), or a step was skipped.
 2. Scope discipline: don't fix, optimise, or extend a pre-existing bug, a performance concern, or behaviour the task does not mention unless the requested behaviour cannot work without it - report it as a follow-up in your summary instead; on an ambiguous task, implement the reading its wording and the surrounding code most directly support, state that assumption, and do not build the other readings too; commit tests only where the task asks for them or the repo already keeps tests for this kind of change, sized like the neighbouring tests; this bounds extras only - implement every behaviour the task asks for, completely.
 3. Surgical edits: edit files surgically rather than rewriting them whole when the end result is the same; a whole-file rewrite costs far more output for no gain.
+4. Shared machine: never generate artificial CPU, memory or network load on this machine, and never leave a background process behind: anything a command starts, the same command stops (trap, timeout, or kill by process group) and confirms gone with ps before moving on; answer load or timing questions from logs, not by reproducing load.
 EOF
 WORKING_DISCIPLINE_SECTION=${WORKING_DISCIPLINE_SECTION%$'\n'}
 

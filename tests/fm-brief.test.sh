@@ -966,7 +966,7 @@ test_built_by_line_reads_task_meta() {
 }
 
 # fable-prompting-2026-09-03 P2/P4: every scaffold's Task/Charter section opens
-# with an Intent placeholder; ship and scout carry the three Working discipline
+# with an Intent placeholder; ship and scout carry the four Working discipline
 # lines and the Claude cd-compound caution in Toolkit; every ship mode's
 # Definition of done gains one pre-done verification line. Rendered through the
 # executable for every variant, never asserted against source bytes.
@@ -990,6 +990,10 @@ test_fable_prompting_additions_render() {
       "ship ($mode): lost the scope-discipline standing line"
     assert_grep "Surgical edits: edit files surgically rather than rewriting them whole" "$brief" \
       "ship ($mode): lost the surgical-edits standing line"
+    assert_grep "Shared machine: never generate artificial CPU, memory or network load on this machine" "$brief" \
+      "ship ($mode): lost the shared-machine standing line"
+    assert_grep "anything a command starts, the same command stops" "$brief" \
+      "ship ($mode): shared-machine line lost its stop-what-you-start requirement"
     assert_grep "If you are Claude, use absolute paths or \`git -C <dir>\`" "$brief" \
       "ship ($mode): Toolkit lost the Claude cd-compound caution"
     assert_grep "captain's Read deny rules make Claude Code stop and ask a human before any relative read after a \`cd\`" "$brief" \
@@ -1012,6 +1016,10 @@ test_fable_prompting_additions_render() {
     "scout: lost the scope-discipline standing line"
   assert_grep "Surgical edits: edit files surgically rather than rewriting them whole" "$brief" \
     "scout: lost the surgical-edits standing line"
+  assert_grep "Shared machine: never generate artificial CPU, memory or network load on this machine" "$brief" \
+    "scout: lost the shared-machine standing line"
+  assert_grep "anything a command starts, the same command stops" "$brief" \
+    "scout: shared-machine line lost its stop-what-you-start requirement"
   assert_grep "If you are Claude, use absolute paths or \`git -C <dir>\`" "$brief" \
     "scout: Toolkit lost the Claude cd-compound caution"
   assert_no_grep "verify the acceptance criteria with a fresh-context subagent" "$brief" \
