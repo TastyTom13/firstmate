@@ -80,7 +80,7 @@
 # work is for, what it enables, what done means - firstmate fills at intake the
 # same way it fills {TASK} (fable-prompting-2026-09-03 P2: state intent, not
 # just a task list).
-# Ship and scout scaffolds also carry a "Working discipline" section with three
+# Ship and scout scaffolds also carry a "Working discipline" section with four
 # standing lines: grounded claims (audit progress/done claims against a tool
 # result from this session before reporting them), scope discipline (don't fix,
 # optimise, or extend anything the task doesn't ask for; implement the most
