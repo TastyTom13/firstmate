@@ -1121,6 +1121,9 @@ FMEOF
 # fm_backend_herdr_death_close_pane: end the exact pane's proved lone idle
 # shell so Herdr removes the emptied workspace through its focus-preserving
 # pane-death path, then confirm the pane is gone.
+# Ending a NESTED proved shell returns its pane to its own prompt instead of
+# emptying it, so this returns 1 there and the caller's confirmed explicit
+# close remains the backstop, exactly as for any other unconfirmed removal.
 # Each signal is sent only while the exact pane still owns the recorded pid
 # as its lone idle shell: SIGHUP relies on the proof taken just before, and
 # the SIGKILL escalation re-reads the pane's process information and refuses
@@ -1175,21 +1178,30 @@ fm_backend_herdr_pid_is_bare_shell() {  # <ps-bin> <pid>
   return 1
 }
 
-# fm_backend_herdr_pane_foreground_shell_pid: print <pane-id>'s shell pid from
-# ONE strict instantaneous sample, and only when the pane's terminal foreground
-# is exactly that one bare recognized shell: pane process-info agrees on the
-# pane id, the shell pid is both the foreground process group and the sole
-# foreground process, and that process's name and argv0 resolve to the same
-# recognized shell.
+# fm_backend_herdr_pane_foreground_shell_pid: print the pid of <pane-id>'s
+# foreground shell from ONE strict instantaneous sample, and only when the
+# pane's terminal foreground is exactly one bare recognized shell: pane
+# process-info agrees on the pane id and reports a shell pid, the single
+# foreground process leads the foreground process group, and that process's
+# name and argv0 resolve to the same recognized shell.
 #
 # This is the STRUCTURAL "no agent has this terminal" fact, and it is the half
 # of the idle-shell proof that answers that question: a TUI agent owns its
 # pane's foreground process group for as long as it runs, so a pane whose
-# foreground is the bare shell has no agent attached, whatever herdr's own
+# foreground is a bare shell has no agent attached, whatever herdr's own
 # agent registry still reports. The remaining, stricter half of the idle-shell
 # proof below (no child process anywhere in the OS process table, shell
 # sleeping) answers the different and harder question "is this shell safe to
 # KILL", and stays with that owner.
+#
+# The proof anchors on the foreground process group LEADER rather than on the
+# pane's own shell_pid, because a wrapper can sit between them: a pane opened
+# through `treehouse get` runs the worktree's own interactive shell as a
+# grandchild, so the shell an ended session leaves behind is not the pane's
+# shell_pid (measured on real herdr 0.8.2: shell_pid 58018, foreground process
+# group 61323, one foreground process 61323 named zsh). Demanding the pane's
+# own shell made that pane read as still running its agent, which left exit
+# and relaunch with no way back into it.
 #
 # Sets FM_BACKEND_HERDR_FOREGROUND_SHELL_SEEN=1 when a recognized shell appears
 # among the sampled foreground processes at all. That is the transient
@@ -1199,13 +1211,14 @@ fm_backend_herdr_pid_is_bare_shell() {  # <ps-bin> <pid>
 # in it is a running program and must fail fast.
 FM_BACKEND_HERDR_FOREGROUND_SHELL_SEEN=0
 fm_backend_herdr_pane_foreground_shell_pid() {  # <session> <pane-id>
-  local session=$1 pane=$2 info shell_pid foreground_pgid count
+  local session=$1 pane=$2 info foreground_pgid count
   local process_pid name argv0 shell_name
   FM_BACKEND_HERDR_FOREGROUND_SHELL_SEEN=0
   info=$(fm_backend_herdr_cli "$session" pane process-info --pane "$pane" 2>/dev/null) || return 1
   printf '%s' "$info" | jq -e --arg pane "$pane" '
     .result.type == "pane_process_info"
     and .result.process_info.pane_id == $pane
+    and (.result.process_info.shell_pid | type == "number" and . > 1)
   ' >/dev/null 2>&1 || return 1
   if printf '%s' "$info" | jq -e '
     [ .result.process_info.foreground_processes[]?
@@ -1215,17 +1228,14 @@ fm_backend_herdr_pane_foreground_shell_pid() {  # <session> <pane-id>
   ' >/dev/null 2>&1; then
     FM_BACKEND_HERDR_FOREGROUND_SHELL_SEEN=1
   fi
-  shell_pid=$(printf '%s' "$info" | jq -er \
-    '.result.process_info.shell_pid | select(type == "number" and . > 1) | floor' 2>/dev/null) || return 1
   foreground_pgid=$(printf '%s' "$info" | jq -er \
     '.result.process_info.foreground_process_group_id | select(type == "number" and . > 1) | floor' 2>/dev/null) || return 1
-  [ "$foreground_pgid" = "$shell_pid" ] || return 1
   count=$(printf '%s' "$info" | jq -er \
     '.result.process_info.foreground_processes | select(type == "array") | length' 2>/dev/null) || return 1
   [ "$count" -eq 1 ] || return 1
   process_pid=$(printf '%s' "$info" | jq -er \
     '.result.process_info.foreground_processes[0].pid | select(type == "number") | floor' 2>/dev/null) || return 1
-  [ "$process_pid" = "$shell_pid" ] || return 1
+  [ "$process_pid" = "$foreground_pgid" ] || return 1
   name=$(printf '%s' "$info" | jq -er \
     '.result.process_info.foreground_processes[0].name | select(type == "string" and length > 0)' 2>/dev/null) || return 1
   argv0=$(printf '%s' "$info" | jq -er '
@@ -1238,11 +1248,11 @@ fm_backend_herdr_pane_foreground_shell_pid() {  # <session> <pane-id>
   argv0=${argv0##*/}
   [ "$argv0" = "$shell_name" ] || return 1
   case "$shell_name" in sh|bash|zsh|dash|ksh|fish) ;; *) return 1 ;; esac
-  printf '%s\n' "$shell_pid"
+  printf '%s\n' "$process_pid"
 }
 
 # fm_backend_herdr_pane_agent_gone: 0 when <pane-id>'s terminal foreground is
-# provably just its own bare shell, so no agent is attached to it. This is the
+# provably just a bare shell, so no agent is attached to it. This is the
 # recovery-grade classifier's process-tree override, and it exists because
 # herdr's agent registry can outlive the agent process: a Pi worker that exits
 # to its shell (printing its resume line) leaves an `agent get` record still
@@ -1270,6 +1280,8 @@ fm_backend_herdr_pane_agent_gone() {  # <session> <pane-id>
 # foreground-shell sample above holds, and in addition the operating-system
 # process table shows exactly that one shell row with no child process, and
 # the shell sits in a sleeping or idle state.
+# The proved shell is whatever the foreground sample above names, so a nested
+# worktree shell qualifies on the same terms as a lone pane shell.
 # An idle interactive shell transiently hosts short-lived prompt helpers
 # (verified on the real 0.7.5 lab: a workspace.move relayout makes zsh redraw
 # its prompt, spawning starship as a second foreground process for a few
@@ -1929,7 +1941,7 @@ fm_backend_herdr_explicit_close_pane_confirmed() {  # <session> <pane_id>
 #              and its tab from `pane get`/`tab list`).
 #   no-agent - `pane get` succeeds and `agent get` either responds with
 #              agent_not_found, or reports any status at all while the pane
-#              has provably returned to its own bare shell
+#              has provably returned to a bare shell
 #              (fm_backend_herdr_pane_agent_gone). The first shape is what a
 #              Herdr session restore produces when agents are not resumed. The
 #              second is a registry record that outlived its agent process:
