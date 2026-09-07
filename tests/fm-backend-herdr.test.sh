@@ -714,7 +714,7 @@ test_treehouse_nested_shell_running_agent_stays_alive() {
 
 # start_treehouse_chain <dir> [with-child]: run the REAL three-process shape a
 # treehouse pane leaves behind - the pane's own shell, a process really named
-# treehouse, and the worktree's own shell parked on a builtin read - and print
+# treehouse, and an interactive leaf shell parked on a builtin read - and print
 # "<pane-shell-pid> <leaf-pid>". With <with-child> set, the leaf shell also
 # holds one live background child, which the idle half must still refuse.
 # The leaf parks on a read-write fifo open, so it sleeps with no child of its
@@ -724,12 +724,18 @@ test_treehouse_nested_shell_running_agent_stays_alive() {
 # The chain must not inherit this function's stdout: the caller reads the pids
 # through a command substitution, which waits for every holder of that pipe.
 start_treehouse_chain() {  # <dir> [with-child]
-  local dir=$1 child=${2:-} shell_bin waited=0
+  local dir=$1 child=${2:-} shell_bin treehouse_bin shell_kind waited=0
   mkdir -p "$dir"
-  shell_bin=$(command -v bash)
+  treehouse_bin=$(command -v bash)
+  if shell_bin=$(command -v zsh); then
+    shell_kind=zsh
+  else
+    shell_bin=$treehouse_bin
+    shell_kind=bash
+  fi
   # A real executable named treehouse, so the middle process is the wrapper
   # itself rather than a script some other interpreter is named for.
-  cp "$shell_bin" "$dir/treehouse"
+  cp "$treehouse_bin" "$dir/treehouse"
   mkfifo "$dir/hold"
   cat > "$dir/leaf.sh" <<'SH'
 if [ -n "${CHAIN_LEAF_CHILD:-}" ]; then sleep 300 & fi
@@ -737,12 +743,16 @@ printf '%s\n' "$$" > "$CHAIN_DIR/leaf.pid"
 read -t 300 -r _ <> "$CHAIN_DIR/hold"
 SH
   cat > "$dir/middle.sh" <<'SH'
-"$CHAIN_SHELL" "$CHAIN_DIR/leaf.sh"
+if [ "$CHAIN_SHELL_KIND" = zsh ]; then
+  "$CHAIN_SHELL" -f -i "$CHAIN_DIR/leaf.sh"
+else
+  "$CHAIN_SHELL" --norc -i "$CHAIN_DIR/leaf.sh"
+fi
 :
 SH
   # shellcheck disable=SC2016 # the chain variables are expanded by the pane shell, not here.
-  CHAIN_DIR="$dir" CHAIN_SHELL="$shell_bin" CHAIN_LEAF_CHILD="$child" \
-    "$shell_bin" --norc -c 'printf "%s\n" "$$" > "$CHAIN_DIR/pane.pid"; "$CHAIN_DIR/treehouse" "$CHAIN_DIR/middle.sh"; :' \
+  CHAIN_DIR="$dir" CHAIN_SHELL="$shell_bin" CHAIN_SHELL_KIND="$shell_kind" CHAIN_LEAF_CHILD="$child" \
+    "$treehouse_bin" --norc -c 'printf "%s\n" "$$" > "$CHAIN_DIR/pane.pid"; "$CHAIN_DIR/treehouse" "$CHAIN_DIR/middle.sh"; :' \
     >/dev/null 2>&1 &
   while [ ! -s "$dir/leaf.pid" ]; do
     waited=$((waited + 1))
