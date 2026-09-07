@@ -85,8 +85,9 @@
 # result from this session before reporting them), scope discipline (don't fix,
 # optimise, or extend anything the task doesn't ask for; implement the most
 # directly supported reading of an ambiguous task; test only where the task or
-# repo convention asks), and surgical edits (edit files in place rather than
-# rewriting them whole).
+# repo convention asks), surgical edits (edit files in place rather than
+# rewriting them whole), and shared-machine safety (never generate artificial
+# load or leave background processes behind).
 # Every ship mode's Definition of done adds one verification step before the
 # push, PR, or done line: verify the acceptance criteria with a fresh-context
 # subagent or a fresh read of the diff against the task, on a harness that
