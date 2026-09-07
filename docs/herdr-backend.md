@@ -145,7 +145,7 @@ The title must contain exactly one token occurrence across the named-session sna
 The task's ordinary metadata must be absent, and the candidate must have exactly one tab and exactly one pane.
 Before cleanup, Firstmate acquires the existing task-id spawn lock and then the shared named-session presentation lock.
 Inside both locks it takes one exact snapshot, requires one unambiguous non-target focus and the exact title, token, tab, and pane shape, positively confirms no registered agent, and reads Herdr's process information for the exact named-session pane.
-The process proof requires one recognized idle shell as both the shell process and the sole foreground process-group member, an operating-system process-table row for that shell, no child process, and a sleeping or idle shell state.
+The process proof requires one recognized idle shell leading the pane's foreground process group as its sole member, an operating-system process-table row for that shell, no child process, and a sleeping or idle shell state.
 The proof retries strict single samples for a bounded settle window because an idle interactive shell transiently hosts short-lived prompt helpers; a genuinely busy pane fails every sample.
 Any foreground command, child process, active shell job, unknown shell, unreadable process table, missing field, or API error preserves the pane.
 Firstmate immediately revalidates the same journal, metadata absence, workspace title and token uniqueness, one-tab and one-pane topology, exact pane relationship, absent agent, process proof, and non-target focus before calling the existing exact-pane focus-preserving close helper.
@@ -266,7 +266,8 @@ This prevents closing the workspace's last tab before a replacement exists.
 
 The generic Herdr agent-liveness probe reuses the same classifier.
 A structurally gone pane becomes `missing`, a restored agent-less shell becomes `dead`, and an unexpected read becomes `unreadable`.
-For any registered status, including `working`, `idle`, `blocked`, and `done`, a pane whose sole foreground process is its own recognized shell becomes `dead`, because Herdr can retain the registry record after a Pi or Claude process exits.
+For any registered status, including `working`, `idle`, `blocked`, and `done`, a pane whose sole foreground process is a recognized shell becomes `dead`, because Herdr can retain the registry record after a Pi or Claude process exits.
+That shell is the pane's own in a plain pane and the worktree's own shell in a pane opened through a `treehouse get` wrapper, so the proof anchors on the foreground process group leader rather than on the pane's `shell_pid`.
 A registered status stays `alive` while the pane's foreground belongs to a running agent or another non-shell process, so a stale status never authorizes recovery over a running process.
 Unlike tmux process-name inspection, Herdr combines native registration with its pane foreground process group rather than guessing from a generic interpreter name.
 

@@ -677,6 +677,167 @@ test_live_pi_composer_pane_still_refuses() {
   pass "fm_backend_herdr_agent_state: a pane whose foreground is still the Pi process stays alive"
 }
 
+# --- an agent that exited inside a treehouse subshell -------------------------
+# The follow-up defect (2026-09-06): a Pi worker in a pane opened through
+# `treehouse get` printed its resume line and exited, but the shell it exited
+# to is the worktree's own shell one level under the wrapper, not the pane's
+# own `shell_pid`. The proof still demanded the pane's own shell, so that pane
+# read alive and `bin/fm-control.sh <id> exit|relaunch` had no way back into
+# it. The proof now anchors on the foreground process group LEADER, which is
+# the same process in a plain pane and the nested shell in a treehouse one.
+
+# treehouse_process_info_fixture: the exact shape real herdr 0.8.2 reported for
+# the pane this was found on - shell_pid 58018 (the pane's own shell), one
+# foreground process 61323 named zsh, leading foreground process group 61323.
+treehouse_process_info_fixture() {  # <pane> <pane-shell-pid> <foreground-pid> [name] [argv0]
+  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":%s,"foreground_process_group_id":%s,"foreground_processes":[{"pid":%s,"name":"%s","argv0":"%s"}]}}}\n' \
+    "$1" "$2" "$3" "$3" "${4:-zsh}" "${5:-zsh}"
+}
+
+test_treehouse_nested_shell_record_is_dead() {
+  local out
+  out=$(herdr_agent_state_over_shell pi-treehouse-shell \
+    '{"result":{"agent":{"agent":"pi","agent_status":"done"}}}' \
+    "$(treehouse_process_info_fixture w1:p2 58018 61323)")
+  [ "$out" = dead ] || fail "a Pi pane that exited to its treehouse subshell must be recovery-grade dead, got '$out'"
+  pass "fm_backend_herdr_agent_state: a record left over the nested shell of a treehouse pane is dead"
+}
+
+test_treehouse_nested_shell_running_agent_stays_alive() {
+  local out
+  out=$(herdr_agent_state_over_shell pi-treehouse-live \
+    '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' \
+    "$(treehouse_process_info_fixture w1:p2 58018 61540 node pi)")
+  [ "$out" = alive ] || fail "a treehouse pane whose nested shell still runs its agent must stay alive, got '$out'"
+  pass "fm_backend_herdr_agent_state: a treehouse pane still running its agent under the nested shell stays alive"
+}
+
+# start_treehouse_chain <dir> [with-child]: run the REAL three-process shape a
+# treehouse pane leaves behind - the pane's own shell, a process really named
+# treehouse, and the worktree's own shell parked on a builtin read - and print
+# "<pane-shell-pid> <leaf-pid>". With <with-child> set, the leaf shell also
+# holds one live background child, which the idle half must still refuse.
+# The leaf parks on a read-write fifo open, so it sleeps with no child of its
+# own, needs no writer to release it, and expires on its own if a case exits
+# before its teardown. The wrapper is not itself inspected by the proof; it is
+# here so the fixture is the real pane shape rather than an approximation.
+# The chain must not inherit this function's stdout: the caller reads the pids
+# through a command substitution, which waits for every holder of that pipe.
+start_treehouse_chain() {  # <dir> [with-child]
+  local dir=$1 child=${2:-} shell_bin waited=0
+  mkdir -p "$dir"
+  shell_bin=$(command -v bash)
+  # A real executable named treehouse, so the middle process is the wrapper
+  # itself rather than a script some other interpreter is named for.
+  cp "$shell_bin" "$dir/treehouse"
+  mkfifo "$dir/hold"
+  cat > "$dir/leaf.sh" <<'SH'
+if [ -n "${CHAIN_LEAF_CHILD:-}" ]; then sleep 300 & fi
+printf '%s\n' "$$" > "$CHAIN_DIR/leaf.pid"
+read -t 300 -r _ <> "$CHAIN_DIR/hold"
+SH
+  cat > "$dir/middle.sh" <<'SH'
+"$CHAIN_SHELL" "$CHAIN_DIR/leaf.sh"
+:
+SH
+  # shellcheck disable=SC2016 # the chain variables are expanded by the pane shell, not here.
+  CHAIN_DIR="$dir" CHAIN_SHELL="$shell_bin" CHAIN_LEAF_CHILD="$child" \
+    "$shell_bin" --norc -c 'printf "%s\n" "$$" > "$CHAIN_DIR/pane.pid"; "$CHAIN_DIR/treehouse" "$CHAIN_DIR/middle.sh"; :' \
+    >/dev/null 2>&1 &
+  while [ ! -s "$dir/leaf.pid" ]; do
+    waited=$((waited + 1))
+    [ "$waited" -lt 200 ] || fail "the treehouse chain fixture never started its leaf shell"
+    sleep 0.05
+  done
+  printf '%s %s\n' "$(cat "$dir/pane.pid")" "$(cat "$dir/leaf.pid")"
+}
+
+# assert_chain_pids: a chain that failed to start would otherwise let both
+# cases below pass on empty pids and prove nothing.
+assert_chain_pids() {  # <dir> <pane-shell-pid> <leaf-pid>
+  case "$2" in ''|*[!0-9]*) stop_treehouse_chain "$1"; fail "the treehouse chain fixture reported no pane shell pid" ;; esac
+  case "$3" in ''|*[!0-9]*) stop_treehouse_chain "$1"; fail "the treehouse chain fixture reported no leaf shell pid" ;; esac
+}
+
+# leaf_child_count: the signal the two cases below are driven apart on, asserted
+# in each rather than assumed.
+leaf_child_count() {  # <leaf-pid>
+  ps -axo pid=,ppid= | awk -v leaf="$1" '$2 == leaf { n++ } END { print n + 0 }'
+}
+
+# chain_pid: a recorded fixture pid, and empty unless it really is one, so no
+# teardown can pass 0 to kill and signal the whole test process group.
+chain_pid() {  # <pid-file>
+  local pid
+  pid=$(cat "$1" 2>/dev/null) || return 0
+  case "$pid" in
+    ''|0|*[!0-9]*) return 0 ;;
+  esac
+  printf '%s\n' "$pid"
+}
+
+# Signals alone end the chain: nothing writes to the fifo, because that open
+# would block forever with no reader and orphan a process still holding the
+# test runner's stdout.
+stop_treehouse_chain() {  # <dir>
+  local dir=$1 leaf pane parent pid
+  leaf=$(chain_pid "$dir/leaf.pid")
+  pane=$(chain_pid "$dir/pane.pid")
+  for parent in "$leaf" "$pane"; do
+    [ -n "$parent" ] || continue
+    for pid in $(ps -axo pid=,ppid= | awk -v parent="$parent" '$2 == parent { print $1 }'); do
+      kill "$pid" 2>/dev/null || true
+    done
+  done
+  for pid in "$leaf" "$pane"; do
+    [ -n "$pid" ] || continue
+    kill "$pid" 2>/dev/null || true
+  done
+}
+
+# The idle half runs against the REAL process table here, so "no child" is a
+# measured fact about the leaf shell rather than a fixture assertion.
+idle_shell_proof_over_chain() {  # <case-name> <pane-shell-pid> <leaf-pid> <polls>
+  local dir log resp fb n=0
+  dir="$TMP_ROOT/$1"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  while [ "$n" -lt "$4" ]; do
+    n=$((n + 1))
+    treehouse_process_info_fixture w1:p2 "$2" "$3" > "$resp/$n.out"
+  done
+  fb=$(make_herdr_fakebin "$dir")
+  PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    FM_BACKEND_HERDR_IDLE_SHELL_PROOF_POLLS="$4" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_pane_idle_shell_pid fmtest w1:p2' "$ROOT"
+}
+
+test_idle_shell_proof_accepts_a_real_treehouse_chain() {
+  local dir pids pane_pid leaf_pid out children
+  dir="$TMP_ROOT/chain-idle/lab"
+  pids=$(start_treehouse_chain "$dir")
+  pane_pid=${pids%% *}; leaf_pid=${pids##* }
+  assert_chain_pids "$dir" "$pane_pid" "$leaf_pid"
+  children=$(leaf_child_count "$leaf_pid")
+  out=$(idle_shell_proof_over_chain chain-idle "$pane_pid" "$leaf_pid" 10)
+  stop_treehouse_chain "$dir"
+  [ "$children" = 0 ] || fail "the accepting case's leaf shell was supposed to hold no child, saw $children"
+  [ "$out" = "$leaf_pid" ] || fail "the idle-shell proof should accept the childless leaf shell $leaf_pid, got '$out'"
+  pass "fm_backend_herdr_pane_idle_shell_pid: a pane shell -> treehouse -> idle childless shell chain is one lone idle shell"
+}
+
+test_idle_shell_proof_refuses_a_treehouse_leaf_with_a_child() {
+  local dir pids pane_pid leaf_pid out status children
+  dir="$TMP_ROOT/chain-busy/lab"
+  pids=$(start_treehouse_chain "$dir" child)
+  pane_pid=${pids%% *}; leaf_pid=${pids##* }
+  assert_chain_pids "$dir" "$pane_pid" "$leaf_pid"
+  children=$(leaf_child_count "$leaf_pid")
+  out=$(idle_shell_proof_over_chain chain-busy "$pane_pid" "$leaf_pid" 1) && status=0 || status=$?
+  stop_treehouse_chain "$dir"
+  [ "$children" -ge 1 ] || fail "the refusing case's leaf shell was supposed to hold a live child, saw none"
+  [ "$status" -ne 0 ] || fail "the idle-shell proof accepted a leaf shell that still holds a live child: '$out'"
+  pass "fm_backend_herdr_pane_idle_shell_pid: a nested shell with a live child is not safe to end"
+}
+
 test_create_task_refuses_when_any_duplicate_label_is_live() {
   local dir log resp fb out status
   dir="$TMP_ROOT/dup-mixed-live"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -4560,6 +4721,10 @@ test_done_agent_record_with_live_process_stays_alive
 test_idle_pi_record_over_bare_shell_is_dead
 test_idle_claude_record_over_bare_shell_is_dead
 test_live_pi_composer_pane_still_refuses
+test_treehouse_nested_shell_record_is_dead
+test_treehouse_nested_shell_running_agent_stays_alive
+test_idle_shell_proof_accepts_a_real_treehouse_chain
+test_idle_shell_proof_refuses_a_treehouse_leaf_with_a_child
 test_create_task_husk_replacement_creates_before_closing
 test_create_task_creates_and_parses_ids
 test_create_task_creates_with_no_focus_flag

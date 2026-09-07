@@ -169,7 +169,7 @@ Both recorded runtime identities now classify the exact `pi-launcher` foreground
 
 Backend applicability was reviewed across every spawn adapter.
 Tmux needs the exact `pi-launcher`, `pi-signed`, `pi`, and `Pi` process identities for recovery-grade liveness.
-Herdr combines native registered-agent state with the pane's foreground process group: a registered record over its own bare shell is agent-free, while a running foreground agent remains alive.
+Herdr combines native registered-agent state with the pane's foreground process group: a registered record over a bare shell - the pane's own, or the worktree shell nested inside a `treehouse get` pane - is agent-free, while a running foreground agent remains alive.
 Zellij has no verified recovery-grade agent process probe, while Orca and cmux do not support secondmate spawns, so those three retain their existing generic ordinary-launch semantics without a new liveness matcher.
 
 The current classifier matrix and its refresh guard are recorded in [Composer classification matrix](#composer-classification-matrix), with portable shape coverage in `tests/fm-composer-lib.test.sh` and `tests/fm-composer-ghost.test.sh`.
@@ -656,6 +656,21 @@ ok - real herdr: exit over a pane whose agent has exited to a shell is idempoten
 The registered-agent cases run over a real foreground process, while the final case returns that pane to its bare shell with the record still registered.
 This proves the recovery-grade classifier uses the pane's foreground process group to override stale Herdr registry status, and that the control plane can safely treat the shell-only pane as already stopped.
 The guard covers the real Herdr control path and refreshes this record; run it after every Herdr upgrade rather than trusting the version above.
+
+A pane opened through a `treehouse get` wrapper does not return to its own `shell_pid` when its agent exits, so that shape was measured read-only on 2026-09-07 against Herdr 0.8.2, on the exact pane whose Pi session had ended:
+
+```sh
+herdr pane process-info --pane w7X:p2 | jq -c '{shell:.result.process_info.shell_pid, fpgid:.result.process_info.foreground_process_group_id, fg:[.result.process_info.foreground_processes[]|{pid,name,argv0}]}'
+```
+
+Observed output:
+
+```text
+{"shell":58018,"fpgid":61323,"fg":[{"pid":61323,"name":"zsh","argv0":"zsh"}]}
+```
+
+The pane's own shell 58018 runs the wrapper and the wrapper runs the worktree's shell 61323, so the terminal's foreground process group is led by the nested shell rather than by `shell_pid`.
+That is why the proof anchors on the foreground process group leader, and the portable regression for both the agent-free and still-alive verdicts of this shape is in `tests/fm-backend-herdr.test.sh`.
 
 ### Away-mode transport
 
