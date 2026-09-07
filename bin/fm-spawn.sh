@@ -724,6 +724,10 @@ HERDR_PROJECTION_ABORT_TASK_PANE=
 HERDR_PROJECTION_ABORT_SEEDED_PANE=
 HERDR_PRESENTATION_ORDER_LOCK=
 HERDR_PRESENTATION_ORDER_LOCK_HELD=0
+# 0.1s polls, so 60 seconds: enough headroom over the measured 9-second peer
+# hold for a slow or loaded host and a small queue of homes recovering at once,
+# while still bounded so a wedged holder refuses instead of hanging the spawn.
+HERDR_PRESENTATION_RECOVERY_LOCK_ATTEMPTS=600
 SPAWN_TASK_LOCK=
 SPAWN_TASK_LOCK_HELD=0
 SPAWN_CONTROL_LOCK=
@@ -887,13 +891,28 @@ trap spawn_abort_cleanup EXIT
 # One bounded lock per live Herdr session/socket, shared across all homes.
 # <session> is required so secondmate and primary spawns serialize against the
 # same session without writing any other home's state directory.
+#
+# <attempts> bounds the wait in 0.1s polls and defaults to the degrading
+# callers' budget. Contention on the fresh projected-create path and on abort
+# cleanup falls back to the ordinary flat layout, so a long wait there would
+# only delay a spawn that is going to continue anyway.
+# The presentation-journal recovery path passes
+# HERDR_PRESENTATION_RECOVERY_LOCK_ATTEMPTS instead, because its documented
+# answer to a contended lock is to refuse the spawn outright (see
+# docs/herdr-backend.md, "Presentation spaces"), and a peer holds this lock
+# from its own acquisition through worktree creation, projected pane creation,
+# and launch delivery - measured at 9 seconds for one peer recovery on an idle
+# macOS host, which the degrading budget alone cannot outlast. Refusing on
+# every genuinely concurrent recovery is not the same contract as refusing on a
+# lock that is still held after waiting for the peer that holds it.
 spawn_herdr_presentation_order_lock_acquire() {
-  local session=${1:-} attempt lock_path
+  local session=${1:-} attempts=${2:-50} attempt lock_path
   [ -n "$session" ] || session=$(fm_backend_herdr_session)
+  case "$attempts" in ''|*[!0-9]*) return 1 ;; esac
   lock_path=$(fm_backend_herdr_presentation_session_lock_path "$session") || return 1
   HERDR_PRESENTATION_ORDER_LOCK="$lock_path"
   attempt=0
-  while [ "$attempt" -lt 50 ]; do
+  while [ "$attempt" -lt "$attempts" ]; do
     if fm_lock_try_acquire "$HERDR_PRESENTATION_ORDER_LOCK"; then
       HERDR_PRESENTATION_ORDER_LOCK_HELD=1
       return 0
@@ -2284,7 +2303,8 @@ case "$BACKEND" in
           echo "error: herdr presentation recovery could not ensure its exact named session" >&2
           exit 1
         }
-        spawn_herdr_presentation_order_lock_acquire "$HERDR_SES" || {
+        spawn_herdr_presentation_order_lock_acquire "$HERDR_SES" \
+          "$HERDR_PRESENTATION_RECOVERY_LOCK_ATTEMPTS" || {
           echo "error: herdr presentation recovery could not acquire its session lock; refusing a concurrent resume" >&2
           exit 1
         }

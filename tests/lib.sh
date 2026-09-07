@@ -109,8 +109,19 @@ fm_test_cleanup() {
 }
 
 fm_test_tmproot() {
-  local prefix=${1:-fm-test} root
+  local prefix=${1:-fm-test} root canonical
   root=$(mktemp -d "${TMPDIR:-/tmp}/${prefix}.XXXXXX") || return 1
+  # macOS puts TMPDIR under /var, which is a symlink to /private/var, so mktemp
+  # hands back a path that still traverses a symlink.
+  # Firstmate refuses a state root whose recorded path is not already its own
+  # symlink-free physical path (fm_procevent_claim_state_root_identity), so a
+  # fixture rooted at the raw mktemp path exercises that refusal instead of the
+  # behavior under test. Resolve it once here so every fixture starts canonical.
+  if ! canonical=$(cd -P -- "$root" && pwd -P); then
+    rm -rf "$root"
+    return 1
+  fi
+  root=$canonical
   if ! printf '%s\n%s\n' "$$" "$FM_TEST_OWNER_IDENTITY" > "$root/.fm-test-fixture" ||
     ! printf '%s\n' "$root" >> "$FM_TEST_CLEANUP_REGISTRY"; then
     rm -rf "$root"
@@ -314,6 +325,19 @@ assert_grep() {
 # assert_no_grep <pattern> <file> <msg>: fixed-string grep must NOT match.
 assert_no_grep() {
   ! grep -F -- "$1" "$2" >/dev/null || fail "$3"
+}
+
+# assert_exact_line <file> <line> <msg>: <file> must contain <line> whole.
+# Deliberately not grep -Fx: macOS BSD grep aborts with "out of memory" on a
+# fixed pattern past roughly 4 KB, so a long asserted line turns a real
+# comparison into a tool failure. The wanted text travels in the environment
+# rather than in an argument so awk never reinterprets a backslash in it, and
+# both operands are concatenated with "" so awk compares them as strings: bare
+# `==` would compare two numeric-looking values numerically and match "0123"
+# against "123".
+assert_exact_line() {
+  FM_TEST_WANT_LINE=$2 awk '$0 "" == ENVIRON["FM_TEST_WANT_LINE"] "" { found = 1 }
+    END { exit(found ? 0 : 1) }' "$1" || fail "$3"
 }
 
 # assert_absent <path> <msg>: path must not exist.
