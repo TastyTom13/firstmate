@@ -415,7 +415,7 @@ test_a_failed_send_is_retried_on_the_next_run() {
 }
 
 test_busy_lifecycle_locks_never_hold_up_the_digest() {
-  local label home mate fakebin snap lock ready release holder notify out
+  local label home mate fakebin snap lock ready release holder notify out waited
   for label in reconcile control meta; do
     { read -r home; read -r mate; read -r fakebin; } < <(make_main_home "busy-$label" mate)
     snap="$home/snapshot.json"
@@ -432,7 +432,15 @@ test_busy_lifecycle_locks_never_hold_up_the_digest() {
     while [ ! -f "$ready" ]; do sleep 0.01; done
     run_notify "$home" "$fakebin" "busy-$label" "$snap" > "$home/notify.out" 2>&1 &
     notify=$!
-    sleep 0.2
+    # What is under test is that the busy lock never held the run up, so wait
+    # for the exit by iteration while the lock is STILL held rather than
+    # budgeting wall clock. A fixed sleep turns a slow but unblocked run on a
+    # loaded machine into a false failure, and this case did exactly that.
+    waited=0
+    while [ "$waited" -lt 500 ] && kill -0 "$notify" 2>/dev/null; do
+      sleep 0.02
+      waited=$((waited + 1))
+    done
     if kill -0 "$notify" 2>/dev/null; then
       : > "$release"
       wait "$notify" 2>/dev/null || true
