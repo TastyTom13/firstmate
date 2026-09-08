@@ -73,10 +73,24 @@
 # releases its durable treehouse lease so the pool slot is freed,
 # never left leased forever. If the treehouse return fails, teardown leaves the
 # leased home and state in place instead of hiding a still-held lease.
-# Usage: fm-teardown.sh <task-id> [--force]
+# REFUSES, before any pool return or directory removal, when another task record
+# in the same FM_HOME carries an identical worktree= value: a pool path outlives
+# the record that named it, so a stale record's teardown would return, reset, and
+# reap the LIVE task's isolated copy. The refusal names the other task and the
+# path, changes nothing, and is not bypassed by --force, which authorizes
+# discarding this task's own work rather than another task's.
+# Usage: fm-teardown.sh <task-id> [--force | --release-shared-record]
 #   --force skips ordinary-task dirty and landed-work checks, skips scout report
 #   checks, and discards secondmate child work for kind=secondmate. Only use it
 #   when the captain has explicitly said to discard the work.
+#   --release-shared-record is the answer to that shared-worktree refusal, and is
+#   accepted ONLY while another task record still names this task's worktree (and
+#   never for kind=secondmate). It retires this task's own records - endpoint,
+#   meta, status presentation, steering inbox, checks and PR poll artifacts, busy
+#   state, per-task temp root, and the backlog close - and touches the shared
+#   worktree in no way at all: no landed-work inspection, no no-mistakes run
+#   abort, no browser bridge sweep, no process reap, no branch delete, and no
+#   pool return. It is mutually exclusive with --force.
 #
 # Transient / stale worktree git lock recovery (teardown-lock-race): a crew process
 # killed mid-git-operation can leave a .git/worktrees/<wt>/index.lock (or, for a
@@ -197,7 +211,21 @@ if [ "$#" -lt 1 ] || ! fm_task_id_path_safe "$1"; then
   exit 2
 fi
 ID=$1
-FORCE=${2:-}
+shift
+FORCE=
+RELEASE_SHARED_RECORD=0
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    --force) FORCE=--force ;;
+    --release-shared-record) RELEASE_SHARED_RECORD=1 ;;
+    *) echo "error: invalid teardown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+if [ "$FORCE" = --force ] && [ "$RELEASE_SHARED_RECORD" = 1 ]; then
+  echo "error: --force and --release-shared-record are mutually exclusive; the record release never discards worktree work" >&2
+  exit 2
+fi
 fm_backlog_directory_present "$STATE" "state directory" || {
   echo "error: teardown refused: $FM_BACKLOG_TRANSITION_ERROR" >&2
   exit 1
@@ -284,6 +312,52 @@ fm_backlog_record_present "$META" "task record" "$STATE" || {
 }
 TEARDOWN_META_KIND=$(fm_meta_get "$META" kind)
 [ -n "$TEARDOWN_META_KIND" ] || TEARDOWN_META_KIND=ship
+# Shared-worktree preflight. A pool path outlives the record that named it: a
+# stale record can still carry worktree=<path> after the pool handed that exact
+# path to a LIVE task (observed 2026-09-08, when the stale record's return reset
+# the path to its default branch and killed the live task's agent). Every
+# destructive step below - the pool return, the branch delete, the worktree
+# process reap, the browser bridge sweep, the run abort - is aimed at that
+# recorded path, so this metadata-only scan runs before any of them and before
+# the remote path, and refuses when another task record in this home names the
+# identical worktree= value. Comparison is literal: fm-spawn records one
+# resolved path per task, so an identical string is the collision, and a
+# differing string is a different slot.
+teardown_shared_worktree_sibling() {  # <worktree-path>; prints the first other task id
+  local wt=$1 meta base other
+  [ -n "$wt" ] || return 1
+  for meta in "$STATE"/*.meta; do
+    [ -e "$meta" ] || continue
+    base=${meta##*/}
+    other=${base%.meta}
+    [ "$other" != "$ID" ] || continue
+    [ "$(fm_meta_get "$meta" worktree)" = "$wt" ] || continue
+    printf '%s\n' "$other"
+    return 0
+  done
+  return 1
+}
+TEARDOWN_META_WORKTREE=$(fm_meta_get "$META" worktree)
+TEARDOWN_SHARED_WORKTREE_SIBLING=
+if TEARDOWN_SHARED_WORKTREE_SIBLING_FOUND=$(teardown_shared_worktree_sibling "$TEARDOWN_META_WORKTREE"); then
+  TEARDOWN_SHARED_WORKTREE_SIBLING=$TEARDOWN_SHARED_WORKTREE_SIBLING_FOUND
+fi
+if [ "$RELEASE_SHARED_RECORD" = 1 ] && [ "$TEARDOWN_META_KIND" = secondmate ]; then
+  echo "REFUSED: --release-shared-record does not apply to secondmate $ID; a secondmate home is retired whole." >&2
+  exit 1
+fi
+if [ -n "$TEARDOWN_SHARED_WORKTREE_SIBLING" ] && [ "$RELEASE_SHARED_RECORD" != 1 ]; then
+  echo "REFUSED: task $ID records worktree $TEARDOWN_META_WORKTREE, which task $TEARDOWN_SHARED_WORKTREE_SIBLING also records." >&2
+  echo "Returning or resetting that path would destroy the other task's work, so nothing was changed; --force does not authorize it either." >&2
+  echo "If this record is the stale one, release only its own records with: bin/fm-teardown.sh $ID --release-shared-record" >&2
+  echo "That closes this task's backlog item and removes its own state files, leaving the shared local copy to $TEARDOWN_SHARED_WORKTREE_SIBLING." >&2
+  exit 1
+fi
+if [ "$RELEASE_SHARED_RECORD" = 1 ] && [ -z "$TEARDOWN_SHARED_WORKTREE_SIBLING" ]; then
+  echo "REFUSED: --release-shared-record applies only while another task record names this task's worktree." >&2
+  echo "No other task record names ${TEARDOWN_META_WORKTREE:-<no recorded worktree>}; run an ordinary teardown so the isolated copy is returned too." >&2
+  exit 1
+fi
 TEARDOWN_CLEANUP_RECOVERY=$(fm_meta_get "$META" cleanup_recovery)
 TEARDOWN_META_SPAWN_GEN=
 TEARDOWN_BACKLOG_APPLIES=0
@@ -2727,7 +2801,8 @@ if [ -n "$X_REQUEST" ]; then
   echo "warning: task $ID still carries an unreconciled Relay request link ($X_REQUEST) on its task record." >&2
 fi
 
-if [ "$BACKEND" = orca ] && [ "$KIND" != scout ] && [ "$KIND" != secondmate ] && [ "$FORCE" != "--force" ]; then
+if [ "$BACKEND" = orca ] && [ "$KIND" != scout ] && [ "$KIND" != secondmate ] \
+   && [ "$FORCE" != "--force" ] && [ "$RELEASE_SHARED_RECORD" != 1 ]; then
   if ! inspectable_git_worktree "$WT"; then
     echo "REFUSED: Orca ship task $ID has no inspectable git worktree at ${WT:-<missing>}." >&2
     echo "Cannot verify dirty or unlanded work; restore the worktree path or get explicit OK to discard, then --force." >&2
@@ -2737,7 +2812,9 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != scout ] && [ "$KIND" != secondmate ] &&
   ORCA_PATH_MATCH_VERIFIED=1
 fi
 
-if [ -d "$WT" ] && [ "$FORCE" != "--force" ]; then
+# The record release leaves the isolated copy alone, so its contents are the
+# LIVE task's business, not this stale record's landed-work question.
+if [ -d "$WT" ] && [ "$FORCE" != "--force" ] && [ "$RELEASE_SHARED_RECORD" != 1 ]; then
   if validate_worktree_teardown_safety; then
     :
   else
@@ -2756,7 +2833,7 @@ fi
 # ordering, and it leaves the destructive phase with one recorded response
 # sequence even when the terminal close itself is best-effort.
 if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ] && [ -e "$WT" ] \
-   && [ "$ORCA_PATH_MATCH_VERIFIED" != 1 ]; then
+   && [ "$RELEASE_SHARED_RECORD" != 1 ] && [ "$ORCA_PATH_MATCH_VERIFIED" != 1 ]; then
   require_orca_worktree_path_match "$ORCA_WORKTREE_ID" "$WT" || exit 1
   ORCA_PATH_MATCH_VERIFIED=1
 fi
@@ -2826,7 +2903,11 @@ if [ "$BACKEND" = herdr ] \
 fi
 
 if [ "$KIND" != secondmate ]; then
-  conclude_task_no_mistakes_run "$WT"
+  # A record release never reaches into the isolated copy: its parked run,
+  # browser bridge, and processes belong to the task that holds that path now.
+  if [ "$RELEASE_SHARED_RECORD" != 1 ]; then
+    conclude_task_no_mistakes_run "$WT"
+  fi
   BACKEND_STOPPED=0
   if [ "$BACKEND" = herdr ] && [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
     if teardown_herdr_session_lock_held "$HERDR_PRESENTATION_SESSION" \
@@ -2861,7 +2942,9 @@ if [ "$KIND" != secondmate ]; then
        && backend_endpoint_shutdown_confirmed; then
     BACKEND_STOPPED=1
   fi
-  if [ "$BACKEND_STOPPED" -eq 1 ] && worktree_owned_by_task; then
+  if [ "$RELEASE_SHARED_RECORD" = 1 ]; then
+    echo "note: leaving the shared local copy $WT untouched for $ID; skipping its browser bridge sweep and process reap" >&2
+  elif [ "$BACKEND_STOPPED" -eq 1 ] && worktree_owned_by_task; then
     "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --apply --worktree "$WT" >&2 || \
       echo "warning: browser bridge inspection failed for $ID; no unverified bridge was signaled" >&2
   elif [ "$BACKEND_STOPPED" -ne 1 ]; then
@@ -2869,7 +2952,7 @@ if [ "$KIND" != secondmate ]; then
   else
     echo "warning: $BACKEND browser bridge sweep skipped for $ID; current worktree ownership was not confirmed" >&2
   fi
-  if [ "$BACKEND_STOPPED" -eq 1 ]; then
+  if [ "$BACKEND_STOPPED" -eq 1 ] && [ "$RELEASE_SHARED_RECORD" != 1 ]; then
     reap_task_worktree_processes worktree "$WT" "$TASK_TMP"
   fi
 else
@@ -2899,7 +2982,7 @@ fi
 "$SCRIPT_DIR/fm-remote-job-reap-orphans.sh" >&2 || true
 
 # Best-effort: drop the local task branch so the shared repo does not accumulate refs.
-if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
+if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ] && [ "$RELEASE_SHARED_RECORD" != 1 ]; then
   if [ "$ORCA_PATH_MATCH_VERIFIED" != 1 ]; then
     require_orca_worktree_path_match_if_present "$ORCA_WORKTREE_ID" "$WT" || exit 1
     ORCA_PATH_MATCH_VERIFIED=1
@@ -2916,7 +2999,7 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
       "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
   fi
   fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID"
-elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
+elif [ -d "$WT" ] && [ "$KIND" != secondmate ] && [ "$RELEASE_SHARED_RECORD" != 1 ]; then
   branch=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
   if [ "$branch" != "HEAD" ]; then
     if git -C "$WT" checkout --detach -q 2>/dev/null; then
@@ -3038,5 +3121,9 @@ fi
 if [ -d "$STATE" ]; then
   "$SCRIPT_DIR/fm-home-summary-refresh.sh" --best-effort || true
 fi
-echo "teardown $ID complete (window $T, worktree $WT)"
+if [ "$RELEASE_SHARED_RECORD" = 1 ]; then
+  echo "teardown $ID complete: records only (window $T); local copy $WT left in place for task $TEARDOWN_SHARED_WORKTREE_SIBLING"
+else
+  echo "teardown $ID complete (window $T, worktree $WT)"
+fi
 backlog_refresh_reminder
