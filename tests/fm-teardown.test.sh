@@ -49,6 +49,14 @@
 #   (w) index.lock mtime read failure                         -> lock kept, REFUSE
 #   (x) transient lock cleared after first failed return      -> retry ALLOW
 #   (y) persistent lock (never clears, not provably stale)    -> REFUSE loudly
+#
+# Also covers the shared-worktree preflight: a pool path outlives the record that
+# named it, so a stale record must never return, reset, or reap a worktree a live
+# task still records (bin/fm-teardown.sh's teardown_shared_worktree_sibling).
+#   (z1) another task record names the same worktree          -> REFUSE, nothing changed
+#   (z2) same, plus --force                                   -> REFUSE (force is not authority)
+#   (z3) same, plus --release-shared-record                   -> records only, worktree intact
+#   (z4) --release-shared-record with no sharing record       -> REFUSE (wrong tool)
 set -u
 
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -2651,6 +2659,141 @@ EOF
   pass "the run abort and the leaked-process reap both complete before the destructive worktree return"
 }
 
+# --- shared-worktree preflight -------------------------------------------------
+# A treehouse mock that records every invocation, so a test can prove the pool
+# return never ran rather than only that the directory survived.
+add_logging_treehouse() {
+  local case_dir=$1
+  cat > "$case_dir/fakebin/treehouse" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${TREEHOUSE_CALL_LOG:?}"
+exit 0
+SH
+  chmod +x "$case_dir/fakebin/treehouse"
+}
+
+# Write a second live task record pointing at the SAME worktree path, which is
+# what a pool handoff to a new task leaves behind next to a stale record.
+write_sibling_meta_sharing_worktree() {
+  local case_dir=$1
+  fm_write_meta "$case_dir/state/task-x2.meta" \
+    "window=firstmate:fm-task-x2" \
+    "endpoint_task_id=task-x2" \
+    "worktree=$case_dir/wt" \
+    "project=$case_dir/project" \
+    "kind=ship" \
+    "mode=no-mistakes" \
+    "spawn_gen=teardown-test-task-x2"
+}
+
+test_shared_worktree_refuses_and_changes_nothing() {
+  local case_dir rc head
+  case_dir=$(make_case shared-worktree-refuse)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  write_sibling_meta_sharing_worktree "$case_dir"
+  seed_backlog_in_flight "$case_dir"
+  add_logging_treehouse "$case_dir"
+  head=$(git -C "$case_dir/wt" rev-parse HEAD)
+
+  rc=0
+  TREEHOUSE_CALL_LOG="$case_dir/treehouse.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 1 "$rc" "shared-worktree: teardown should refuse"
+  assert_grep REFUSED "$case_dir/stderr" "shared-worktree: no REFUSED line in stderr"
+  assert_grep task-x2 "$case_dir/stderr" "shared-worktree: refusal did not name the other task"
+  assert_grep "$case_dir/wt" "$case_dir/stderr" "shared-worktree: refusal did not name the shared path"
+  assert_grep "release-shared-record" "$case_dir/stderr" \
+    "shared-worktree: refusal did not print the records-only alternative"
+  assert_absent "$case_dir/treehouse.log" "shared-worktree: the pool return ran despite the refusal"
+  [ -e "$case_dir/state/task-x1.meta" ] \
+    || fail "shared-worktree: the refused teardown removed its own task record"
+  [ -e "$case_dir/state/task-x2.meta" ] \
+    || fail "shared-worktree: the refused teardown removed the other task's record"
+  [ "$(git -C "$case_dir/wt" rev-parse HEAD)" = "$head" ] \
+    || fail "shared-worktree: the shared worktree HEAD moved during a refused teardown"
+  [ "$(backlog_row_state "$case_dir")" = in_flight ] \
+    || fail "shared-worktree: a refused teardown closed the backlog item anyway"
+  pass "teardown refuses a worktree another task record still names, and changes nothing"
+}
+
+test_shared_worktree_refusal_survives_force() {
+  local case_dir rc
+  case_dir=$(make_case shared-worktree-force)
+  write_meta "$case_dir" no-mistakes ship
+  wt_commit "$case_dir" "unpushed work"
+  write_sibling_meta_sharing_worktree "$case_dir"
+  add_logging_treehouse "$case_dir"
+
+  rc=0
+  TREEHOUSE_CALL_LOG="$case_dir/treehouse.log" \
+    run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 1 "$rc" "shared-worktree-force: --force should not bypass the shared-worktree refusal"
+  assert_grep REFUSED "$case_dir/stderr" "shared-worktree-force: no REFUSED line in stderr"
+  assert_absent "$case_dir/treehouse.log" "shared-worktree-force: --force still returned the shared worktree"
+  [ -e "$case_dir/state/task-x1.meta" ] \
+    || fail "shared-worktree-force: records were removed despite the refusal"
+  pass "--force authorizes discarding this task's work, never another task's shared worktree"
+}
+
+test_release_shared_record_retires_records_only() {
+  local case_dir rc head out
+  case_dir=$(make_case shared-worktree-release)
+  write_meta "$case_dir" no-mistakes ship
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/7' >> "$case_dir/state/task-x1.meta"
+  wt_commit "$case_dir" "the live task's unlanded work"
+  printf '%s\n' "live edit" > "$case_dir/wt/live-file.txt"
+  write_sibling_meta_sharing_worktree "$case_dir"
+  seed_backlog_in_flight "$case_dir"
+  add_logging_treehouse "$case_dir"
+  mkdir -p "$case_dir/state/task-x1.inbox"
+  : > "$case_dir/state/task-x1.inbox/001.msg"
+  head=$(git -C "$case_dir/wt" rev-parse HEAD)
+
+  rc=0
+  out=$(TREEHOUSE_CALL_LOG="$case_dir/treehouse.log" \
+    run_teardown "$case_dir" --release-shared-record 2> "$case_dir/stderr") || rc=$?
+
+  expect_code 0 "$rc" "release-shared-record: records-only teardown should succeed: $(cat "$case_dir/stderr")"
+  assert_absent "$case_dir/treehouse.log" "release-shared-record: the pool return ran anyway"
+  assert_absent "$case_dir/state/task-x1.meta" "release-shared-record: the stale task record survived"
+  assert_absent "$case_dir/state/task-x1.inbox" "release-shared-record: the steering inbox survived"
+  [ -e "$case_dir/state/task-x2.meta" ] \
+    || fail "release-shared-record: the live task's record was removed"
+  [ -d "$case_dir/wt" ] || fail "release-shared-record: the shared worktree was removed"
+  [ "$(git -C "$case_dir/wt" rev-parse HEAD)" = "$head" ] \
+    || fail "release-shared-record: the shared worktree was reset"
+  [ -f "$case_dir/wt/live-file.txt" ] \
+    || fail "release-shared-record: the live task's uncommitted file was discarded"
+  [ "$(backlog_row_state "$case_dir")" = "done" ] \
+    || fail "release-shared-record: the backlog item was not closed: $(backlog_row_state "$case_dir")"
+  printf '%s\n' "$out" | grep -F "left in place" >/dev/null \
+    || fail "release-shared-record: the outcome line did not say the local copy was kept: $out"
+  pass "--release-shared-record retires only the stale record and leaves the shared worktree intact"
+}
+
+test_release_shared_record_refuses_without_a_sharing_record() {
+  local case_dir rc
+  case_dir=$(make_case shared-worktree-release-unshared)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  add_logging_treehouse "$case_dir"
+
+  rc=0
+  TREEHOUSE_CALL_LOG="$case_dir/treehouse.log" \
+    run_teardown "$case_dir" --release-shared-record > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 1 "$rc" "release-unshared: the flag should refuse when no other record shares the worktree"
+  assert_grep REFUSED "$case_dir/stderr" "release-unshared: no REFUSED line in stderr"
+  assert_absent "$case_dir/treehouse.log" "release-unshared: a refused run still returned the worktree"
+  [ -e "$case_dir/state/task-x1.meta" ] \
+    || fail "release-unshared: a refused run removed the task record"
+  pass "--release-shared-record refuses outside the shared-worktree case it exists for"
+}
+
+
 test_local_only_fork_remote_allows
 test_teardown_retires_its_browser_bridge_family
 test_teardown_closes_the_backlog_item_itself
@@ -2710,3 +2853,7 @@ test_process_spawned_during_grace_is_reaped_on_later_pass
 test_persistent_scan_refuses_after_bounded_retries
 test_process_exit_during_identity_lookup_does_not_refuse
 test_run_abort_precedes_process_reap_precedes_worktree_removal
+test_shared_worktree_refuses_and_changes_nothing
+test_shared_worktree_refusal_survives_force
+test_release_shared_record_retires_records_only
+test_release_shared_record_refuses_without_a_sharing_record
