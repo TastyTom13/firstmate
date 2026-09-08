@@ -422,11 +422,30 @@ spawn_secondmate_task() {
 }
 
 teardown_task() {  # <id> <home>
-  local id=$1 home=$2
-  FM_GATE_REFUSE_BYPASS=1 FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
-    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_CONFIG_OVERRIDE="$home/config" \
-    "$ROOT/bin/fm-teardown.sh" "$id" --force
+  local id=$1 home=$2 err rc
+  err=$(mktemp "$TMP_ROOT/teardown-$id.XXXXXX") || return 1
+  if FM_GATE_REFUSE_BYPASS=1 FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+      FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+      FM_CONFIG_OVERRIDE="$home/config" \
+      "$ROOT/bin/fm-teardown.sh" "$id" --force 2>"$err"; then
+    rm -f "$err"
+    return 0
+  fi
+  rc=$?
+  if grep -F "release only its own records with: bin/fm-teardown.sh $id --release-shared-record" "$err" >/dev/null 2>&1; then
+    FM_GATE_REFUSE_BYPASS=1 FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+      FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+      FM_CONFIG_OVERRIDE="$home/config" \
+      "$ROOT/bin/fm-teardown.sh" "$id" --release-shared-record
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+      rm -f "$err"
+      return 0
+    fi
+  fi
+  cat "$err" >&2
+  rm -f "$err"
+  return "$rc"
 }
 
 finish_concurrent_teardown() {  # <id> <status> <stdout> <stderr>
