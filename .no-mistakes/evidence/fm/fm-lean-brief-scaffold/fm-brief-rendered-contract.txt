@@ -1,0 +1,47 @@
+
+=== mode=no-mistakes ===
+# Definition of done
+Delivery contract: mode=no-mistakes
+The task is complete only when committed on your branch.
+Before you report it done, run a cheap pre-flight only: the project's typecheck and the test files you touched, plus a production build only when the change adds routes, dependencies, or client/server boundaries.
+Do not run the full test suite, a self-review subagent, or any audit skill: the review pipeline and CI own the full suite, the production build, and the code review.
+When you believe it is complete and verified, append `done: {summary}` to the status file and stop.
+Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
+
+You drive no-mistakes by responding to its gates, not by implementing fixes.
+Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and `no-mistakes axi run --help` plus the `help` lines in each `axi` response are authoritative and version-matched to the installed binary.
+When starting no-mistakes, make `--intent` preserve all relevant content from this brief's `# Task` section plus every later accepted Firstmate requirement, clarification, constraint, exclusion, and supersession, carrying only each requirement's current accepted form; retain direct requirements instead of substituting a diff summary, and exclude generic operational, status, delivery, and other scaffold boilerplate unless it is task-specific.
+Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
+
+Three firstmate-specific rules layer on top of that guidance:
+- ask-user findings are never yours to answer: escalate to firstmate (rule 6) and stop.
+  Firstmate applies `ask-user-authority` and obtains any required captain decision.
+  When the decision comes back, feed it to the gate with `no-mistakes axi respond` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
+- NEVER pass `--yes` (or `-y`) to `no-mistakes axi run` or `no-mistakes axi respond`. It is banned fleet-wide.
+  It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
+- After two review rounds, respond to any remaining warning-level findings with the gate's accept or skip action and say why in that response, unless a finding is consequential: data loss, a security hole, money, or an accepted behaviour it would break.
+
+Once no-mistakes reports the PR, read '/tmp/fm-brief-e2e.7GeBMk/state/e2e-nomistakes.meta' and turn its `harness=`, `model=`, and `effort=` fields into a trailing PR-body line `Built by: <harness>/<model> at <effort>` (an unset model or effort reads back as the literal `default`, matching how it was recorded); for example: `awk -F= '$1=="harness"{h=$2} $1=="model"{m=$2} $1=="effort"{e=$2} END{printf "Built by: %s/%s at %s", h, m, e}' '/tmp/fm-brief-e2e.7GeBMk/state/e2e-nomistakes.meta'`. Append that exact line, on its own line, to the PR body before you report done, where `<number>` is the trailing path segment of the PR url: `body=$(mktemp) && gh pr view <number> --json body -q .body > "$body"`, append the `Built by:` line to that file, then `gh-axi pr edit <number> --body-file "$body"`. Use a fresh `mktemp` path, never a fixed name like /tmp/pr-body.md: crewmates ship concurrently on one host, and a shared scratch file lets another task's body overwrite yours.
+After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append `done: PR {url} checks green`, follow it with `paused: awaiting merge of PR {url}`, and stop. You are finished.
+That second line declares a known external wait, so your idle pane is rechecked on a long cadence instead of being treated as a possible wedge.
+
+=== mode=direct-PR ===
+# Definition of done
+Delivery contract: mode=direct-PR
+This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
+The task is complete only when committed on your branch.
+Before you push, verify the acceptance criteria with a fresh read of the diff against the task - no subagent - and fix what it finds; nobody else reviews this work before merge.
+Before opening the PR, read '/tmp/fm-brief-e2e.7GeBMk/state/e2e-direct.meta' and turn its `harness=`, `model=`, and `effort=` fields into a trailing PR-body line `Built by: <harness>/<model> at <effort>` (an unset model or effort reads back as the literal `default`, matching how it was recorded); for example: `awk -F= '$1=="harness"{h=$2} $1=="model"{m=$2} $1=="effort"{e=$2} END{printf "Built by: %s/%s at %s", h, m, e}' '/tmp/fm-brief-e2e.7GeBMk/state/e2e-direct.meta'`. Include that exact line, on its own line, in the PR body you pass to `gh-axi`.
+When it is implemented, committed, and verified, push your branch and open a PR with `gh-axi`, then append `done: PR {url}` to the status file, follow it with `paused: awaiting merge of PR {url}`, and stop.
+That second line declares a known external wait, so your idle pane is rechecked on a long cadence instead of being treated as a possible wedge.
+Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
+
+=== mode=local-only ===
+# Definition of done
+Delivery contract: mode=local-only
+This task ships **local-only**: no remote, no PR, no pipeline.
+The task is complete only when committed on your branch `fm/e2e-local`. Do NOT push, do NOT open a PR, do NOT merge.
+Keep your branch a clean fast-forward onto the current default branch - if `main` has advanced, rebase onto it so the eventual merge stays a fast-forward.
+Before you report it ready, verify the acceptance criteria with a fresh read of the diff against the task - no subagent - and fix what it finds; nobody else reviews this work before merge.
+When it is implemented, committed, and verified, append `done: ready in branch fm/e2e-local` to the status file and stop.
+The configured merge authority approves the ready branch, then firstmate merges it into local `main` through the guarded fast-forward path.
