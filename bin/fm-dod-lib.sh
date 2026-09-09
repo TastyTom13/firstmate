@@ -20,11 +20,17 @@
 # external wait rather than an idle pane the watcher escalates as stale.
 # local-only raises no PR and therefore carries no such line, and no
 # "Built by" instruction either, since it never opens one.
-# Every mode also opens its closing step with one pre-done verification line
-# (fable-prompting-2026-09-03 P4): a fresh-context subagent or a fresh diff
-# read against the task, fixed before the worker finishes. This sits in front
-# of whatever the mode already does and is not a second review pipeline; the
-# no-mistakes mode's own gates are unchanged.
+# Every mode also carries one pre-done check before its closing step
+# (fable-prompting-2026-09-03 P4, leaned out by the 2026-09-09 captain ruling),
+# sized to what already reviews that mode. no-mistakes gets a cheap pre-flight
+# only - the project's typecheck plus the test files the worker touched, with a
+# production build only when the change adds routes, dependencies, or
+# client/server boundaries - because the review pipeline and CI own the full
+# suite, the production build, and the code review. direct-PR and local-only
+# keep a fresh read of the diff against the task, with no subagent, because
+# nothing else reviews that work before merge. The check sits in front of
+# whatever the mode already does and never replaces it; the no-mistakes mode's
+# own gates are unchanged.
 # The no-mistakes "Built by" recipe is the fleet's ONE sanctioned use of raw
 # `gh` instead of `gh-axi`: gh-axi has no way to read a PR body back verbatim
 # (`pr view --full` renders a record, and `--body-file` has no stdin form), so
@@ -59,7 +65,7 @@ fm_dod_block() {  # <mode> <task-id> <meta-path>
 Delivery contract: mode=direct-PR
 This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
-Before you push, verify the acceptance criteria with a fresh-context subagent or a fresh read of the diff against the task - on a harness that offers subagents - and fix what it finds.
+Before you push, verify the acceptance criteria with a fresh read of the diff against the task - no subagent - and fix what it finds; nobody else reviews this work before merge.
 Before opening the PR, read $meta and turn its \`harness=\`, \`model=\`, and \`effort=\` fields into a trailing PR-body line \`Built by: <harness>/<model> at <effort>\` (an unset model or effort reads back as the literal \`default\`, matching how it was recorded); for example: \`awk -F= '\$1=="harness"{h=\$2} \$1=="model"{m=\$2} \$1=="effort"{e=\$2} END{printf "Built by: %s/%s at %s", h, m, e}' $meta\`. Include that exact line, on its own line, in the PR body you pass to \`gh-axi\`.
 When it is implemented, committed, and verified, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file, follow it with \`$paused: awaiting merge of PR {url}\`, and stop.
 That second line declares a known external wait, so your idle pane is rechecked on a long cadence instead of being treated as a possible wedge.
@@ -73,7 +79,7 @@ Delivery contract: mode=local-only
 This task ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`fm/$id\`. Do NOT push, do NOT open a PR, do NOT merge.
 Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
-Before you report it ready, verify the acceptance criteria with a fresh-context subagent or a fresh read of the diff against the task - on a harness that offers subagents - and fix what it finds.
+Before you report it ready, verify the acceptance criteria with a fresh read of the diff against the task - no subagent - and fix what it finds; nobody else reviews this work before merge.
 When it is implemented, committed, and verified, append \`done: ready in branch fm/$id\` to the status file and stop.
 The configured merge authority approves the ready branch, then firstmate merges it into local \`main\` through the guarded fast-forward path.
 EOF
@@ -83,7 +89,8 @@ EOF
 # Definition of done
 Delivery contract: mode=no-mistakes
 The task is complete only when committed on your branch.
-Before you report it done, verify the acceptance criteria with a fresh-context subagent or a fresh read of the diff against the task - on a harness that offers subagents - and fix what it finds.
+Before you report it done, run a cheap pre-flight only: the project's typecheck and the test files you touched, plus a production build only when the change adds routes, dependencies, or client/server boundaries.
+Do not run the full test suite, a self-review subagent, or any audit skill: the review pipeline and CI own the full suite, the production build, and the code review.
 When you believe it is complete and verified, append \`done: {summary}\` to the status file and stop.
 Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
 
@@ -92,12 +99,13 @@ Follow the guidance no-mistakes itself provides for the mechanics: it loads when
 When starting no-mistakes, make \`--intent\` preserve all relevant content from this brief's \`# Task\` section plus every later accepted Firstmate requirement, clarification, constraint, exclusion, and supersession, carrying only each requirement's current accepted form; retain direct requirements instead of substituting a diff summary, and exclude generic operational, status, delivery, and other scaffold boilerplate unless it is task-specific.
 Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
 
-Two firstmate-specific rules layer on top of that guidance:
+Three firstmate-specific rules layer on top of that guidance:
 - ask-user findings are never yours to answer: escalate to firstmate (rule 6) and stop.
   Firstmate applies \`ask-user-authority\` and obtains any required captain decision.
   When the decision comes back, feed it to the gate with \`no-mistakes axi respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
 - NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`no-mistakes axi respond\`. It is banned fleet-wide.
   It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
+- After two review rounds, respond to any remaining warning-level findings with the gate's accept or skip action and say why in that response, unless a finding is consequential: data loss, a security hole, money, or an accepted behaviour it would break.
 
 Once no-mistakes reports the PR, read $meta and turn its \`harness=\`, \`model=\`, and \`effort=\` fields into a trailing PR-body line \`Built by: <harness>/<model> at <effort>\` (an unset model or effort reads back as the literal \`default\`, matching how it was recorded); for example: \`awk -F= '\$1=="harness"{h=\$2} \$1=="model"{m=\$2} \$1=="effort"{e=\$2} END{printf "Built by: %s/%s at %s", h, m, e}' $meta\`. Append that exact line, on its own line, to the PR body before you report done, where \`<number>\` is the trailing path segment of the PR url: \`body=\$(mktemp) && gh pr view <number> --json body -q .body > "\$body"\`, append the \`Built by:\` line to that file, then \`gh-axi pr edit <number> --body-file "\$body"\`. Use a fresh \`mktemp\` path, never a fixed name like /tmp/pr-body.md: crewmates ship concurrently on one host, and a shared scratch file lets another task's body overwrite yours.
 After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\`, follow it with \`$paused: awaiting merge of PR {url}\`, and stop. You are finished.
