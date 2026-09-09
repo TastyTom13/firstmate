@@ -966,10 +966,12 @@ test_built_by_line_reads_task_meta() {
 }
 
 # fable-prompting-2026-09-03 P2/P4: every scaffold's Task/Charter section opens
-# with an Intent placeholder; ship and scout carry the four Working discipline
+# with an Intent placeholder; ship and scout carry the five Working discipline
 # lines and the Claude cd-compound caution in Toolkit; every ship mode's
-# Definition of done gains one pre-done verification line. Rendered through the
-# executable for every variant, never asserted against source bytes.
+# Definition of done gains one pre-done check sized to what already reviews that
+# mode (a cheap pre-flight under no-mistakes, a fresh diff read otherwise).
+# Rendered through the executable for every variant, never asserted against
+# source bytes.
 test_fable_prompting_additions_render() {
   local home id brief
   home="$TMP_ROOT/fable-prompting-home"
@@ -998,8 +1000,29 @@ test_fable_prompting_additions_render() {
       "ship ($mode): Toolkit lost the Claude cd-compound caution"
     assert_grep "captain's Read deny rules make Claude Code stop and ask a human before any relative read after a \`cd\`" "$brief" \
       "ship ($mode): cd-compound caution lost its reason"
-    assert_grep "verify the acceptance criteria with a fresh-context subagent or a fresh read of the diff against the task" "$brief" \
-      "ship ($mode): Definition of done lost the pre-done verification step"
+    if [ "$mode" = no-mistakes ]; then
+      assert_grep "run a cheap pre-flight only: the project's typecheck and the test files you touched" "$brief" \
+        "ship ($mode): Definition of done lost the cheap pre-flight step"
+      assert_grep "Do not run the full test suite, a self-review subagent, or any audit skill" "$brief" \
+        "ship ($mode): pre-flight lost the rule that the pipeline and CI own the full suite, build, and review"
+      assert_no_grep "fresh-context subagent" "$brief" \
+        "ship ($mode): the pipeline reviews this work, so no self-review subagent may be ordered"
+      assert_grep "After two review rounds, respond to any remaining warning-level findings with the gate's accept or skip action" "$brief" \
+        "ship ($mode): lost the round-two review rule"
+      assert_grep "unless a finding is consequential: data loss, a security hole, money, or an accepted behaviour it would break" "$brief" \
+        "ship ($mode): round-two rule lost its consequential-finding exception"
+    else
+      assert_grep "verify the acceptance criteria with a fresh read of the diff against the task - no subagent" "$brief" \
+        "ship ($mode): Definition of done lost the fresh diff read"
+      assert_grep "nobody else reviews this work before merge" "$brief" \
+        "ship ($mode): fresh diff read lost its reason"
+      assert_no_grep "After two review rounds" "$brief" \
+        "ship ($mode): the round-two rule is a no-mistakes gate rule and must not render here"
+      assert_no_grep "cheap pre-flight" "$brief" \
+        "ship ($mode): the cheap pre-flight belongs to no-mistakes only"
+    fi
+    assert_grep "One judge: when the delivery mode is no-mistakes, do not invoke completion-gate or audit skills" "$brief" \
+      "ship ($mode): lost the one-judge standing line"
   done
 
   id="brief-fable-scout"
@@ -1022,8 +1045,12 @@ test_fable_prompting_additions_render() {
     "scout: shared-machine line lost its stop-what-you-start requirement"
   assert_grep "If you are Claude, use absolute paths or \`git -C <dir>\`" "$brief" \
     "scout: Toolkit lost the Claude cd-compound caution"
-  assert_no_grep "verify the acceptance criteria with a fresh-context subagent" "$brief" \
+  assert_no_grep "verify the acceptance criteria with a fresh read of the diff" "$brief" \
     "scout: a scout has no push/PR/done gate and must not carry the ship verification step"
+  assert_no_grep "cheap pre-flight" "$brief" \
+    "scout: a scout has no delivery gate and must not carry the ship pre-flight"
+  assert_grep "One judge: when the delivery mode is no-mistakes, do not invoke completion-gate or audit skills" "$brief" \
+    "scout: lost the one-judge standing line"
 
   id="brief-fable-secondmate"
   FM_HOME="$home" FM_SECONDMATE_CHARTER='Supervise the fable domain.' \

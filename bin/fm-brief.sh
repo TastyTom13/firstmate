@@ -80,20 +80,26 @@
 # work is for, what it enables, what done means - firstmate fills at intake the
 # same way it fills {TASK} (fable-prompting-2026-09-03 P2: state intent, not
 # just a task list).
-# Ship and scout scaffolds also carry a "Working discipline" section with four
+# Ship and scout scaffolds also carry a "Working discipline" section with five
 # standing lines: grounded claims (audit progress/done claims against a tool
 # result from this session before reporting them), scope discipline (don't fix,
 # optimise, or extend anything the task doesn't ask for; implement the most
 # directly supported reading of an ambiguous task; test only where the task or
 # repo convention asks), surgical edits (edit files in place rather than
-# rewriting them whole), and shared-machine safety (never generate artificial
-# load or leave background processes behind).
-# Every ship mode's Definition of done adds one verification step before the
-# push, PR, or done line: verify the acceptance criteria with a fresh-context
-# subagent or a fresh read of the diff against the task, on a harness that
-# offers subagents, and fix what it finds before finishing. This sits in front
-# of whatever the mode already does (a no-mistakes run, a direct PR, or a ready
-# branch) and never replaces it.
+# rewriting them whole), shared-machine safety (never generate artificial
+# load or leave background processes behind), and one judge (under
+# mode=no-mistakes, never invoke a completion-gate or audit skill that a project
+# rule or plugin offers, because the review pipeline is the only judge).
+# Every ship mode's Definition of done adds one pre-done check before the push,
+# PR, or done line, sized to what already reviews that mode. no-mistakes gets a
+# cheap pre-flight only - the project's typecheck plus the test files the worker
+# touched, with a production build only when the change adds routes,
+# dependencies, or client/server boundaries - because the review pipeline and CI
+# own the full suite, the production build, and the code review. direct-PR and
+# local-only keep a fresh read of the diff against the task, with no subagent,
+# because nothing else reviews that work before merge. This sits in front of
+# whatever the mode already does (a no-mistakes run, a direct PR, or a ready
+# branch) and never replaces it. bin/fm-dod-lib.sh owns the rendered wording.
 # Ship tasks include a project-memory section so durable project-intrinsic
 # learnings can be committed to AGENTS.md through the project's delivery path;
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
@@ -318,16 +324,19 @@ REPORTING_SECTION=${REPORTING_SECTION%$'\n'}
 # Its placeholders stay in the {TASK}-style until firstmate replaces them.
 INTENT_LINE='Intent: this is for {who}; it enables {what}; done means {finish line}.'
 
-# Working discipline: the four standing lines from fable-prompting-2026-09-03 P2
-# (grounded claims, scope discipline, surgical edits) plus the shared-machine rule,
-# shared by ship and scout so the two cannot drift. Deliberately just these four
-# lines: they replace older prescriptive rules rather than stacking on top of them.
+# Working discipline: the three standing lines from fable-prompting-2026-09-03 P2
+# (grounded claims, scope discipline, surgical edits) plus the shared-machine rule
+# and the one-judge rule, shared by ship and scout so the two cannot drift.
+# Deliberately just these five lines: they replace older prescriptive rules
+# rather than stacking on top of them. The one-judge line is self-limiting to
+# mode=no-mistakes, so the shared text stays correct in a scout brief too.
 IFS= read -r -d '' WORKING_DISCIPLINE_SECTION <<'EOF' || true
 # Working discipline
 1. Grounded claims: before you report progress or done, audit each claim against a tool result from this session; report only work you can point to evidence for, and say plainly when something is not yet verified, a test failed (with its output), or a step was skipped.
 2. Scope discipline: don't fix, optimise, or extend a pre-existing bug, a performance concern, or behaviour the task does not mention unless the requested behaviour cannot work without it - report it as a follow-up in your summary instead; on an ambiguous task, implement the reading its wording and the surrounding code most directly support, state that assumption, and do not build the other readings too; commit tests only where the task asks for them or the repo already keeps tests for this kind of change, sized like the neighbouring tests; this bounds extras only - implement every behaviour the task asks for, completely.
 3. Surgical edits: edit files surgically rather than rewriting them whole when the end result is the same; a whole-file rewrite costs far more output for no gain.
 4. Shared machine: never generate artificial CPU, memory or network load on this machine, and never leave a background process behind: anything a command starts, the same command stops (trap, timeout, or kill by process group) and confirms gone with ps before moving on; answer load or timing questions from logs, not by reproducing load.
+5. One judge: when the delivery mode is no-mistakes, do not invoke completion-gate or audit skills offered by project rules or plugins; the review pipeline is the only judge of this work.
 EOF
 WORKING_DISCIPLINE_SECTION=${WORKING_DISCIPLINE_SECTION%$'\n'}
 
