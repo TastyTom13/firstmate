@@ -68,6 +68,9 @@
 #   (av) a base branch with no queue rule says nothing about a merge queue
 #   (aw) a refusal built on the gh-axi view says the merge queue could not be
 #       observed, and judges that view's state like the queue-aware one
+#   (ax) --expect-base refuses a differing base before merging, merges and
+#       records the observed base when it matches, refuses an unreadable or
+#       malformed base, and changes nothing when it is omitted
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -108,6 +111,9 @@ make_case() {
     'merged=true' \
     'queued=false' \
     'base=main' > "$case_dir/github-outcome"
+  # The pre-merge base read (--expect-base) asks for baseRefName alone, so it
+  # answers from its own file rather than the queue-aware outcome fixture.
+  printf 'main\n' > "$case_dir/github-base"
   : > "$case_dir/github-rules"
   : > "$case_dir/gh.log"
   # No worktree/project on disk; fm-pr-check.sh tolerates a worktree it cannot
@@ -142,7 +148,11 @@ case "\${1:-} \${2:-}" in
     esac
     ;;
   "api graphql")
-    cat "\$FM_TEST_GH_OUTCOME"
+    case " \$* " in
+      *isInMergeQueue*) cat "\$FM_TEST_GH_OUTCOME" ;;
+      *baseRefName*) cat "\$FM_TEST_GH_BASE" ;;
+      *) cat "\$FM_TEST_GH_OUTCOME" ;;
+    esac
     exit 0
     ;;
   api\ *)
@@ -359,6 +369,7 @@ run_pr_merge() {
   FM_TEST_GH_AXI_LOG="$case_dir/gh-axi.log" \
   FM_TEST_GH_LOG="$case_dir/gh.log" \
   FM_TEST_GH_OUTCOME="$case_dir/github-outcome" \
+  FM_TEST_GH_BASE="$case_dir/github-base" \
   FM_TEST_GH_RULES="$case_dir/github-rules" \
   FM_TEST_META_AT_MERGE="$case_dir/meta-at-merge" \
   FM_TEST_REAL_MV="$REAL_MV" \
@@ -381,6 +392,171 @@ write_github_outcome() {
     "merged=$merged" \
     "queued=$queued" \
     "base=$base" > "$case_dir/github-outcome"
+}
+
+# --expect-base is the guard that stops a unit of work built for an integration
+# branch from landing on the default branch. It has to be judged from the forge's
+# own live base, before any merge command runs, and a base it cannot read must
+# refuse rather than merge with the check quietly skipped.
+test_expect_base_mismatch_refuses_before_the_merge() {
+  local case_dir rc
+  case_dir=$(make_case expect-base-mismatch)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 1111111111111111111111111111111111111111
+  printf 'main\n' > "$case_dir/github-base"
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/31 \
+    --expect-base integration > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || fail "expect-base-mismatch: a wrong-base merge was allowed"
+  assert_grep 'main' "$case_dir/stderr" "expect-base-mismatch: the refusal did not print the observed base"
+  assert_grep 'integration' "$case_dir/stderr" "expect-base-mismatch: the refusal did not print the expected base"
+  assert_grep 'nothing was merged' "$case_dir/stderr" \
+    "expect-base-mismatch: the refusal did not say the merge did not happen"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "expect-base-mismatch: the merge command ran despite the base mismatch"
+  pass "fm-pr-merge refuses a base that differs from --expect-base, before merging"
+}
+
+test_expect_base_match_merges_and_records_the_base() {
+  local case_dir rc
+  case_dir=$(make_case expect-base-match)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 2222222222222222222222222222222222222222
+  printf 'integration\n' > "$case_dir/github-base"
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/32 \
+    --expect-base integration > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "expect-base-match: a matching base should merge normally"
+  assert_grep 'pr merge 32 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    "expect-base-match: the merge command did not run with its usual arguments"
+  assert_grep 'pr_base=integration' "$case_dir/state/task-x1.meta" \
+    "expect-base-match: the observed base was not recorded in the task metadata"
+  assert_grep 'pr=https://github.com/example/repo/pull/32' "$case_dir/state/task-x1.meta" \
+    "expect-base-match: the usual PR metadata stopped being recorded"
+  pass "fm-pr-merge merges a matching base and records the observed base"
+}
+
+test_expect_base_extra_args_still_reach_the_forge() {
+  local case_dir rc
+  case_dir=$(make_case expect-base-extra-args)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3333333333333333333333333333333333333333
+  printf 'integration\n' > "$case_dir/github-base"
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/33 \
+    --expect-base integration -- --merge > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "expect-base-extra-args: the merge should still succeed"
+  grep -qxF 'pr merge 33 --repo example/repo --merge' "$case_dir/gh-axi.log" \
+    || fail "expect-base-extra-args: the caller's merge method did not reach the forge"
+  pass "fm-pr-merge consumes --expect-base without disturbing the forge arguments"
+}
+
+test_expect_base_refuses_when_the_base_cannot_be_read() {
+  local case_dir rc pathdir
+  case_dir=$(make_case expect-base-unreadable)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 4444444444444444444444444444444444444444
+  rm "$case_dir/fakebin/gh"
+  : > "$case_dir/gh-axi.log"
+  pathdir="$case_dir/no-gh"
+  mirror_path_without "$pathdir" gh "$case_dir/fakebin"
+
+  set +e
+  PATH="$pathdir" run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/34 \
+    --expect-base integration > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || fail "expect-base-unreadable: the merge ran with the base check skipped"
+  assert_grep 'requires gh on PATH' "$case_dir/stderr" \
+    "expect-base-unreadable: the refusal did not name the missing tool"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "expect-base-unreadable: the merge command ran without a readable base"
+  pass "fm-pr-merge refuses rather than merging when the base branch cannot be read"
+}
+
+test_expect_base_rejects_a_malformed_branch_name() {
+  local case_dir rc
+  case_dir=$(make_case expect-base-malformed)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 5555555555555555555555555555555555555555
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/35 \
+    --expect-base 'not a branch' > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || fail "expect-base-malformed: a malformed branch name was accepted"
+  assert_grep 'must be a plain branch name' "$case_dir/stderr" \
+    "expect-base-malformed: the refusal did not explain the accepted shape"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "expect-base-malformed: the merge command ran on a malformed expected base"
+  pass "fm-pr-merge rejects a malformed --expect-base before doing anything"
+}
+
+test_expect_base_rejects_a_malformed_observed_branch_name() {
+  local case_dir rc
+  case_dir=$(make_case expect-base-observed-malformed)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 7777777777777777777777777777777777777777
+  printf 'not a branch\n' > "$case_dir/github-base"
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/37 \
+    --expect-base integration > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || fail "expect-base-observed-malformed: malformed forge base was accepted"
+  assert_grep 'invalid base branch' "$case_dir/stderr" \
+    "expect-base-observed-malformed: the refusal did not name the invalid observed base"
+  assert_grep 'not a branch' "$case_dir/stderr" \
+    "expect-base-observed-malformed: the refusal did not print the observed value"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "expect-base-observed-malformed: the merge command ran on a malformed forge base"
+  assert_no_grep 'pr_base=' "$case_dir/state/task-x1.meta" \
+    "expect-base-observed-malformed: malformed forge base was recorded"
+  pass "fm-pr-merge refuses a malformed forge-reported base before merging"
+}
+
+test_no_expect_base_reads_and_records_nothing() {
+  local case_dir rc
+  case_dir=$(make_case expect-base-absent)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 6666666666666666666666666666666666666666
+  printf 'integration\n' > "$case_dir/github-base"
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/36 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "expect-base-absent: an ordinary merge should still succeed"
+  assert_no_grep 'pr_base=' "$case_dir/state/task-x1.meta" \
+    "expect-base-absent: a base was recorded without being asked for"
+  assert_grep 'pr merge 36 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    "expect-base-absent: the ordinary merge stopped working"
+  pass "fm-pr-merge without --expect-base reads no base and records none"
 }
 
 test_verified_merge_records_pr_and_head() {
@@ -2077,6 +2253,13 @@ test_github_closed_unqueued_outcome_omits_retry_flags
 test_github_agreeing_queue_rules_keep_retry_guidance
 test_github_conflicting_queue_rules_report_ambiguity
 test_verified_merge_records_pr_and_head
+test_expect_base_mismatch_refuses_before_the_merge
+test_expect_base_match_merges_and_records_the_base
+test_expect_base_extra_args_still_reach_the_forge
+test_expect_base_refuses_when_the_base_cannot_be_read
+test_expect_base_rejects_a_malformed_branch_name
+test_expect_base_rejects_a_malformed_observed_branch_name
+test_no_expect_base_reads_and_records_nothing
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording
 test_github_open_unqueued_outcome_refuses

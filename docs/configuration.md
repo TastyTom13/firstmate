@@ -107,6 +107,16 @@ A `manual` home owns its backlog file outright: the lifecycle transitions above 
 Absent or `tasks-axi` selects the default tasks-axi backend.
 The file format is unchanged in both modes; tasks-axi and manual edits produce the same `## In flight`, `## Queued`, and `## Done` sections.
 
+## Integration base branches
+
+A task normally starts from, and lands on, its project's default branch.
+When a unit of work belongs on an integration branch instead, `bin/fm-spawn.sh --base <branch>` starts the fresh worker's local copy from that branch's tip rather than the default branch, and records the choice as `base=` in the task's own durable record so a restarted worker keeps it.
+Every refusal that already protects a fresh start is unchanged: an unreachable origin, a branch the origin cannot resolve, and a local copy holding uncommitted work all stop the dispatch instead of starting from history nobody chose.
+The same branch is passed to `bin/fm-brief.sh --base <branch>`, which records it next to the generated ship brief's delivery contract so the worker rebases onto and raises its pull request against that branch.
+`bin/fm-pr-merge.sh --expect-base <branch>` closes the other end: it reads the pull request's base from the forge before merging, refuses and prints both branches when they differ, and records the observed base alongside the pull request metadata it already writes.
+Each flag is independent and omitting all three leaves default-branch behaviour exactly as it was.
+The exact flag mechanics live in each script's own header and `--help`, which are their single owner.
+
 ## Runtime backend (config/backend / FM_BACKEND)
 
 For spawn-capable adapters, the runtime session-provider backend controls where task windows/endpoints are created, captured, sent to, watched, and killed.

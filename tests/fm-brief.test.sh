@@ -286,8 +286,53 @@ yolo on a ship brief|brief-refused-b1 some-proj --mode direct-PR --yolo on|--yol
 yolo=value form on a ship brief|brief-refused-b2 some-proj --mode direct-PR --yolo=off|--yolo is not a brief input
 mode on a scout brief|brief-refused-b3 some-proj --scout --mode direct-PR|--mode applies only to ship briefs
 mode on a secondmate charter|brief-refused-b4 --secondmate --no-projects --mode no-mistakes|--mode applies only to ship briefs
+base on a scout brief|brief-refused-b5 some-proj --scout --base integration|--base applies only to ship briefs
+base on a secondmate charter|brief-refused-b6 --secondmate --no-projects --base integration|--base applies only to ship briefs
+base on a local-only ship brief|brief-refused-b7 some-proj --mode local-only --base integration|local-only landing is default-branch-only
+malformed base on a ship brief|brief-refused-b8 some-proj --mode direct-PR --base -bad|must be a plain branch name
 ROWS
   pass "fm-brief.sh: --yolo and scout/secondmate --mode are refused, never silently dropped"
+}
+
+# An integration-based task must hand the worker a brief that names the branch
+# it is actually on: bin/fm-spawn.sh --base leaves the worktree on that branch,
+# so a brief still saying "default branch" would be plainly wrong. The line sits
+# next to the delivery contract, and the worktree-isolation assertion the ship
+# scaffold is a safety contract for must survive alongside it.
+test_ship_base_branch_line_renders_only_when_given() {
+  local home id brief mode
+  home="$TMP_ROOT/base-branch-home"
+  write_registry "$home"
+
+  for mode in no-mistakes direct-PR; do
+    id="brief-base-${mode}"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --base integration >/dev/null 2>&1 \
+      || fail "$mode: a ship brief with an explicit base should scaffold"
+    brief="$home/data/$id/brief.md"
+    grep -qx "Delivery contract: mode=$mode" "$brief" \
+      || fail "$mode: the delivery contract line did not survive the base line"
+    grep -qx "Base branch: integration" "$brief" \
+      || fail "$mode: the brief did not record the base branch"
+    [ "$(grep -n 'Base branch: integration' "$brief" | cut -d: -f1)" \
+      = "$(( $(grep -n "Delivery contract: mode=$mode" "$brief" | cut -d: -f1) + 1 ))" ] \
+      || fail "$mode: the base branch line is not next to the delivery contract line"
+    # shellcheck disable=SC2016  # backticks are literal brief text, not a command.
+    assert_grep 'at a detached HEAD on a clean `integration` branch' "$brief" \
+      "$mode: the setup section still claims the worker is on the default branch"
+    assert_grep '**Verify isolation before anything else.**' "$brief" \
+      "$mode: the worktree-isolation assertion did not survive the base line"
+    assert_no_grep "EOF" "$brief" "$mode: brief leaked a heredoc EOF marker"
+  done
+
+  id="brief-base-absent"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1 \
+    || fail "a ship brief with no explicit base should still scaffold"
+  brief="$home/data/$id/brief.md"
+  assert_no_grep "Base branch:" "$brief" \
+    "a brief with no explicit base recorded a base branch line anyway"
+  assert_grep "at a detached HEAD on a clean default branch" "$brief" \
+    "a brief with no explicit base stopped naming the default branch"
+  pass "fm-brief.sh: the base branch line renders only for an explicit base"
 }
 
 test_faster_paths_use_configured_authority_without_stacked_review() {
@@ -1073,6 +1118,7 @@ test_ship_modes_generate_clean_briefs
 test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
 test_delivery_flags_are_refused_where_they_do_not_apply
+test_ship_base_branch_line_renders_only_when_given
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_ship_project_memory_wording

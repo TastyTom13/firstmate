@@ -425,6 +425,141 @@ test_stale_pin_beside_other_dirt_reports_one_verdict() {
   pass "a stale pin beside other dirt yields the conservative refusal alone, with no stale-pin line"
 }
 
+
+# --- explicit integration base (--base) -------------------------------------
+#
+# A unit of work that belongs on an integration branch must start from that
+# branch's tip, not from the default branch, and the record of which branch that
+# was has to survive into the task's own metadata. These cases publish a second
+# branch on the same origin with content the default branch does not have, so a
+# spawn that quietly resolved the default branch instead would be visible.
+
+publish_integration_branch() {  # <case-dir> <branch>
+  local case_dir=$1 branch=$2 publisher
+  publisher="$case_dir/integration-publisher"
+  git clone --quiet "file://$case_dir/origin.git" "$publisher"
+  git -C "$publisher" checkout --quiet -b "$branch"
+  printf 'only on the integration branch\n' > "$publisher/integration-only.txt"
+  git -C "$publisher" add integration-only.txt
+  git -C "$publisher" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm integration-work
+  git -C "$publisher" push --quiet origin "$branch"
+  git -C "$publisher" rev-parse HEAD
+}
+
+test_explicit_base_starts_the_worker_on_that_branch() {
+  local rec id out status integration_sha head_sha
+  id='pool-explicit-base-r12'
+  rec=$(make_case explicit-base "$id")
+  read_case_record "$rec"
+  integration_sha=$(publish_integration_branch "$CASE_DIR" integration)
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off --base integration)
+  status=$?
+  expect_code 0 "$status" "spawn should accept an explicit integration base"
+  assert_contains "$out" "spawned $id" "spawn did not report success"
+  head_sha=$(git -C "$POOL_DIR" rev-parse HEAD)
+  [ "$head_sha" = "$integration_sha" ] \
+    || fail "spawn did not start the worker at origin/integration"
+  [ "$head_sha" != "$(git -C "$POOL_DIR" rev-parse origin/main)" ] \
+    || fail "fixture did not prove origin/integration differs from origin/main"
+  assert_grep 'only on the integration branch' "$POOL_DIR/integration-only.txt" \
+    "the worktree does not carry the integration branch's content"
+  assert_grep 'base=integration' "$HOME_DIR/state/$id.meta" \
+    "spawn did not record the base branch in the task's metadata"
+  if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
+    printf '# observed base spawn: HEAD=%s origin/integration=%s origin/main=%s\n' \
+      "$head_sha" "$integration_sha" "$(git -C "$POOL_DIR" rev-parse origin/main)"
+  fi
+  pass "an explicit base starts the worker at that branch's tip and records it"
+}
+
+test_default_base_records_no_base_field() {
+  local rec id out status
+  id='pool-no-base-field-r13'
+  rec=$(make_case no-base-field "$id")
+  read_case_record "$rec"
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "an ordinary spawn should still succeed"
+  assert_not_contains "$(cat "$HOME_DIR/state/$id.meta")" 'base=' \
+    "a default-branch spawn recorded a base field"
+  pass "a spawn with no explicit base records no base field at all"
+}
+
+test_missing_base_branch_refuses_without_touching_the_slot() {
+  local rec id out status before
+  id='pool-missing-base-r14'
+  rec=$(make_case missing-base "$id")
+  read_case_record "$rec"
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off --base no-such-branch)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn launched from a base branch origin does not have"
+  assert_contains "$out" "origin/no-such-branch" \
+    "refusal did not name the base branch that could not be resolved"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "spawn moved HEAD while refusing an unresolvable base branch"
+  [ -f "$HOME_DIR/state/$id.meta" ] \
+    && fail "a refused spawn published task metadata"
+  pass "a base branch origin does not have refuses the spawn and leaves the slot alone"
+}
+
+test_scout_accepts_an_explicit_base() {
+  local rec id out status integration_sha
+  id='pool-scout-base-r15'
+  rec=$(make_case scout-base "$id")
+  read_case_record "$rec"
+  integration_sha=$(publish_integration_branch "$CASE_DIR" integration)
+
+  out=$(run_spawn "$id" --scout --base integration)
+  status=$?
+  expect_code 0 "$status" "a scout spawn should accept an explicit integration base"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$integration_sha" ] \
+    || fail "scout spawn did not start at origin/integration"
+  assert_grep 'base=integration' "$HOME_DIR/state/$id.meta" \
+    "scout spawn did not record the base branch"
+  pass "a scout spawn starts from the explicit base and records it"
+}
+
+test_local_only_explicit_base_is_refused_without_publishing() {
+  local rec id out status before
+  id='pool-local-only-base-r16'
+  rec=$(make_case local-only-base "$id")
+  read_case_record "$rec"
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+
+  out=$(run_spawn "$id" --mode local-only --yolo off --base integration)
+  status=$?
+  [ "$status" -ne 0 ] || fail "local-only spawn accepted an integration base"
+  assert_contains "$out" "local-only landing is default-branch-only" \
+    "local-only base refusal did not explain the landing constraint"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "local-only base refusal moved the pooled worktree"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] \
+    || fail "local-only base refusal published task metadata"
+  pass "local-only integration bases are refused before launch and publication"
+}
+
+test_malformed_base_is_refused_before_any_fetch() {
+  local rec id out status before
+  id='pool-bad-base-r16'
+  rec=$(make_case bad-base "$id")
+  read_case_record "$rec"
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off --base 'a b')
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn accepted a malformed base branch name"
+  assert_contains "$out" "must be a plain branch name" \
+    "refusal did not explain the accepted base branch shape"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "spawn moved HEAD while refusing a malformed base branch name"
+  pass "a malformed base branch name is refused before anything is fetched"
+}
+
 test_stale_pool_base_refreshes_before_branching
 test_non_main_default_branch_refreshes_before_branching
 test_direct_pr_and_scout_refresh_before_launch
@@ -436,5 +571,11 @@ test_unpushed_submodule_commit_is_still_uncommitted_work
 test_work_inside_submodule_is_still_uncommitted_work
 test_stale_pin_carrying_real_work_is_not_called_stale
 test_stale_pin_beside_other_dirt_reports_one_verdict
+test_explicit_base_starts_the_worker_on_that_branch
+test_default_base_records_no_base_field
+test_missing_base_branch_refuses_without_touching_the_slot
+test_scout_accepts_an_explicit_base
+test_local_only_explicit_base_is_refused_without_publishing
+test_malformed_base_is_refused_before_any_fetch
 
 echo "# all fm-spawn-pool-base-freshen tests passed"
