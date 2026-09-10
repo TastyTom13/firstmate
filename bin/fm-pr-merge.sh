@@ -63,7 +63,20 @@
 # destination, normal-case deduplication, and at-least-once recovery.
 # A landed merge whose outcome cannot be written is reported loudly rather than
 # misreported as a failed merge.
-# Usage: fm-pr-merge.sh <task-id> <pr-url> [-- <extra forge merge args>]
+#
+# --expect-base <branch>, given between the URL and any '--' separator, is the
+# branch this task was meant to land on (bin/fm-spawn.sh --base records it as
+# base= in the task's own metadata). It is read from the forge BEFORE any merge
+# command runs, and a base that differs refuses the merge and prints both
+# branches, so a unit of work built for an integration branch cannot be merged
+# into the default branch by mistake. The observed base is recorded as
+# pr_base=<branch> in the task metadata this script already writes through
+# bin/fm-pr-check.sh. Reading that base needs gh on PATH for a GitHub pull
+# request, and glab with jq for a GitLab merge request, which that provider
+# already requires; a base that cannot be read refuses the merge rather than
+# merging with the guard silently skipped. Without the flag nothing is read,
+# nothing is recorded, and the merge behaves exactly as it did before.
+# Usage: fm-pr-merge.sh <task-id> <pr-url> [--expect-base <branch>] [-- <extra forge merge args>]
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -73,6 +86,10 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-wake-lib.sh
+. "$SCRIPT_DIR/fm-wake-lib.sh"
+# shellcheck source=bin/fm-branch-name-lib.sh
+. "$SCRIPT_DIR/fm-branch-name-lib.sh"
 # shellcheck source=bin/fm-merge-outcome-lib.sh
 . "$SCRIPT_DIR/fm-merge-outcome-lib.sh"
 # Role partition: merging is MAIN-owned; the Pi supervision branch reports the
@@ -101,6 +118,29 @@ PR_NUMBER=$FM_PR_NUMBER
 # rebuilt from the parsed identity rather than read from any ambient default.
 PROJECT_URL="https://$FM_PR_HOST/$FM_PR_PATH"
 shift 2
+
+# --expect-base is this script's own argument, never a forge merge argument, so
+# it is consumed before the '--' separator hands the rest to the forge CLI.
+EXPECT_BASE=
+EXPECT_BASE_SET=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --expect-base)
+      [ "$#" -ge 2 ] || { echo "error: --expect-base requires a branch name" >&2; exit 2; }
+      EXPECT_BASE=$2
+      EXPECT_BASE_SET=1
+      shift 2 ;;
+    --expect-base=*)
+      EXPECT_BASE=${1#--expect-base=}
+      EXPECT_BASE_SET=1
+      shift ;;
+    *) break ;;
+  esac
+done
+if [ "$EXPECT_BASE_SET" -eq 1 ] && ! fm_branch_name_valid "$EXPECT_BASE"; then
+  echo "error: --expect-base must be a plain branch name such as 'integration' or 'release/2.0' (got '$EXPECT_BASE')" >&2
+  exit 2
+fi
 [ "${1:-}" = "--" ] && shift
 
 caller_has_merge_method() {
@@ -623,10 +663,80 @@ gitlab_confirm_merged() {
   [ "$state" = merged ]
 }
 
+# One live read of the branch this request would land on, taken BEFORE any merge
+# command. gh and glab both expose it directly; gh-axi's own view does not carry
+# a base at all, so there is no degradation path here and an unreadable base
+# refuses. That is deliberate: --expect-base exists to stop a wrong-base merge,
+# and a guard that steps aside when it cannot read the base would let through
+# exactly the merge it was asked to prevent.
+FM_PR_OBSERVED_BASE=
+read_pr_base() {
+  local base
+  case "$PROVIDER" in
+    github)
+      if ! command -v gh >/dev/null 2>&1; then
+        echo "error: checking the pull request's base branch requires gh on PATH; the gh-axi view does not report a base" >&2
+        return 1
+      fi
+      # shellcheck disable=SC2016  # GraphQL variables are literal query syntax.
+      base=$(gh api graphql \
+        -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){baseRefName}}}' \
+        -F "owner=$PR_OWNER" -F "repo=$PR_REPO" -F "number=$PR_NUMBER" \
+        --jq '.data.repository.pullRequest.baseRefName' 2>/dev/null) || base=
+      ;;
+    gitlab)
+      base=$(GITLAB_HOST="$FM_PR_HOST" glab mr view "$PR_NUMBER" -R "$PROJECT_URL" -F json 2>/dev/null \
+        | jq -r 'if type == "object" and (.target_branch | type == "string") then .target_branch else "" end' 2>/dev/null) || base=
+      ;;
+    *) base= ;;
+  esac
+  if [ -z "$base" ] || [ "$base" = null ]; then
+    printf 'error: could not read the base branch of %s, so the expected base could not be checked; nothing was merged\n' "$URL" >&2
+    return 1
+  fi
+  FM_PR_OBSERVED_BASE=$base
+}
+
+# The observed base joins pr= and pr_head= in the task's own metadata, written
+# after bin/fm-pr-check.sh rewrites that file so this line survives the rewrite.
+record_pr_base() {  # <branch>
+  local branch=$1 lock tmp rc=0
+  lock=$(fm_meta_lock_path "$META") || return 1
+  fm_lock_acquire_wait "$lock"
+  if tmp=$(mktemp "$STATE/.fm-pr-base.XXXXXX"); then
+    if grep -v '^pr_base=' "$META" > "$tmp" \
+      && printf 'pr_base=%s\n' "$branch" >> "$tmp" \
+      && chmod 0600 "$tmp" \
+      && mv -f -- "$tmp" "$META"; then
+      tmp=
+    else
+      rc=1
+    fi
+    [ -z "$tmp" ] || rm -f -- "$tmp"
+  else
+    rc=1
+  fi
+  fm_lock_release "$lock" || true
+  return "$rc"
+}
+
+if [ "$EXPECT_BASE_SET" -eq 1 ]; then
+  read_pr_base || exit 1
+  if [ "$FM_PR_OBSERVED_BASE" != "$EXPECT_BASE" ]; then
+    printf 'error: %s targets base branch %s, but this merge expected %s; nothing was merged\n' \
+      "$URL" "$FM_PR_OBSERVED_BASE" "$EXPECT_BASE" >&2
+    exit 1
+  fi
+fi
+
 # Record before either forge call. This arms the merge poll without claiming a
 # landed outcome, so even a provider read failure after a real merge cannot
 # leave teardown without the PR identity it needs to verify the result.
 record_pr_metadata || exit 1
+if [ "$EXPECT_BASE_SET" -eq 1 ] && ! record_pr_base "$FM_PR_OBSERVED_BASE"; then
+  echo "error: the pull request's base branch could not be recorded; nothing was merged" >&2
+  exit 1
+fi
 
 case "$PROVIDER" in
   github)

@@ -6,7 +6,7 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab] [--env-file <path>[:<dest>]]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--base <branch>] [--herdr-lab] [--env-file <path>[:<dest>]]
 #        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab] [--env-file <path>[:<dest>]]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
@@ -51,6 +51,15 @@
 #                the configured merge authority approves, firstmate merges to local main
 # no-mistakes-prod-only is a registry policy, not a task mode; resolve it to one of
 # the three concrete modes at intake before calling this script.
+# --base <branch> is the integration branch bin/fm-spawn.sh was given for the same
+# task. Pass it only when the task is NOT based on the project's default branch:
+# the generated ship brief then records a "Base branch: <branch>" line next to its
+# delivery contract, so the worker rebases onto and raises its PR against that
+# branch instead of assuming the default one, and its Setup section names the
+# branch its worktree actually starts on. This script cannot resolve a project's
+# default branch from the caller-supplied repo string, so the caller decides when
+# the base differs. It is refused on scout and secondmate scaffolds. Omitted, the
+# generated brief is byte-identical to what it was before the flag existed.
 # The generated ship brief records the chosen mode as a fixed machine-readable
 # "Delivery contract: mode=<mode>" line. bin/fm-spawn.sh reads that line and refuses
 # to launch a ship task whose explicit --mode disagrees, so an adjusted brief and the
@@ -128,6 +137,8 @@ esac
 . "$SCRIPT_DIR/fm-classify-lib.sh"
 # shellcheck source=bin/fm-dod-lib.sh
 . "$SCRIPT_DIR/fm-dod-lib.sh"
+# shellcheck source=bin/fm-branch-name-lib.sh
+. "$SCRIPT_DIR/fm-branch-name-lib.sh"
 PAUSED_VERB=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}
 
 resolve_directory_input() {
@@ -159,6 +170,8 @@ HERDR_LAB=0
 NO_PROJECTS=0
 MODE=
 MODE_SET=0
+BASE=
+BASE_SET=0
 ENV_FILE=
 ENV_FILE_SET=0
 POS=()
@@ -170,6 +183,7 @@ for a in "$@"; do
     esac
     case "$want_value" in
       mode) MODE=$a; MODE_SET=1 ;;
+      base) BASE=$a; BASE_SET=1 ;;
       env-file) ENV_FILE=$a; ENV_FILE_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
@@ -183,6 +197,8 @@ for a in "$@"; do
     --no-projects) NO_PROJECTS=1 ;;
     --mode) want_value=mode ;;
     --mode=*) MODE=${a#--mode=}; MODE_SET=1 ;;
+    --base) want_value=base ;;
+    --base=*) BASE=${a#--base=}; BASE_SET=1 ;;
     --env-file) want_value=env-file ;;
     --env-file=*) ENV_FILE=${a#--env-file=}; ENV_FILE_SET=1 ;;
     # yolo never reaches the worker: it is firstmate's merge authority, not a
@@ -211,6 +227,20 @@ if [ "$KIND" = ship ]; then
 elif [ "$MODE_SET" -eq 1 ]; then
   echo "error: --mode applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract" >&2
   exit 1
+fi
+
+# The base branch shapes the delivery contract, which only a ship brief carries.
+# A silently dropped base would hand the worker a brief that names the default
+# branch while its worktree sits on another one, so a misplaced flag is refused.
+if [ "$BASE_SET" -eq 1 ]; then
+  [ "$KIND" = ship ] || {
+    echo "error: --base applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract" >&2
+    exit 1
+  }
+  fm_branch_name_valid "$BASE" || {
+    echo "error: --base must be a plain branch name such as 'integration' or 'release/2.0' (got '$BASE')" >&2
+    exit 1
+  }
 fi
 ID=${POS[0]}
 
@@ -602,7 +632,13 @@ case "$MODE" in
     RULE1='1. Never push to the default branch. Never merge a PR.'
     ;;
 esac
-DOD=$(fm_dod_block "$MODE" "$ID" "$META_FILE") || exit 1
+DOD=$(fm_dod_block "$MODE" "$ID" "$META_FILE" "$BASE") || exit 1
+
+# The Setup sentence has to describe the worktree the worker is actually in.
+# bin/fm-spawn.sh --base leaves it on the named integration branch, so saying
+# "default branch" there would be plainly false to the worker reading it.
+SETUP_BASE="a clean default branch"
+[ -z "$BASE" ] || SETUP_BASE="a clean \`$BASE\` branch"
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
@@ -615,7 +651,7 @@ $INTENT_LINE
 $HERDR_SECTION
 
 # Setup
-You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
+You are in a disposable git worktree of $REPO, at a detached HEAD on $SETUP_BASE.
 
 **Verify isolation before anything else.** Run \`pwd -P\` and \`git rev-parse --show-toplevel\`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from.
 The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse --git-common-dir\` can help inspect the repo, but they do not prove you are outside the primary checkout.

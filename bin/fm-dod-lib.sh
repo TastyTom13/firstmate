@@ -15,6 +15,12 @@
 # on any runtime environment variable that would not.
 # The block opens with the fixed machine-readable "Delivery contract: mode=<mode>"
 # line that bin/fm-spawn.sh checks a ship brief against.
+# An optional fourth argument is the integration branch this task is based on
+# (bin/fm-spawn.sh --base). When it is given, a "Base branch: <branch>" line
+# follows the delivery-contract line, so the worker rebases onto, and raises its
+# PR against, the branch the task actually started from rather than assuming the
+# default branch. It is omitted entirely for the ordinary default-branch task, so
+# that block stays byte-identical.
 # The two PR-raising modes also tell the worker to follow its done line with
 # "paused: awaiting merge of PR {url}", so the wait for a merge is a declared
 # external wait rather than an idle pane the watcher escalates as stale.
@@ -55,15 +61,21 @@ fm_shell_quote() {  # <value>
   printf "'"
 }
 
-fm_dod_block() {  # <mode> <task-id> <meta-path>
-  local mode=$1 id=$2 meta=$3
+fm_dod_block() {  # <mode> <task-id> <meta-path> [base-branch]
+  local mode=$1 id=$2 meta=$3 base=${4:-}
   local paused=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}
+  # Each heredoc expands this as ${base_line:+$base_line<newline>} glued to the
+  # front of the next line, so an absent base leaves the block byte-identical
+  # rather than emitting a blank line where the base line would have gone.
+  local base_line=''
+  [ -z "$base" ] || base_line="Base branch: $base"
   case "$mode" in
     direct-PR)
       cat <<EOF
 # Definition of done
 Delivery contract: mode=direct-PR
-This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
+${base_line:+$base_line
+}This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
 Before you push, verify the acceptance criteria with a fresh read of the diff against the task - no subagent - and fix what it finds; nobody else reviews this work before merge.
 Before opening the PR, read $meta and turn its \`harness=\`, \`model=\`, and \`effort=\` fields into a trailing PR-body line \`Built by: <harness>/<model> at <effort>\` (an unset model or effort reads back as the literal \`default\`, matching how it was recorded); for example: \`awk -F= '\$1=="harness"{h=\$2} \$1=="model"{m=\$2} \$1=="effort"{e=\$2} END{printf "Built by: %s/%s at %s", h, m, e}' $meta\`. Include that exact line, on its own line, in the PR body you pass to \`gh-axi\`.
@@ -76,7 +88,8 @@ EOF
       cat <<EOF
 # Definition of done
 Delivery contract: mode=local-only
-This task ships **local-only**: no remote, no PR, no pipeline.
+${base_line:+$base_line
+}This task ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`fm/$id\`. Do NOT push, do NOT open a PR, do NOT merge.
 Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
 Before you report it ready, verify the acceptance criteria with a fresh read of the diff against the task - no subagent - and fix what it finds; nobody else reviews this work before merge.
@@ -88,7 +101,8 @@ EOF
       cat <<EOF
 # Definition of done
 Delivery contract: mode=no-mistakes
-The task is complete only when committed on your branch.
+${base_line:+$base_line
+}The task is complete only when committed on your branch.
 Before you report it done, run a cheap pre-flight only: the project's typecheck and the test files you touched, plus a production build only when the change adds routes, dependencies, or client/server boundaries.
 Do not run the full test suite, a self-review subagent, or any audit skill: the review pipeline and CI own the full suite, the production build, and the code review.
 When you believe it is complete and verified, append \`done: {summary}\` to the status file and stop.
