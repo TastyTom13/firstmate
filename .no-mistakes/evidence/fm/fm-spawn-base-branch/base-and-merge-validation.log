@@ -1,0 +1,11 @@
+ok - fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly
+ok - fm-brief.sh: the base branch line renders only for an explicit base
+ok - an explicit base starts the worker at that branch's tip and records it
+ok - a spawn with no explicit base records no base field at all
+ok - a scout spawn starts from the explicit base and records it
+ok - local-only integration bases are refused before launch and publication
+# all fm-spawn-pool-base-freshen tests passed
+ok - fm-pr-merge refuses a base that differs from --expect-base, before merging
+ok - fm-pr-merge merges a matching base and records the observed base
+ok - fm-pr-merge refuses a malformed forge-reported base before merging
+ok - fm-pr-merge without --expect-base reads no base and records none
