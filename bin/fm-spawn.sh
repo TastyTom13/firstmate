@@ -450,6 +450,10 @@ else
       echo "error: --base must be a plain branch name such as 'integration' or 'release/2.0' (got '$BASE')" >&2
       exit 1
     }
+    if [ "$KIND" = ship ] && [ "$MODE" = local-only ]; then
+      echo "error: local-only landing is default-branch-only because bin/fm-merge-local.sh merges into the local default branch; an integration base therefore needs a PR-raising mode (no-mistakes or direct-PR)" >&2
+      exit 1
+    fi
   fi
   # Delivery contract (AGENTS.md section 7). A ship task's mode and yolo are
   # firstmate's per-task decision, so they are required and closed-set validated

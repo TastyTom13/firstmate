@@ -524,6 +524,25 @@ test_scout_accepts_an_explicit_base() {
   pass "a scout spawn starts from the explicit base and records it"
 }
 
+test_local_only_explicit_base_is_refused_without_publishing() {
+  local rec id out status before
+  id='pool-local-only-base-r16'
+  rec=$(make_case local-only-base "$id")
+  read_case_record "$rec"
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+
+  out=$(run_spawn "$id" --mode local-only --yolo off --base integration)
+  status=$?
+  [ "$status" -ne 0 ] || fail "local-only spawn accepted an integration base"
+  assert_contains "$out" "local-only landing is default-branch-only" \
+    "local-only base refusal did not explain the landing constraint"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "local-only base refusal moved the pooled worktree"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] \
+    || fail "local-only base refusal published task metadata"
+  pass "local-only integration bases are refused before launch and publication"
+}
+
 test_malformed_base_is_refused_before_any_fetch() {
   local rec id out status before
   id='pool-bad-base-r16'
@@ -556,6 +575,7 @@ test_explicit_base_starts_the_worker_on_that_branch
 test_default_base_records_no_base_field
 test_missing_base_branch_refuses_without_touching_the_slot
 test_scout_accepts_an_explicit_base
+test_local_only_explicit_base_is_refused_without_publishing
 test_malformed_base_is_refused_before_any_fetch
 
 echo "# all fm-spawn-pool-base-freshen tests passed"

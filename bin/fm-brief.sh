@@ -241,6 +241,10 @@ if [ "$BASE_SET" -eq 1 ]; then
     echo "error: --base must be a plain branch name such as 'integration' or 'release/2.0' (got '$BASE')" >&2
     exit 1
   }
+  if [ "$MODE" = local-only ]; then
+    echo "error: local-only landing is default-branch-only because bin/fm-merge-local.sh merges into the local default branch; an integration base therefore needs a PR-raising mode (no-mistakes or direct-PR)" >&2
+    exit 1
+  fi
 fi
 ID=${POS[0]}
 

@@ -288,7 +288,8 @@ mode on a scout brief|brief-refused-b3 some-proj --scout --mode direct-PR|--mode
 mode on a secondmate charter|brief-refused-b4 --secondmate --no-projects --mode no-mistakes|--mode applies only to ship briefs
 base on a scout brief|brief-refused-b5 some-proj --scout --base integration|--base applies only to ship briefs
 base on a secondmate charter|brief-refused-b6 --secondmate --no-projects --base integration|--base applies only to ship briefs
-malformed base on a ship brief|brief-refused-b7 some-proj --mode direct-PR --base -bad|must be a plain branch name
+base on a local-only ship brief|brief-refused-b7 some-proj --mode local-only --base integration|local-only landing is default-branch-only
+malformed base on a ship brief|brief-refused-b8 some-proj --mode direct-PR --base -bad|must be a plain branch name
 ROWS
   pass "fm-brief.sh: --yolo and scout/secondmate --mode are refused, never silently dropped"
 }
@@ -303,7 +304,7 @@ test_ship_base_branch_line_renders_only_when_given() {
   home="$TMP_ROOT/base-branch-home"
   write_registry "$home"
 
-  for mode in no-mistakes direct-PR local-only; do
+  for mode in no-mistakes direct-PR; do
     id="brief-base-${mode}"
     FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --base integration >/dev/null 2>&1 \
       || fail "$mode: a ship brief with an explicit base should scaffold"

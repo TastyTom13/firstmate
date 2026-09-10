@@ -511,6 +511,32 @@ test_expect_base_rejects_a_malformed_branch_name() {
   pass "fm-pr-merge rejects a malformed --expect-base before doing anything"
 }
 
+test_expect_base_rejects_a_malformed_observed_branch_name() {
+  local case_dir rc
+  case_dir=$(make_case expect-base-observed-malformed)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 7777777777777777777777777777777777777777
+  printf 'not a branch\n' > "$case_dir/github-base"
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/37 \
+    --expect-base integration > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || fail "expect-base-observed-malformed: malformed forge base was accepted"
+  assert_grep 'invalid base branch' "$case_dir/stderr" \
+    "expect-base-observed-malformed: the refusal did not name the invalid observed base"
+  assert_grep 'not a branch' "$case_dir/stderr" \
+    "expect-base-observed-malformed: the refusal did not print the observed value"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "expect-base-observed-malformed: the merge command ran on a malformed forge base"
+  assert_no_grep 'pr_base=' "$case_dir/state/task-x1.meta" \
+    "expect-base-observed-malformed: malformed forge base was recorded"
+  pass "fm-pr-merge refuses a malformed forge-reported base before merging"
+}
+
 test_no_expect_base_reads_and_records_nothing() {
   local case_dir rc
   case_dir=$(make_case expect-base-absent)
@@ -2232,6 +2258,7 @@ test_expect_base_match_merges_and_records_the_base
 test_expect_base_extra_args_still_reach_the_forge
 test_expect_base_refuses_when_the_base_cannot_be_read
 test_expect_base_rejects_a_malformed_branch_name
+test_expect_base_rejects_a_malformed_observed_branch_name
 test_no_expect_base_reads_and_records_nothing
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording

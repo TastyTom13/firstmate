@@ -694,6 +694,10 @@ read_pr_base() {
     printf 'error: could not read the base branch of %s, so the expected base could not be checked; nothing was merged\n' "$URL" >&2
     return 1
   fi
+  if ! fm_branch_name_valid "$base"; then
+    printf 'error: forge reported an invalid base branch %s, so the expected base could not be checked; nothing was merged\n' "$base" >&2
+    return 1
+  fi
   FM_PR_OBSERVED_BASE=$base
 }
 
