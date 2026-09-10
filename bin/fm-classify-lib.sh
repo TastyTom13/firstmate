@@ -149,7 +149,10 @@ fm_watch_threshold() {  # <KEY> <builtin default>
   [ -n "$FM_WATCH_THRESHOLD" ] && return 0
   FM_WATCH_THRESHOLD=$def
   file=${FM_WATCH_THRESHOLDS_FILE:-${FM_CONFIG_OVERRIDE:-${FM_HOME:-$_FM_CLASSIFY_HOME_DEFAULT}/config}/watch-thresholds}
-  [ -f "$file" ] && [ -r "$file" ] || return 0
+  if [ ! -f "$file" ] || [ ! -r "$file" ]; then
+    [ -e "$file" ] && _fm_watch_threshold_warn "$file" 'not a readable regular file'
+    return 0
+  fi
   while IFS= read -r line || [ -n "$line" ]; do
     line=${line%$'\r'}
     line="${line#"${line%%[![:space:]]*}"}"

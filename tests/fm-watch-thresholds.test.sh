@@ -185,7 +185,7 @@ FM_PAUSE_RESURFACE_SECS=-90
 }
 
 test_unreadable_file_is_tolerated() {
-  local home got
+  local home got err
   home=$(make_home unreadable 'FM_STALE_ESCALATE_SECS=900
 ')
   chmod 000 "$home/config/watch-thresholds"
@@ -201,20 +201,26 @@ test_unreadable_file_is_tolerated() {
   [ "$got" = 240 ] || fail "an unreadable file did not fall back to the built-in default: [$got]"
   got=$(watcher_value "$home" PAUSE_RESURFACE_SECS)
   [ "$got" = 3600 ] || fail "an unreadable file disturbed another key's default: [$got]"
+  err=$(watcher_stderr "$home")
+  [ "$(printf '%s\n' "$err" | grep -c 'fm-watch-thresholds')" = 1 ] \
+    || fail "an unreadable file was not reported once: [$err]"
   chmod 600 "$home/config/watch-thresholds"
 
-  pass "an unreadable config/watch-thresholds falls back to the built-in defaults"
+  pass "an unreadable config/watch-thresholds falls back and is reported once"
 }
 
 test_a_directory_in_place_of_the_file_is_tolerated() {
-  local home got
+  local home got err
   home=$(make_home directory-in-place)
   mkdir -p "$home/config/watch-thresholds"
 
   got=$(watcher_value "$home" STALE_ESCALATE_SECS)
   [ "$got" = 240 ] || fail "a directory in place of the file did not fall back to the default: [$got]"
+  err=$(watcher_stderr "$home")
+  [ "$(printf '%s\n' "$err" | grep -c 'fm-watch-thresholds')" = 1 ] \
+    || fail "a directory in place of the file was not reported once: [$err]"
 
-  pass "a directory in place of config/watch-thresholds falls back to the built-in defaults"
+  pass "a directory in place of config/watch-thresholds falls back and is reported once"
 }
 
 # --- 3. the two supervisors agree -------------------------------------------
