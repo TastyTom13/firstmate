@@ -212,7 +212,7 @@ Exactly four keys are accepted, each a whole number of seconds, and each keeps i
 
 Resolution precedence for every key is an explicit non-empty environment value, then this file, then the built-in default, so an existing environment override behaves exactly as before and an absent file changes nothing.
 The always-on watcher and the away-mode daemon both resolve through the one shared helper `fm_watch_threshold` in `bin/fm-classify-lib.sh`, so a retuned home cannot have the two actors disagree about the same key.
-An unknown key, a malformed line, a non-integer value, and an unreadable file are each reported once on standard error and then ignored, so a bad file never stops the watcher from starting.
+An unknown key, a malformed line, a non-integer value, an unreadable file, and a directory in place of the file are each reported once on standard error and then ignored, so a bad file never stops the watcher from starting.
 The file is a per-home cadence preference and is inherited by secondmate homes like the other primary-authoritative local config items.
 
 ## Gate defaults (.no-mistakes.yaml)
