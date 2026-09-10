@@ -1,0 +1,8 @@
+$ bash tests/fm-watch-thresholds.test.sh
+ok - an absent config/watch-thresholds leaves every built-in default unchanged
+ok - config/watch-thresholds beats the built-in defaults for all four keys
+ok - an explicit environment value beats the file, per key
+ok - unknown keys, malformed lines, and bad values are reported once and ignored
+ok - an unreadable config/watch-thresholds falls back and is reported once
+ok - a directory in place of config/watch-thresholds falls back and is reported once
+ok - the watcher and the away-mode daemon resolve the same key to the same value
