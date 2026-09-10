@@ -43,6 +43,7 @@ make_home() {  # <name> [file body]
 watcher_value() {  # <home> <variable name> [KEY=VALUE env ...]
   local home=$1 var=$2
   shift 2
+  # shellcheck disable=SC2016
   env "$@" \
     FM_STATE_OVERRIDE="$home/state" FM_CONFIG_OVERRIDE="$home/config" \
     FM_ROOT_OVERRIDE="$ROOT" \
@@ -60,6 +61,7 @@ watcher_value() {  # <home> <variable name> [KEY=VALUE env ...]
 daemon_value() {  # <home> <KEY> <default constant name> [KEY=VALUE env ...]
   local home=$1 key=$2 defvar=$3
   shift 3
+  # shellcheck disable=SC2016
   env "$@" \
     FM_STATE_OVERRIDE="$home/state" FM_CONFIG_OVERRIDE="$home/config" \
     FM_ROOT_OVERRIDE="$ROOT" \
@@ -76,14 +78,17 @@ daemon_value() {  # <home> <KEY> <default constant name> [KEY=VALUE env ...]
 # report-once claim is asserted on the real startup path.
 watcher_stderr() {  # <home>
   local home=$1
-  env FM_STATE_OVERRIDE="$home/state" FM_CONFIG_OVERRIDE="$home/config" \
-    FM_ROOT_OVERRIDE="$ROOT" \
-    bash -c '
-      set -u
-      # shellcheck disable=SC1090
-      . "$1"
-      printf "%s %s %s\n" "$SIGNAL_GRACE" "$STALE_ESCALATE_SECS" "$PAUSE_RESURFACE_SECS" >/dev/null
-    ' _ "$WATCH" 2>&1 >/dev/null
+  {
+    # shellcheck disable=SC2016
+    env FM_STATE_OVERRIDE="$home/state" FM_CONFIG_OVERRIDE="$home/config" \
+      FM_ROOT_OVERRIDE="$ROOT" \
+      bash -c '
+        set -u
+        # shellcheck disable=SC1090
+        . "$1"
+        printf "%s %s %s\n" "$SIGNAL_GRACE" "$STALE_ESCALATE_SECS" "$PAUSE_RESURFACE_SECS" >/dev/null
+      ' _ "$WATCH" >/dev/null
+  } 2>&1
 }
 
 # --- 1. precedence ----------------------------------------------------------
