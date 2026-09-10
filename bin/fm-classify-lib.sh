@@ -94,10 +94,90 @@ FM_CLASSIFY_PAUSED_VERB_DEFAULT='paused'
 # Far longer than the wedge threshold (FM_STALE_ESCALATE_SECS, default 240s), it
 # avoids nagging a deliberate wait while ensuring a forgotten hold cannot rot
 # invisibly - it re-surfaces once for a recheck every window. One hour by default;
-# both consumers read FM_PAUSE_RESURFACE_SECS with this default so the cadence has
-# one owner.
+# both consumers resolve FM_PAUSE_RESURFACE_SECS against this default through
+# fm_watch_threshold below, so the cadence has one owner.
 # shellcheck disable=SC2034 # Read by the watcher and daemon (fm-watch.sh, fm-supervise-daemon.sh), not this lib.
 FM_PAUSE_RESURFACE_SECS_DEFAULT=3600
+
+# --- per-home watcher threshold overrides -----------------------------------
+# The supervision cadence knobs a home may retune locally, without editing any
+# tracked file, through the optional gitignored config/watch-thresholds
+# (KEY=value lines). docs/configuration.md owns the operator-facing contract.
+# Every consumer - the always-on watcher (bin/fm-watch.sh) and the away-mode
+# daemon (bin/fm-supervise-daemon.sh) - resolves through fm_watch_threshold
+# below, so both actors read one value for the same key and cannot drift.
+FM_WATCH_THRESHOLD_KEYS_DEFAULT='FM_PAUSE_RESURFACE_SECS FM_STALE_ESCALATE_SECS FM_SIGNAL_GRACE FM_HEARTBEAT_SCAN_SECS'
+
+# Home root used to locate config/ when neither FM_CONFIG_OVERRIDE nor FM_HOME
+# is set, resolved once here so the resolver below forks nothing per call.
+_FM_CLASSIFY_HOME_DEFAULT="$(cd "$_FM_CLASSIFY_LIB_DIR/.." && pwd 2>/dev/null)" || _FM_CLASSIFY_HOME_DEFAULT="."
+
+# Files whose unusable lines have already been reported by this process, so a
+# bad file is named once instead of on every poll.
+_FM_WATCH_THRESHOLD_WARNED=''
+
+# Absolute path of this home's threshold file. FM_WATCH_THRESHOLDS_FILE (tests)
+# wins, then FM_CONFIG_OVERRIDE, then FM_HOME, then this code root.
+fm_watch_thresholds_file() {
+  printf '%s\n' "${FM_WATCH_THRESHOLDS_FILE:-${FM_CONFIG_OVERRIDE:-${FM_HOME:-$_FM_CLASSIFY_HOME_DEFAULT}/config}/watch-thresholds}"
+}
+
+# Report unusable lines once per file per process, on stderr, and keep going.
+_fm_watch_threshold_warn() {  # <file> <description of the bad lines>
+  local file=$1 bad=$2
+  case "|$_FM_WATCH_THRESHOLD_WARNED|" in
+    *"|$file|"*) return 0 ;;
+  esac
+  _FM_WATCH_THRESHOLD_WARNED="$_FM_WATCH_THRESHOLD_WARNED|$file|"
+  printf 'fm-watch-thresholds: ignoring unusable line(s) in %s: %s\n' "$file" "$bad" >&2
+  return 0
+}
+
+# Resolve ONE threshold into the FM_WATCH_THRESHOLD global (a global rather than
+# stdout so the hot supervision loops that call this per task per poll fork no
+# subshell). Precedence: a non-empty environment value for <KEY>, then that key
+# in config/watch-thresholds, then the built-in default the caller passes - so
+# an absent or unusable file reproduces today's behaviour exactly.
+#
+# Only FM_WATCH_THRESHOLD_KEYS_DEFAULT keys and whole-second non-negative
+# integer values are accepted. An unknown key, a malformed line, and an
+# unreadable file are all ignored after one report: the watcher must never fail
+# to start because of a local preference file.
+fm_watch_threshold() {  # <KEY> <builtin default>
+  local key=$1 def=$2 file line name value candidate bad='' known
+  FM_WATCH_THRESHOLD=${!key:-}
+  [ -n "$FM_WATCH_THRESHOLD" ] && return 0
+  FM_WATCH_THRESHOLD=$def
+  file=${FM_WATCH_THRESHOLDS_FILE:-${FM_CONFIG_OVERRIDE:-${FM_HOME:-$_FM_CLASSIFY_HOME_DEFAULT}/config}/watch-thresholds}
+  [ -f "$file" ] && [ -r "$file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [ -n "$line" ] || continue
+    case "$line" in '#'*) continue ;; esac
+    case "$line" in
+      *=*) ;;
+      *) bad="$bad [$line]"; continue ;;
+    esac
+    name=${line%%=*}
+    value=${line#*=}
+    name="${name%"${name##*[![:space:]]}"}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    known=0
+    for candidate in ${FM_WATCH_THRESHOLD_KEYS:-$FM_WATCH_THRESHOLD_KEYS_DEFAULT}; do
+      [ "$candidate" = "$name" ] && { known=1; break; }
+    done
+    if [ "$known" != 1 ]; then bad="$bad [$line]"; continue; fi
+    case "$value" in
+      ''|*[!0-9]*) bad="$bad [$line]"; continue ;;
+    esac
+    [ "$name" = "$key" ] && FM_WATCH_THRESHOLD=$value
+  done < "$file"
+  [ -n "$bad" ] && _fm_watch_threshold_warn "$file" "$bad"
+  return 0
+}
 
 # The resolution verb and durable-backlog-transfer verb that CLOSE a keyed
 # status decision opened by needs-decision or blocked. See status_open_decisions

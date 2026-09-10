@@ -199,6 +199,22 @@ The bound is required rather than cosmetic because churn and pane staleness read
 The flag is a home-local supervision-noise preference and is not inherited by secondmate homes, which run their own crew mix.
 [`architecture.md`](architecture.md) owns the triage contract and `bin/fm-watch.sh`'s `signal_turnend_panes_churned` owns the exact evidence and fail-closed boundaries.
 
+## Watcher thresholds (config/watch-thresholds)
+
+The optional local, gitignored `config/watch-thresholds` retunes this home's supervision cadence without editing any tracked file.
+It holds `KEY=value` lines, one per line, with `#` comment lines and blank lines allowed; whitespace around the key and the value is ignored.
+Exactly four keys are accepted, each a whole number of seconds, and each keeps its existing built-in default when the file does not set it:
+
+- `FM_PAUSE_RESURFACE_SECS` (default `3600`): how long a declared wait, external or captain-held, stays declared before it re-surfaces once as a recheck.
+- `FM_STALE_ESCALATE_SECS` (default `240`): idle seconds before a provably-working stale pane escalates as a possible wedge.
+- `FM_SIGNAL_GRACE` (default `30`): seconds the watcher lingers after a signal so trailing signals coalesce into one wake.
+- `FM_HEARTBEAT_SCAN_SECS` (default `300`): cadence of the away-mode daemon's catch-all status scan.
+
+Resolution precedence for every key is an explicit non-empty environment value, then this file, then the built-in default, so an existing environment override behaves exactly as before and an absent file changes nothing.
+The always-on watcher and the away-mode daemon both resolve through the one shared helper `fm_watch_threshold` in `bin/fm-classify-lib.sh`, so a retuned home cannot have the two actors disagree about the same key.
+An unknown key, a malformed line, a non-integer value, and an unreadable file are each reported once on standard error and then ignored, so a bad file never stops the watcher from starting.
+The file is a per-home cadence preference and is inherited by secondmate homes like the other primary-authoritative local config items.
+
 ## Gate defaults (.no-mistakes.yaml)
 
 The tracked `.no-mistakes.yaml` sets `test.evidence.store_in_repo: true` and pins `commands.lint` to `bin/fm-lint.sh` so local lint matches CI.
@@ -812,7 +828,8 @@ The two read files are parsed differently: `config/voice-read-scope` must hold t
 
 ## Environment variables
 
-Runtime tuning via environment variables (defaults shown):
+Runtime tuning via environment variables (defaults shown).
+`FM_PAUSE_RESURFACE_SECS`, `FM_STALE_ESCALATE_SECS`, `FM_SIGNAL_GRACE` and `FM_HEARTBEAT_SCAN_SECS` can also be set per home in `config/watch-thresholds` (see "Watcher thresholds"), with an explicit environment value still winning.
 
 ```sh
 FM_HOME=                 # optional operational home for most scripts, unset means this repo root; fm-send requires it explicitly
