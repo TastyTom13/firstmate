@@ -101,6 +101,11 @@
 #                                   digests; 0 = flush immediately (default 90)
 #          FM_HEARTBEAT_SCAN_SECS   cadence for the catch-all status scan
 #                                   (default 300)
+#          FM_STALE_ESCALATE_SECS, FM_PAUSE_RESURFACE_SECS and
+#          FM_HEARTBEAT_SCAN_SECS (plus the watcher's FM_SIGNAL_GRACE) may also
+#          be set per home in config/watch-thresholds; an explicit environment
+#          value still wins. bin/fm-classify-lib.sh (fm_watch_threshold) owns
+#          the resolution and docs/configuration.md the operator contract.
 #          FM_HOUSEKEEPING_TICK     seconds between housekeeping passes while
 #                                   the watcher is mid-cycle (default 15)
 #          FM_BUSY_REGEX            optional rendered busy-signature override
@@ -1062,7 +1067,8 @@ housekeeping() {  # <state>
       continue
     fi
     age=$(( now - $(cat "$marker" 2>/dev/null || echo "$now") ))
-    [ "$age" -ge "${FM_STALE_ESCALATE_SECS:-$STALE_ESCALATE_SECS_DEFAULT}" ] || continue
+    fm_watch_threshold FM_STALE_ESCALATE_SECS "$STALE_ESCALATE_SECS_DEFAULT"
+    [ "$age" -ge "$FM_WATCH_THRESHOLD" ] || continue
     stale_window_is_busy "$win" "$state"
     case "$?" in
       0) rm -f "$marker" ;;
@@ -1088,7 +1094,8 @@ housekeeping() {  # <state>
   # exactly the declaration that needs it. The crew's own latest status line is the
   # authority, and the loop head above already drops the marker the moment that line
   # stops declaring the wait.
-  pause_secs=${FM_PAUSE_RESURFACE_SECS:-$FM_PAUSE_RESURFACE_SECS_DEFAULT}
+  fm_watch_threshold FM_PAUSE_RESURFACE_SECS "$FM_PAUSE_RESURFACE_SECS_DEFAULT"
+  pause_secs=$FM_WATCH_THRESHOLD
   for marker in "$state"/.subsuper-paused-*; do
     [ -e "$marker" ] || continue
     key="${marker##*.subsuper-paused-}"
@@ -1136,7 +1143,8 @@ housekeeping() {  # <state>
   #     because the event this backstop most needs to catch is precisely one a
   #     later routine append has already moved past; fm-classify-lib.sh's span
   #     read decides relevance, and the classified-through offset is the dedup.
-  if [ "$(_file_age "$state/.subsuper-last-scan")" -ge "${FM_HEARTBEAT_SCAN_SECS:-$HEARTBEAT_SCAN_SECS_DEFAULT}" ]; then
+  fm_watch_threshold FM_HEARTBEAT_SCAN_SECS "$HEARTBEAT_SCAN_SECS_DEFAULT"
+  if [ "$(_file_age "$state/.subsuper-last-scan")" -ge "$FM_WATCH_THRESHOLD" ]; then
     _now > "$state/.subsuper-last-scan"
     local event record rest endpoint ident rc
     for f in "$state"/*.status; do
@@ -1599,7 +1607,8 @@ fm_super_main() {
 
   local afk_status="off"
   afk_active "$STATE" && afk_status="on"
-  log "daemon starting (pid $$); target=$TARGET; target_source=$target_source; backend=$BACKEND; backend_source=$backend_source; afk=$afk_status; inject_skip='${FM_INJECT_SKIP:-$INJECT_SKIP_DEFAULT}'; stale_escalate=${FM_STALE_ESCALATE_SECS:-$STALE_ESCALATE_SECS_DEFAULT}s; batch=${FM_ESCALATE_BATCH_SECS:-$ESCALATE_BATCH_SECS_DEFAULT}s"
+  fm_watch_threshold FM_STALE_ESCALATE_SECS "$STALE_ESCALATE_SECS_DEFAULT"
+  log "daemon starting (pid $$); target=$TARGET; target_source=$target_source; backend=$BACKEND; backend_source=$backend_source; afk=$afk_status; inject_skip='${FM_INJECT_SKIP:-$INJECT_SKIP_DEFAULT}'; stale_escalate=${FM_WATCH_THRESHOLD}s; batch=${FM_ESCALATE_BATCH_SECS:-$ESCALATE_BATCH_SECS_DEFAULT}s"
   migrate_watcher_pause_markers "$STATE"
 
   # --- shutdown: flush buffered escalations, reap child, release lock -------
