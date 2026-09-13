@@ -123,6 +123,7 @@ test_daemon_escalates_a_mixed_or_ordinary_signal() {
 test_note_is_durable_and_advances_marker() {
   local state offset
   state=$(signal_home durable "$EVIDENCE_LINE")
+  # shellcheck disable=SC2034 # The sourced daemon reads LOG.
   LOG="$state/.supervise-daemon.log"
 
   handle_wake "signal: $state/task.status" "$state" \
