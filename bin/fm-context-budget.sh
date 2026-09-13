@@ -173,9 +173,9 @@ state_is_writable() {
 
 write_step() {  # <session-id> <step>
   local tmp
-  [ -d "$STATE" ] || return 0
-  tmp=$(mktemp "$NUDGE_RECORD.XXXXXX" 2>/dev/null) || return 0
-  printf '%s %s\n' "$1" "$2" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
+  [ -d "$STATE" ] || return 1
+  tmp=$(mktemp "$NUDGE_RECORD.XXXXXX" 2>/dev/null) || return 1
+  printf '%s %s\n' "$1" "$2" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
   if mv -f "$tmp" "$NUDGE_RECORD" 2>/dev/null; then
     return 0
   fi
