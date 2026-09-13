@@ -285,12 +285,13 @@ test_hook_stays_silent_when_the_moment_is_not_quiet() {
   [ -z "$out" ] || fail "a queued wake must suppress the nudge, got: $out"
   rm -f "$dir/state/.wake-queue"
 
+  : > "$dir/state/task1.meta"
   printf 'working: on it\n' > "$dir/state/task1.status"
   status=0
   out=$(run_claude_stop "$dir") || status=$?
-  expect_code 0 "$status" "a turn end with a live task record"
-  [ -z "$out" ] || fail "a task status record must suppress the nudge, got: $out"
-  rm -f "$dir/state/task1.status"
+  expect_code 2 "$status" "a turn end with a live task record"
+  assert_not_contains "$out" "suggest /stow" "a task status record must suppress the nudge"
+  rm -f "$dir/state/task1.meta" "$dir/state/task1.status"
 
   mkdir -p "$dir/state/inbox"
   printf 'captain note\n' > "$dir/state/inbox/n1.note"
@@ -313,6 +314,17 @@ test_hook_stays_silent_when_the_moment_is_not_quiet() {
   assert_contains "$out" "suggest /stow" "the deferred nudge lost its verdict"
 
   pass "hook: the nudge waits for a low-disruption moment and then lands"
+}
+
+test_hook_ignores_persistent_reply_log() {
+  local dir out status
+  dir=$(make_primary_dir "$TMP_ROOT/hook-reply-log" 130000)
+  printf 'reply history\n' > "$dir/state/parent-replies.status"
+  status=0
+  out=$(run_claude_stop "$dir") || status=$?
+  expect_code 2 "$status" "an idle turn end with only a persistent reply log"
+  assert_contains "$out" "suggest /stow" "a persistent reply log must not suppress the nudge"
+  pass "hook: persistent parent replies do not count as active task status"
 }
 
 test_hook_nudges_only_in_claude_mode() {
@@ -340,4 +352,5 @@ test_nudge_steps_down_after_compaction
 test_hook_prints_the_suggestion_once_on_an_idle_turn_end
 test_hook_is_silent_below_the_threshold
 test_hook_stays_silent_when_the_moment_is_not_quiet
+test_hook_ignores_persistent_reply_log
 test_hook_nudges_only_in_claude_mode

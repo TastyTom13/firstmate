@@ -177,11 +177,16 @@ budget_reset() {
 # worker decision). Claude mode only, because the transcript this reads is
 # Claude's own; every other harness allows the stop unchanged.
 context_budget_nudge() {
-  local transcript line
+  local transcript line status id
   [ "$CLAUDE_MODE" -eq 1 ] || return 1
   [ -e "$STATE/.afk" ] && return 1
   [ -s "$STATE/.wake-queue" ] && return 1
-  compgen -G "$STATE/*.status" >/dev/null 2>&1 && return 1
+  for status in "$STATE"/*.status; do
+    [ -f "$status" ] || continue
+    id=${status##*/}
+    id=${id%.status}
+    [ -f "$STATE/$id.meta" ] && return 1
+  done
   compgen -G "$STATE/*.inbox/*.msg" >/dev/null 2>&1 && return 1
   compgen -G "$STATE/inbox/*.note" >/dev/null 2>&1 && return 1
   transcript=$(printf '%s' "$PAYLOAD" | jq -r '.transcript_path // empty' 2>/dev/null || true)
