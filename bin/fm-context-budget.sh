@@ -178,7 +178,7 @@ EOF
 state_is_writable() {
   local mode
   [ -d "$STATE" ] || return 1
-  mode=$(stat -f %Lp "$STATE" 2>/dev/null || stat -c %a "$STATE" 2>/dev/null) || return 1
+  mode=$(stat -c %a "$STATE" 2>/dev/null || stat -f %Lp "$STATE" 2>/dev/null) || return 1
   case "$mode" in
     *[2367]*) ;;
     *) return 1 ;;
