@@ -268,6 +268,83 @@ status_is_paused_or_captain_held() {  # <status-line>
   status_is_paused "$line" || status_is_captain_held "$line"
 }
 
+# --- info-severity evidence-only ask-user findings ---------------------------
+#
+# A no-mistakes ask-user finding whose severity is info and whose only ask is
+# evidence the accepted contract already implies - a screenshot, a log excerpt, a
+# measurement, a citation - is firstmate's to decide as Fix and is never the
+# captain's call.
+# `.agents/skills/ask-user-authority/SKILL.md` is the single owner of that
+# authority rule; this library owns only the SHAPE test a supervisor uses to
+# recognise such a `needs-decision` status line, and each consumer owns its own
+# routing.
+#
+# The test is deliberately narrow and fails closed toward surfacing the line.
+# All four gates must hold:
+#   1. the leading verb is `needs-decision`,
+#   2. the line has exactly one DECLARED severity and it is info ("[severity=info]",
+#      "severity: info", "severity=info", "info severity"); an undeclared or
+#      competing severity never qualifies,
+#   3. the ask names an evidence artefact, and
+#   4. no change vocabulary appears, so a finding asking to CHANGE what is
+#      delivered stays captain-facing even when it is labelled info.
+# Each vocabulary is overridable for a home with a different reviewer dialect.
+FM_CLASSIFY_INFO_SEVERITY_RE_DEFAULT='\[severity[[:space:]]*[=:][[:space:]]*info[[:space:]]*\]|severity[[:space:]]*[=:][[:space:]]*info([^[:alnum:]_-]|$)|(^|[^[:alnum:]_-])info[[:space:]-]severity([^[:alnum:]_-]|$)'
+FM_CLASSIFY_SEVERITY_DECLARATION_RE_DEFAULT='\[severity[[:space:]]*[=:][[:space:]]*[[:alnum:]_-]+\]|severity[[:space:]]*[=:][[:space:]]*[[:alnum:]_-]+|[[:alnum:]_-]+[[:space:]-]severity'
+FM_CLASSIFY_EVIDENCE_ASK_WORDS_DEFAULT='screenshot|screenshots|screen capture|screen recording|screencast|log excerpt|log excerpts|log output|log line|log lines|measurement|measurements|benchmark number|timing number|citation|citations|evidence|proof'
+FM_CLASSIFY_CHANGE_ASK_WORDS_DEFAULT='change|changes|add|adds|remove|removes|drop|rename|renames|redesign|refactor|extend|extends|introduce|introduces|replace|replaces|support|guarantee|guarantees|behaviour|behavior|api|schema|feature|rework'
+
+# 0 when <text> contains one of the <alternation> words as a whole word. Written
+# with an explicit non-alphanumeric boundary instead of \b, which is a GNU
+# extension absent from the BSD grep on macOS.
+_fm_line_has_word() {  # <text> <alternation>
+  printf '%s' "$1" | grep -qiE "(^|[^[:alnum:]])($2)([^[:alnum:]]|\$)"
+}
+
+# 0 when one status line is an info-severity, evidence-only ask-user finding.
+status_is_evidence_only_finding() {  # <status-line>
+  local line=$1 note declarations declaration declaration_count=0 info_count=0
+  [ -n "$line" ] || return 1
+  [ "$(status_line_verb "$line")" = 'needs-decision' ] || return 1
+  declarations=$(printf '%s' "$line" \
+    | grep -oiE "${FM_CLASSIFY_SEVERITY_DECLARATION_RE:-$FM_CLASSIFY_SEVERITY_DECLARATION_RE_DEFAULT}" \
+    || true)
+  while IFS= read -r declaration; do
+    [ -n "$declaration" ] || continue
+    declaration_count=$((declaration_count + 1))
+    printf '%s' "$declaration" \
+      | grep -qiE "${FM_CLASSIFY_INFO_SEVERITY_RE:-$FM_CLASSIFY_INFO_SEVERITY_RE_DEFAULT}" \
+      && info_count=$((info_count + 1))
+  done <<< "$declarations"
+  [ "$declaration_count" -eq 1 ] || return 1
+  [ "$info_count" -eq 1 ] || return 1
+  note=$(status_line_note "$line")
+  [ -n "$note" ] || return 1
+  _fm_line_has_word "$note" \
+    "${FM_CLASSIFY_EVIDENCE_ASK_WORDS:-$FM_CLASSIFY_EVIDENCE_ASK_WORDS_DEFAULT}" || return 1
+  ! _fm_line_has_word "$note" \
+    "${FM_CLASSIFY_CHANGE_ASK_WORDS:-$FM_CLASSIFY_CHANGE_ASK_WORDS_DEFAULT}"
+}
+
+# 0 when an actionable-events field holds at least one event and EVERY event in
+# it is an info-severity evidence-only finding. The field is the third column of
+# status_span_first_actionable_record, whose events are joined with " ; ", so a
+# span that also carries any other actionable event never qualifies.
+status_events_all_evidence_only() {  # <events-field>
+  local events=$1 event seen=0
+  [ -n "$events" ] || return 1
+  while [ -n "$events" ]; do
+    case "$events" in
+      *" ; "*) event=${events%%" ; "*}; events=${events#*" ; "} ;;
+      *) event=$events; events='' ;;
+    esac
+    [ -n "$event" ] || continue
+    status_is_evidence_only_finding "$event" || return 1
+    seen=1
+  done
+  [ "$seen" -eq 1 ]
+}
+
 # --- durable keyed decisions ------------------------------------------------
 #
 # The status stream is an append-only EVENT log. Reading it last-event-wins
