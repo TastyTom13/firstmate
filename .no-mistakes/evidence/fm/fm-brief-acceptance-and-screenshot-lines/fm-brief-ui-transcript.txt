@@ -1,0 +1,13 @@
+help excerpt:
+--ui marks the task as UI-touching. The generated ship brief then carries a
+screenshot pre-flight rule: capture each changed view at viewport widths
+375, 768 and 1440 under docs/evidence/<task-id>/ and cite those paths in the
+PR body, so the reviewer never has to ask for visual evidence. Firstmate
+decides UI-touching at intake, because the caller-supplied repo string and the
+{TASK} text filled in afterwards carry no reliable signal of it. It is refused
+generated UI evidence:
+8. Acceptance: number each criterion; the PR body cites each number with its proof.
+9. For each bug or rule, write the failing test first, show it red, then green, and cite both in the PR body.
+10. This task touches the UI: before you report the work done, save a screenshot of each changed view at viewport widths 375, 768 and 1440 under `docs/evidence/demo-ui/`, and cite those paths in the PR body.
+generated non-UI screenshot-rule check:
+no screenshot rule emitted
