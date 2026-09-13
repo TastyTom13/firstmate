@@ -38,9 +38,9 @@
 # "<session-id> <step> <band>", where step is percent/20 and band is quiet,
 # next, or now. A step is announced at most once, except that an upward band
 # change is announced once, a different session id resets the count, and a step
-# BELOW the recorded one (the session was compacted, so its context shrank)
-# rewrites the record down and stays silent, so the next real crossing announces
-# again.
+# BELOW the recorded one (the session was compacted, so its context shrank), or
+# its band steps down, rewrites the record down and stays silent, so the next real
+# crossing announces again.
 #
 # Exit status: 0 printed a line, 1 nothing to say or nothing measurable. This
 # script never blocks and never writes outside the state directory.
@@ -151,6 +151,15 @@ verdict_for() {  # <percent>
   fi
 }
 
+band_rank() {  # <band>
+  case "$1" in
+    quiet) printf '0\n' ;;
+    next) printf '1\n' ;;
+    now) printf '2\n' ;;
+    *) printf '0\n' ;;
+  esac
+}
+
 # One line = "<session-id> <step> <band>". A record whose session id does not
 # match the current one counts as no step announced yet.
 recorded_state() {  # <session-id>
@@ -226,12 +235,14 @@ fm_lock_try_acquire "$NUDGE_LOCK" || exit 1
 read -r LAST LAST_BAND <<EOF
 $(recorded_state "$SESSION_ID")
 EOF
-if [ "$STEP" -lt "$LAST" ]; then
+BAND_RANK=$(band_rank "$BAND")
+LAST_RANK=$(band_rank "$LAST_BAND")
+if [ "$STEP" -lt "$LAST" ] || [ "$BAND_RANK" -lt "$LAST_RANK" ]; then
   write_step "$SESSION_ID" "$STEP" "$BAND" || true
   fm_lock_release "$NUDGE_LOCK"
   exit 1
 fi
-if [ "$PERCENT" -lt 40 ] || { [ "$STEP" -le "$LAST" ] && [ "$BAND" != now -o "$LAST_BAND" = now ]; }; then
+if [ "$PERCENT" -lt 40 ] || { [ "$STEP" -le "$LAST" ] && [ "$BAND_RANK" -le "$LAST_RANK" ]; }; then
   fm_lock_release "$NUDGE_LOCK"
   exit 1
 fi

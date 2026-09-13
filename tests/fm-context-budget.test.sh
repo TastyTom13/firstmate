@@ -171,6 +171,27 @@ test_nudge_announces_band_upgrade_at_sixty_one() {
   pass "nudge: the 60-to-61 band upgrade is announced once"
 }
 
+test_nudge_reannounces_after_downward_band_change() {
+  local state t out status
+  state=$(make_state throttle-band-compaction)
+  t="$TMP_ROOT/throttle-band-compaction/transcript.jsonl"
+
+  write_transcript "$t" 130000
+  nudge "$state" "$t" s1 >/dev/null || fail "65 percent must announce"
+  write_transcript "$t" 120000
+  status=0
+  out=$(nudge "$state" "$t" s1) || status=$?
+  expect_code 1 "$status" "a compaction to 60 percent"
+  [ -z "$out" ] || fail "a downward band change must stay silent, got: $out"
+  assert_exact_line "$state/.context-budget-nudged" "s1 3 next" \
+    "compaction must record the lower urgency band"
+
+  write_transcript "$t" 122000
+  out=$(nudge "$state" "$t" s1) || fail "61 percent must reannounce after compaction"
+  assert_contains "$out" "suggest /stow now" "the reannounced urgent verdict was lost"
+  pass "nudge: a downward band change permits the next upward crossing"
+}
+
 test_nudge_announces_each_step_once() {
   local state t out status
   state=$(make_state throttle-steps)
@@ -383,6 +404,7 @@ test_byte_fallback_when_no_usage_record
 test_missing_transcript_is_silent
 test_nudge_is_quiet_below_forty_percent
 test_nudge_announces_band_upgrade_at_sixty_one
+test_nudge_reannounces_after_downward_band_change
 test_nudge_announces_each_step_once
 test_nudge_resets_for_a_new_session
 test_nudge_is_silent_when_state_cannot_be_written
