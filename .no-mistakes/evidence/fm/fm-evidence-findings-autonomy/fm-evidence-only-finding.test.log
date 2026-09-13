@@ -1,0 +1,6 @@
+ok - the shape test admits only a declared info-severity, evidence-only needs-decision line
+ok - a span qualifies only when every actionable event has the shape
+ok - an evidence-only finding is routed away from the captain-facing digest
+ok - the heartbeat catch-all routes evidence-only findings to durable notes
+ok - any other actionable event still reaches the captain-facing digest
+ok - the self-handled note is durable and avoids repeats after marker commit
