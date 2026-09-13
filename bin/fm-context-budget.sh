@@ -15,10 +15,12 @@
 # record carries the usage counters for that request. The newest such record's
 # input_tokens + cache_read_input_tokens + cache_creation_input_tokens +
 # output_tokens is the size of the context that request actually carried, so it
-# is the estimate used whenever jq can read one. With jq absent, or with no
-# usage record in the tail window, the fallback estimate is transcript bytes / 4
-# - deliberately coarse, and an overestimate on a session whose transcript is
-# longer than its live context.
+# is the estimate used whenever jq can read one. The script scans the tail first
+# and widens to the full transcript only when that tail has no usage record. This
+# bounds ordinary Stop-hook cost while preserving the newest usage record. With
+# jq absent, or with no readable usage record in the full transcript, the fallback
+# estimate is transcript bytes / 4 - deliberately coarse, and an overestimate on
+# a session whose transcript is longer than its live context.
 #
 # Modes.
 #   (default)  print one line: the estimated percentage and the verdict.
@@ -47,6 +49,7 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
 NUDGE_RECORD="$STATE/.context-budget-nudged"
+NUDGE_LOCK="$STATE/.context-budget-nudged.lock"
 TAIL_LINES=${FM_CONTEXT_TAIL_LINES:-400}
 case "$TAIL_LINES" in ''|*[!0-9]*|0) TAIL_LINES=400 ;; esac
 WINDOW=${FM_CONTEXT_WINDOW:-200000}
@@ -96,20 +99,33 @@ locate_transcript() {
   printf '%s\n' "$newest"
 }
 
-# Newest usage-bearing record in the tail window, as one integer.
+# Newest usage-bearing record in the tail window, or the full file when asked.
 tokens_from_usage() {
-  local file=$1 value
+  local file=$1 scope=${2:-tail} value
   command -v jq >/dev/null 2>&1 || return 1
-  value=$(tail -n "$TAIL_LINES" "$file" 2>/dev/null | jq -Rrs '
-    [ split("\n")[]
-      | fromjson?
-      | .message?.usage?
-      | select(type == "object")
-      | ((.input_tokens // 0) + (.cache_read_input_tokens // 0)
-         + (.cache_creation_input_tokens // 0) + (.output_tokens // 0))
-      | select(. > 0) ]
-    | last // empty
-  ' 2>/dev/null) || return 1
+  if [ "$scope" = full ]; then
+    value=$(jq -Rrs '
+      [ split("\n")[]
+        | fromjson?
+        | .message?.usage?
+        | select(type == "object")
+        | ((.input_tokens // 0) + (.cache_read_input_tokens // 0)
+           + (.cache_creation_input_tokens // 0) + (.output_tokens // 0))
+        | select(. > 0) ]
+      | last // empty
+    ' < "$file" 2>/dev/null) || return 1
+  else
+    value=$(tail -n "$TAIL_LINES" "$file" 2>/dev/null | jq -Rrs '
+      [ split("\n")[]
+        | fromjson?
+        | .message?.usage?
+        | select(type == "object")
+        | ((.input_tokens // 0) + (.cache_read_input_tokens // 0)
+           + (.cache_creation_input_tokens // 0) + (.output_tokens // 0))
+        | select(. > 0) ]
+      | last // empty
+    ' 2>/dev/null) || return 1
+  fi
   case "$value" in ''|*[!0-9]*) return 1 ;; esac
   printf '%s\n' "$value"
 }
@@ -144,18 +160,35 @@ recorded_step() {  # <session-id>
   printf '%s\n' "$have_step"
 }
 
+state_is_writable() {
+  local mode
+  [ -d "$STATE" ] || return 1
+  mode=$(stat -f %Lp "$STATE" 2>/dev/null || stat -c %a "$STATE" 2>/dev/null) || return 1
+  case "$mode" in
+    *[2367]*) ;;
+    *) return 1 ;;
+  esac
+  return 0
+}
+
 write_step() {  # <session-id> <step>
   local tmp
   [ -d "$STATE" ] || return 0
   tmp=$(mktemp "$NUDGE_RECORD.XXXXXX" 2>/dev/null) || return 0
   printf '%s %s\n' "$1" "$2" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
-  mv -f "$tmp" "$NUDGE_RECORD" 2>/dev/null || rm -f "$tmp"
+  if mv -f "$tmp" "$NUDGE_RECORD" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
 }
 
 [ -n "$TRANSCRIPT" ] || TRANSCRIPT=$(locate_transcript || true)
 [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ] || exit 1
 
-TOKENS=$(tokens_from_usage "$TRANSCRIPT" || tokens_from_bytes "$TRANSCRIPT" || true)
+TOKENS=$(tokens_from_usage "$TRANSCRIPT" \
+  || tokens_from_usage "$TRANSCRIPT" full \
+  || tokens_from_bytes "$TRANSCRIPT" || true)
 case "$TOKENS" in ''|*[!0-9]*) exit 1 ;; esac
 
 PERCENT=$((TOKENS * 100 / WINDOW))
@@ -175,13 +208,23 @@ fi
 # --nudge
 [ -n "$SESSION_ID" ] || SESSION_ID=unknown
 STEP=$((PERCENT / 20))
+. "$SCRIPT_DIR/fm-wake-lib.sh"
+state_is_writable || exit 1
+fm_lock_try_acquire "$NUDGE_LOCK" || exit 1
 LAST=$(recorded_step "$SESSION_ID")
 if [ "$STEP" -lt "$LAST" ]; then
-  write_step "$SESSION_ID" "$STEP"
+  write_step "$SESSION_ID" "$STEP" || true
+  fm_lock_release "$NUDGE_LOCK"
   exit 1
 fi
-[ "$PERCENT" -ge 40 ] || exit 1
-[ "$STEP" -gt "$LAST" ] || exit 1
-write_step "$SESSION_ID" "$STEP"
+if [ "$PERCENT" -lt 40 ] || [ "$STEP" -le "$LAST" ]; then
+  fm_lock_release "$NUDGE_LOCK"
+  exit 1
+fi
+if ! write_step "$SESSION_ID" "$STEP"; then
+  fm_lock_release "$NUDGE_LOCK"
+  exit 1
+fi
+fm_lock_release "$NUDGE_LOCK"
 printf '%s\n' "$LINE"
 exit 0

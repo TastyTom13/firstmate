@@ -52,6 +52,20 @@ test_percent_comes_from_the_newest_usage_record() {
   pass "estimator: percentage comes from the newest usage record, not the first"
 }
 
+test_newest_usage_record_survives_tail_window() {
+  local t percent
+  t="$TMP_ROOT/usage-outside-tail/transcript.jsonl"
+  write_transcript "$t" 50000
+  printf '%s\n' '{"type":"user","message":{"role":"user","content":"later"}}' \
+    '{"type":"user","message":{"role":"user","content":"later"}}' \
+    '{"type":"user","message":{"role":"user","content":"later"}}' \
+    '{"type":"user","message":{"role":"user","content":"later"}}' >> "$t"
+  percent=$(FM_CONTEXT_TAIL_LINES=3 "$BUDGET" --transcript "$t" --window 200000 --percent) \
+    || fail "estimator failed when widening beyond the tail window"
+  [ "$percent" = 25 ] || fail "expected the older usage record to produce 25 percent, got $percent"
+  pass "estimator: widens past a usage-free tail to find the newest usage record"
+}
+
 test_verdict_bands() {
   local t line
   t="$TMP_ROOT/bands/transcript.jsonl"
@@ -141,6 +155,22 @@ test_nudge_announces_each_step_once() {
   assert_contains "$out" "suggest /stow now" "step 3 line lost its verdict"
 
   pass "nudge: announces at most once per 20 percent step and again on the next step"
+}
+
+test_nudge_is_silent_when_state_cannot_be_written() {
+  local state t out status
+  state=$(make_state throttle-unwritable)
+  t="$TMP_ROOT/throttle-unwritable/transcript.jsonl"
+  write_transcript "$t" 88000
+  chmod a-w "$state"
+  status=0
+  out=$(nudge "$state" "$t" s1) || status=$?
+  chmod u+w "$state"
+  expect_code 1 "$status" "a nudge with an unwritable state directory"
+  [ -z "$out" ] || fail "an unwritable state directory must print nothing, got: $out"
+  assert_absent "$state/.context-budget-nudged" \
+    "an unwritable state directory must not record a step"
+  pass "nudge: an unwritable state directory stays silent"
 }
 
 test_nudge_resets_for_a_new_session() {
@@ -298,12 +328,14 @@ test_hook_nudges_only_in_claude_mode() {
 }
 
 test_percent_comes_from_the_newest_usage_record
+test_newest_usage_record_survives_tail_window
 test_verdict_bands
 test_byte_fallback_when_no_usage_record
 test_missing_transcript_is_silent
 test_nudge_is_quiet_below_forty_percent
 test_nudge_announces_each_step_once
 test_nudge_resets_for_a_new_session
+test_nudge_is_silent_when_state_cannot_be_written
 test_nudge_steps_down_after_compaction
 test_hook_prints_the_suggestion_once_on_an_idle_turn_end
 test_hook_is_silent_below_the_threshold
