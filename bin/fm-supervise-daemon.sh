@@ -1332,7 +1332,7 @@ is_wake_reason() {  # <reason>
 handle_wake() {  # <reason> <state>
   local reason=$1 state=$2 decision action distilled task last stale_detail
   local capture="$state/.subsuper-classified-end.$$" span_record='' span_rc='' endpoint ident rest sig marker
-  local kind="" arg="" classification_failed=0 span_failure_repeat=0
+  local kind="" arg="" classification_failed=0 span_failure_repeat=0 note_recorded=0
   : > "$capture" || return 1
   if should_force_self "$reason"; then
     log "wake force-self (FM_INJECT_SKIP): $reason"
@@ -1422,7 +1422,11 @@ handle_wake() {  # <reason> <state>
       # durably rather than only logged, so the decision firstmate owns is
       # visible on return without ever entering the captain-facing digest.
       log "self-handle (evidence-only finding): $reason -> $distilled"
-      self_handled_note_add "$state" "$distilled" || classification_failed=1
+      if self_handled_note_add "$state" "$distilled"; then
+        note_recorded=1
+      else
+        classification_failed=1
+      fi
       ;;
     pause)
       # Declared wait, an external-wait pause or a verified captain-held transfer:
@@ -1467,7 +1471,7 @@ handle_wake() {  # <reason> <state>
       log "self-handle: $reason -> $distilled"
       ;;
   esac
-  if { [ "$action" = self ] || [ "$action" = note ]; } \
+  if { [ "$action" = self ] || { [ "$action" = note ] && [ "$note_recorded" -eq 1 ]; }; } \
     && { [ "$kind" = signal ] || [ "$kind" = stale ]; }; then
     mark_escalated_seen "$state" "$capture" || classification_failed=1
   fi
