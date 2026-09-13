@@ -268,7 +268,7 @@ A low-disruption moment is a turn ending with no open decision, no wake in hand,
 `bin/fm-context-budget.sh` owns the estimate and the throttle, and the Claude Stop turn-end guard is the one surface that prints the suggestion into a session ([`turnend-guard.md`](turnend-guard.md)); there is deliberately no second printing owner.
 The estimate reads the newest usage record in the current Claude transcript, so it is the context that request actually carried, and falls back to transcript bytes divided by four only when no usage record is readable.
 Verdicts follow three bands: under 40 percent stays quiet, 40 to 60 percent suggests `/stow` at the next quiet moment, and over 60 percent suggests `/stow` now.
-`state/.context-budget-nudged` records `<session-id> <step>`, where step is the percentage divided by 20, so each 20 percent step is announced at most once, a new session starts its own count, and a session whose context shrank through compaction rewrites the record down and stays silent until the next real crossing.
+`state/.context-budget-nudged` records `<session-id> <step> <band>`, where step is the percentage divided by 20 and band is `quiet`, `next`, or `now`, so each 20 percent step is announced at most once, an upward band change is announced once, a new session starts its own count, and a session whose context shrank through compaction rewrites the record down and stays silent until the next real crossing.
 Run `bin/fm-context-budget.sh` by hand at any time for the same one-line reading; `FM_CONTEXT_WINDOW` sets the assumed window and the script's header owns the remaining mechanics.
 
 ## Stow pass horizon (config/stow-pass-horizon)

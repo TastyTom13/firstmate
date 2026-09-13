@@ -66,6 +66,20 @@ test_newest_usage_record_survives_tail_window() {
   pass "estimator: widens past a usage-free tail to find the newest usage record"
 }
 
+test_auto_detection_empty_projects_is_silent() {
+  local projects slug out status
+  projects="$TMP_ROOT/empty-projects"
+  slug=$(printf '%s' "$TMP_ROOT" | tr '/.' '--')
+  mkdir -p "$projects/$slug"
+  printf 'unrelated file\n' > "$TMP_ROOT/unrelated.jsonl"
+  status=0
+  out=$(cd "$TMP_ROOT" && HOME="$TMP_ROOT" CLAUDE_PROJECTS_DIR="$projects" \
+    "$BUDGET" --percent) || status=$?
+  expect_code 1 "$status" "auto-detection with no transcript"
+  [ -z "$out" ] || fail "empty projects must not select an unrelated file, got: $out"
+  pass "estimator: empty auto-detection projects stay silent"
+}
+
 test_verdict_bands() {
   local t line
   t="$TMP_ROOT/bands/transcript.jsonl"
@@ -135,6 +149,28 @@ test_nudge_is_quiet_below_forty_percent() {
   pass "nudge: silent below 40 percent and records nothing"
 }
 
+test_nudge_announces_band_upgrade_at_sixty_one() {
+  local state t out status
+  state=$(make_state throttle-band)
+  t="$TMP_ROOT/throttle-band/transcript.jsonl"
+
+  write_transcript "$t" 120000
+  out=$(nudge "$state" "$t" s1) || fail "60 percent must announce"
+  assert_contains "$out" "at the next quiet moment" "60 percent lost its next-quiet verdict"
+  assert_exact_line "$state/.context-budget-nudged" "s1 3 next" \
+    "60 percent must record its verdict band"
+
+  write_transcript "$t" 122000
+  out=$(nudge "$state" "$t" s1) || fail "61 percent must announce its urgency upgrade"
+  assert_contains "$out" "suggest /stow now" "61 percent lost its urgent verdict"
+
+  status=0
+  out=$(nudge "$state" "$t" s1) || status=$?
+  expect_code 1 "$status" "a repeated 61 percent reading"
+  [ -z "$out" ] || fail "the urgent band must announce only once, got: $out"
+  pass "nudge: the 60-to-61 band upgrade is announced once"
+}
+
 test_nudge_announces_each_step_once() {
   local state t out status
   state=$(make_state throttle-steps)
@@ -198,7 +234,7 @@ test_nudge_steps_down_after_compaction() {
   out=$(nudge "$state" "$t" s1) || status=$?
   expect_code 1 "$status" "the turn right after compaction"
   [ -z "$out" ] || fail "a shrunken context must stay silent, got: $out"
-  assert_exact_line "$state/.context-budget-nudged" "s1 1" \
+  assert_exact_line "$state/.context-budget-nudged" "s1 1 quiet" \
     "compaction must rewrite the recorded step down"
 
   write_transcript "$t" 88000   # 44 percent again, step 2
@@ -341,10 +377,12 @@ test_hook_nudges_only_in_claude_mode() {
 
 test_percent_comes_from_the_newest_usage_record
 test_newest_usage_record_survives_tail_window
+test_auto_detection_empty_projects_is_silent
 test_verdict_bands
 test_byte_fallback_when_no_usage_record
 test_missing_transcript_is_silent
 test_nudge_is_quiet_below_forty_percent
+test_nudge_announces_band_upgrade_at_sixty_one
 test_nudge_announces_each_step_once
 test_nudge_resets_for_a_new_session
 test_nudge_is_silent_when_state_cannot_be_written

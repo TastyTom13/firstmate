@@ -27,17 +27,20 @@
 #   --percent  print the integer percentage only.
 #   --nudge    throttle mode for the turn-end guard: print the same one line and
 #              exit 0 only when this session has crossed into a NEW 20 percent
-#              step at or above 40 percent; otherwise print nothing and exit 1.
+#              step at or above 40 percent, or upgraded its verdict band;
+#              otherwise print nothing and exit 1.
 #
 # Verdicts follow the ruling's bands: under 40 percent is quiet, 40 to 60
 # percent suggests /stow at the next quiet moment, and over 60 percent suggests
 # /stow now.
 #
 # Throttle record. --nudge keeps state/.context-budget-nudged as one line,
-# "<session-id> <step>", where step is percent/20. A step is announced at most
-# once, a different session id resets the count, and a step BELOW the recorded
-# one (the session was compacted, so its context shrank) rewrites the record
-# down and stays silent, so the next real crossing announces again.
+# "<session-id> <step> <band>", where step is percent/20 and band is quiet,
+# next, or now. A step is announced at most once, except that an upward band
+# change is announced once, a different session id resets the count, and a step
+# BELOW the recorded one (the session was compacted, so its context shrank)
+# rewrites the record down and stays silent, so the next real crossing announces
+# again.
 #
 # Exit status: 0 printed a line, 1 nothing to say or nothing measurable. This
 # script never blocks and never writes outside the state directory.
@@ -93,6 +96,7 @@ locate_transcript() {
   slug=$(printf '%s' "$PWD" | tr '/.' '--')
   dir="$base/$slug"
   [ -d "$dir" ] || return 1
+  [ -n "$(find "$dir" -maxdepth 1 -name '*.jsonl' -type f -print -quit 2>/dev/null)" ] || return 1
   newest=$(find "$dir" -maxdepth 1 -name '*.jsonl' -type f -print0 2>/dev/null \
     | xargs -0 ls -t 2>/dev/null | head -n 1)
   [ -n "$newest" ] || return 1
@@ -147,17 +151,19 @@ verdict_for() {  # <percent>
   fi
 }
 
-# One line = "<session-id> <step>". A record whose session id does not match the
-# current one counts as no step announced yet.
-recorded_step() {  # <session-id>
-  local want=$1 line have_session have_step
+# One line = "<session-id> <step> <band>". A record whose session id does not
+# match the current one counts as no step announced yet.
+recorded_state() {  # <session-id>
+  local want=$1 line have_session have_step have_band
   line=$(head -n 1 "$NUDGE_RECORD" 2>/dev/null || true)
-  [ -n "$line" ] || { printf '0\n'; return 0; }
-  have_session=${line%% *}
-  have_step=${line##* }
-  case "$have_step" in ''|*[!0-9]*) printf '0\n'; return 0 ;; esac
-  [ "$have_session" = "$want" ] || { printf '0\n'; return 0; }
-  printf '%s\n' "$have_step"
+  [ -n "$line" ] || { printf '0 quiet\n'; return 0; }
+  read -r have_session have_step have_band <<EOF
+$line
+EOF
+  case "$have_step" in ''|*[!0-9]*) printf '0 quiet\n'; return 0 ;; esac
+  [ "$have_session" = "$want" ] || { printf '0 quiet\n'; return 0; }
+  case "$have_band" in quiet|next|now) ;; *) have_band=next ;; esac
+  printf '%s %s\n' "$have_step" "$have_band"
 }
 
 state_is_writable() {
@@ -171,11 +177,11 @@ state_is_writable() {
   return 0
 }
 
-write_step() {  # <session-id> <step>
+write_step() {  # <session-id> <step> <band>
   local tmp
   [ -d "$STATE" ] || return 1
   tmp=$(mktemp "$NUDGE_RECORD.XXXXXX" 2>/dev/null) || return 1
-  printf '%s %s\n' "$1" "$2" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  printf '%s %s %s\n' "$1" "$2" "$3" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
   if mv -f "$tmp" "$NUDGE_RECORD" 2>/dev/null; then
     return 0
   fi
@@ -208,20 +214,28 @@ fi
 # --nudge
 [ -n "$SESSION_ID" ] || SESSION_ID=unknown
 STEP=$((PERCENT / 20))
+BAND=$(verdict_for "$PERCENT")
+case "$BAND" in
+  quiet) BAND=quiet ;;
+  'suggest /stow at the next quiet moment') BAND=next ;;
+  *) BAND=now ;;
+esac
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 state_is_writable || exit 1
 fm_lock_try_acquire "$NUDGE_LOCK" || exit 1
-LAST=$(recorded_step "$SESSION_ID")
+read -r LAST LAST_BAND <<EOF
+$(recorded_state "$SESSION_ID")
+EOF
 if [ "$STEP" -lt "$LAST" ]; then
-  write_step "$SESSION_ID" "$STEP" || true
+  write_step "$SESSION_ID" "$STEP" "$BAND" || true
   fm_lock_release "$NUDGE_LOCK"
   exit 1
 fi
-if [ "$PERCENT" -lt 40 ] || [ "$STEP" -le "$LAST" ]; then
+if [ "$PERCENT" -lt 40 ] || { [ "$STEP" -le "$LAST" ] && [ "$BAND" != now -o "$LAST_BAND" = now ]; }; then
   fm_lock_release "$NUDGE_LOCK"
   exit 1
 fi
-if ! write_step "$SESSION_ID" "$STEP"; then
+if ! write_step "$SESSION_ID" "$STEP" "$BAND"; then
   fm_lock_release "$NUDGE_LOCK"
   exit 1
 fi
