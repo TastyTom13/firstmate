@@ -76,6 +76,7 @@ a false exit is self-correcting (the captain re-runs `/afk`).
 afk changes how aggressively firstmate surfaces things, **not who approves what**.
 "Away" never means "approves more" or "approves less."
 A PR ready for merge keeps the merge authority from `AGENTS.md` section 7, and a needs-decision finding keeps the `ask-user-authority` policy; anything requiring the captain still waits for the captain's explicit word.
+Self-handling an info-severity evidence-only finding is that same policy applied, not an away-mode exception: it is already firstmate's decision when the captain is present.
 The daemon only batches the notification.
 
 ## Operational prefix contract
@@ -149,6 +150,9 @@ Classify each wake this way:
   If it is still declared past `FM_PAUSE_RESURFACE_SECS` (default 3600s), housekeeping sends one recheck and resets the pause window.
   The window ages against the crew's own latest status line, so only a status append that stops declaring the wait ends this routing and restores wedge detection.
   That recheck names which human the wait is on: the external dependency for `paused:`, and the captain themself for a `captain-held` transfer, who can answer the held decision or release the hold.
+- `signal` whose newly classified span holds ONLY info-severity evidence-only ask-user findings -> self-handle and record a durable note in `state/.subsuper-self-handled`, which `bin/fm-afk-return.sh` presents as catch-up evidence.
+  `ask-user-authority` rule 4 makes that exact shape firstmate's own call, so it never spends a captain digest slot, and the status log keeps its open decision record either way.
+  `bin/fm-classify-lib.sh` owns the shape test and fails closed: a span carrying any other actionable event, an undeclared severity, or an ask to change what is delivered escalates as before.
 - `check` -> always escalate. Check scripts print only when firstmate should wake.
 - `stale` with a terminal status or bare legacy captain-relevant line -> escalate.
   Nonterminal progress remains transient even when its prose contains a legacy free-text token or its seen-status marker already matches, so record a marker and self-handle.

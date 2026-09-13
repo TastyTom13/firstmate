@@ -40,7 +40,10 @@
 #     After a watcher cycle, the daemon handles every durable row through that
 #     drain and acknowledges it only after routing completes.
 #   - Fail-safe-to-escalate: any wake the classifier cannot confidently mark
-#     routine is escalated.
+#     routine is escalated. The one narrow exception is an info-severity
+#     evidence-only ask-user finding, which ask-user-authority makes firstmate's
+#     own call: it is self-handled and recorded in state/.subsuper-self-handled
+#     instead of spending a captain digest slot.
 #   - Bounded wedge latency: a stale pane without a declared wait is escalated
 #     only after it has been idle for STALE_ESCALATE_SECS
 #     (configurable), rechecked once. A wedged crewmate is therefore detected
@@ -347,7 +350,7 @@ _collapse_newlines() {  # <text>
 # summary firstmate would otherwise have to re-read.
 
 classify_signal() {  # <reason-after-colon> <state>
-  local reason=$1 state=$2 f last event record rest endpoint ident rc distilled="" rel="" seen_rel="" task sig marker
+  local reason=$1 state=$2 f last event record rest endpoint ident rc distilled="" rel="" evd="" seen_rel="" task sig marker
   for f in $reason; do
     case "$f" in *.status) ;; *) continue ;; esac
     [ -e "$f" ] || [ -L "$f" ] || continue
@@ -373,7 +376,15 @@ classify_signal() {  # <reason-after-colon> <state>
     if [ "$rc" -eq 0 ]; then
       event=${rest#*$'\t'}
       distilled="${distilled}$(basename "$f"): ${event} | "
-      rel=1
+      # An info-severity, evidence-only ask-user finding is firstmate's to decide
+      # as Fix (.agents/skills/ask-user-authority/SKILL.md), so it costs the
+      # captain no digest slot. It is recorded durably instead of escalated, and
+      # only when EVERY actionable event in the span has that shape.
+      if status_events_all_evidence_only "$event"; then
+        evd=1
+      else
+        rel=1
+      fi
       continue
     fi
     last=$(last_status_line "$f")
@@ -389,6 +400,8 @@ classify_signal() {  # <reason-after-colon> <state>
   distilled="${distilled% | }"
   if [ -n "$rel" ]; then
     printf 'escalate|%s' "$distilled"
+  elif [ -n "$evd" ]; then
+    printf 'note|evidence-only finding (info severity), firstmate decides it: %s' "$distilled"
   elif [ -n "$seen_rel" ]; then
     # Already escalated by the per-wake path or the catch-all scan; self-handle
     # to avoid a duplicate entry in the digest.
@@ -470,6 +483,8 @@ classify_unknown() {  # <reason>
 # --- stale marker + escalation buffer (stateful, but via explicit state dir) -
 # Marker:   state/.subsuper-stale-<key>   contains the epoch first seen idle.
 # Buffer:   state/.subsuper-escalations    one distilled line per escalation.
+# Note:     state/.subsuper-self-handled   one line per self-handled
+#           evidence-only finding, never injected.
 # Seen:     state/.subsuper-seen-status-<task>  last reported file signature and
 #           classified byte offset, so failures and events do not re-fire while
 #           unread bytes remain recoverable.
@@ -692,6 +707,18 @@ escalate_add() {  # <state> <distilled-item>
   buf="$state/.subsuper-escalations"
   [ -s "$buf" ] || _now > "${buf}.since"
   printf '%s\n' "$item" >> "$buf"
+}
+
+# Durable self-handled note: state/.subsuper-self-handled holds one
+# "<epoch><TAB><item>" line per wake the daemon routed as an info-severity
+# evidence-only finding. Unlike the escalation buffer it is never injected, so
+# the finding costs no captain attention and waits for no digest; the status log
+# keeps its open decision record, and bin/fm-afk-return.sh presents this note as
+# catch-up evidence and clears it with the other delivery artifacts.
+self_handled_note_add() {  # <state> <distilled-item>
+  local state=$1 item=$2 buf
+  buf="$state/.subsuper-self-handled"
+  printf '%s\t%s\n' "$(_now)" "$(printf '%s' "$item" | tr '\t\r\n' '   ')" >> "$buf"
 }
 
 # Flush the escalation buffer as ONE batched, single-line digest to the
@@ -1390,6 +1417,13 @@ handle_wake() {  # <reason> <state>
         classification_failed=1
       fi
       ;;
+    note)
+      # Info-severity evidence-only ask-user finding: self-handled, but recorded
+      # durably rather than only logged, so the decision firstmate owns is
+      # visible on return without ever entering the captain-facing digest.
+      log "self-handle (evidence-only finding): $reason -> $distilled"
+      self_handled_note_add "$state" "$distilled" || classification_failed=1
+      ;;
     pause)
       # Declared wait, an external-wait pause or a verified captain-held transfer:
       # record a pause marker (long re-surface cadence in housekeeping) and drop any
@@ -1433,7 +1467,8 @@ handle_wake() {  # <reason> <state>
       log "self-handle: $reason -> $distilled"
       ;;
   esac
-  if [ "$action" = self ] && { [ "$kind" = signal ] || [ "$kind" = stale ]; }; then
+  if { [ "$action" = self ] || [ "$action" = note ]; } \
+    && { [ "$kind" = signal ] || [ "$kind" = stale ]; }; then
     mark_escalated_seen "$state" "$capture" || classification_failed=1
   fi
   rm -f "$capture"

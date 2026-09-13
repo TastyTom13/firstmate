@@ -28,12 +28,21 @@ It stops at the finding, routes the decision to firstmate, and applies only the 
    The smallest downstream changes needed to keep that behavior correct, add behavioral tests where an executable contract exists, or keep documentation accurate remain within scope even when they touch files not named at intake.
    Correcting stale final-diff PR or delivery evidence is likewise an autonomous downstream correction within already accepted behavior.
 3. Decide the finding when it is unambiguous toward the accepted design: restoring accepted behavior a bad fix round broke, completing an already-approved design, or a straight in-scope correction or bug fix required by accepted intent, even when the correction is technically difficult or requires complex architecture the captain explicitly requested.
-4. Escalate only genuinely ambiguous findings:
+4. Decide, never escalate, an info-severity finding whose only ask is evidence the accepted contract already implies: a screenshot, a log excerpt, a measurement, or a citation.
+   Answer it as Fix.
+   Nobody needs the captain to confirm that already-accepted work should be shown to have happened, and parking a task on one costs hours of delivery time for no decision.
+   It covers exactly three shapes:
+   - evidence that delivered behaviour works, such as a screenshot or recording of a screen the accepted criteria already required
+   - evidence for a result the work already claims, such as a log excerpt, test output, or measurement backing a stated number
+   - a citation or reference for a source the accepted contract already relies on
+   It does not cover a finding that asks to CHANGE what is delivered.
+   A finding proposing new behaviour, a different design, a new guarantee, or an artefact the accepted contract does not already imply stays under rules 3 and 5 even when it is labelled info severity.
+5. Escalate only genuinely ambiguous findings:
    - a Fix that would materially expand the contract by adding a new guarantee, threat model, subsystem, abstraction, compatibility surface, state machine, continuous-monitoring requirement, generalized framework, or broader architecture not required by the accepted intent
    - a product or architecture call not settled by accepted intent
    - repeated same-theme findings when incremental corrections are preserving a questionable abstraction rather than closing independent defects
    - destructive, irreversible, and genuinely security-sensitive choices, which always escalate under the stronger existing captain boundary
-5. Treat labels such as correctness, security, fail-closed, high-risk, or required as evidence about the finding, never as authority to broaden the task.
+6. Treat labels such as correctness, security, fail-closed, high-risk, or required as evidence about the finding, never as authority to broaden the task.
 
 ## Captain-facing escalation
 
@@ -54,3 +63,5 @@ Do not relay reviewer labels or gate output as if they settled the decision.
 - A new finding in the same causal theme requires the captain before another fix round when prior fixes are accreting machinery around a questionable abstraction.
 - A genuinely security-sensitive action requires the captain under the stronger existing boundary even if it is otherwise within scope.
 - Complex architecture explicitly requested by the captain stays within scope and does not escalate merely because it is complex.
+- An info-severity finding reporting that screenshot evidence is missing for an accepted screen is firstmate's to decide as Fix under rule 4.
+- An info-severity finding asking for a new screenshot of a screen the accepted contract never required is a change to what is delivered, so rule 4 does not apply to it.

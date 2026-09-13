@@ -15,9 +15,9 @@
 #
 # The durable state/.afk-return-catchup file is written BEFORE daemon shutdown,
 # so a crash between stopping, wake presentation, and blocker handling fails closed.
-# It retains the presented wake, buffered-escalation, and wedge-marker evidence
-# until every live open blocker is closed and `check` succeeds. Repeated begin/check
-# calls are idempotent. `guard` never mutates state and is suitable for ordinary
+# It retains the presented wake, buffered-escalation, self-handled-note, and
+# wedge-marker evidence until every live open blocker is closed and `check`
+# succeeds. Repeated begin/check calls are idempotent. `guard` never mutates state and is suitable for ordinary
 # read entrypoints such as fm-bearings-snapshot.sh.
 set -u
 
@@ -123,6 +123,7 @@ clear_delivery_artifacts() {
   rm -f \
     "$STATE/.subsuper-escalations" \
     "$STATE/.subsuper-escalations.since" \
+    "$STATE/.subsuper-self-handled" \
     "$STATE/.subsuper-inject-wedged"
 }
 
@@ -141,6 +142,7 @@ return_guard() {
 
 return_reconcile() {
   local evidence blockers drain_err drained wake_ack_line wake_ack_through wake_ack_generation wedge escalations lifecycle_ok=1
+  local self_handled
   evidence=$(mktemp "$STATE/.afk-return-evidence.XXXXXX") || return 1
   blockers=$(mktemp "$STATE/.afk-return-blockers.XXXXXX") || { rm -f "$evidence"; return 1; }
   drain_err=$(mktemp "$STATE/.afk-return-drain.XXXXXX") || { rm -f "$evidence" "$blockers"; return 1; }
@@ -175,6 +177,10 @@ return_reconcile() {
   if [ -s "$STATE/.subsuper-escalations" ]; then
     escalations=$(cat "$STATE/.subsuper-escalations" 2>/dev/null || true)
     append_evidence escalation "$escalations" "$evidence"
+  fi
+  if [ -s "$STATE/.subsuper-self-handled" ]; then
+    self_handled=$(cat "$STATE/.subsuper-self-handled" 2>/dev/null || true)
+    append_evidence self-handled "$self_handled" "$evidence"
   fi
 
   scan_open_blockers > "$blockers"
