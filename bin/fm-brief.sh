@@ -6,7 +6,7 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--base <branch>] [--herdr-lab] [--env-file <path>[:<dest>]]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--base <branch>] [--ui] [--herdr-lab] [--env-file <path>[:<dest>]]
 #        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab] [--env-file <path>[:<dest>]]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
@@ -60,10 +60,23 @@
 # default branch from the caller-supplied repo string, so the caller decides when
 # the base differs. It is refused on scout and secondmate scaffolds. Omitted, the
 # generated brief is byte-identical to what it was before the flag existed.
+# --ui marks the task as UI-touching. The generated ship brief then carries a
+# screenshot pre-flight rule: capture each changed view at viewport widths
+# 375, 768 and 1440 under docs/evidence/<task-id>/ and cite those paths in the
+# PR body, so the reviewer never has to ask for visual evidence. Firstmate
+# decides UI-touching at intake, because the caller-supplied repo string and the
+# {TASK} text filled in afterwards carry no reliable signal of it. It is refused
+# on scout and secondmate scaffolds, and on local-only, whose worker raises no PR
+# to cite the screenshots in.
 # The generated ship brief records the chosen mode as a fixed machine-readable
 # "Delivery contract: mode=<mode>" line. bin/fm-spawn.sh reads that line and refuses
 # to launch a ship task whose explicit --mode disagrees, so an adjusted brief and the
 # recorded task metadata cannot drift apart.
+# Every PR-raising ship brief carries two evidence rules next to the other
+# standing rules: number the acceptance criteria so the PR body can cite each
+# number with its proof, and write each bug's or rule's test failing first, then
+# passing, citing both runs in the PR body. local-only raises no PR to cite, so
+# it carries neither.
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
 # --mode is refused on scout and secondmate scaffolds: a scout's deliverable is a
 # report rather than a merge, and a charter is not a delivery contract.
@@ -168,6 +181,7 @@ fi
 KIND=ship
 HERDR_LAB=0
 NO_PROJECTS=0
+UI=0
 MODE=
 MODE_SET=0
 BASE=
@@ -194,6 +208,7 @@ for a in "$@"; do
     --scout) KIND=scout ;;
     --secondmate) KIND=secondmate ;;
     --herdr-lab) HERDR_LAB=1 ;;
+    --ui) UI=1 ;;
     --no-projects) NO_PROJECTS=1 ;;
     --mode) want_value=mode ;;
     --mode=*) MODE=${a#--mode=}; MODE_SET=1 ;;
@@ -243,6 +258,20 @@ if [ "$BASE_SET" -eq 1 ]; then
   }
   if [ "$MODE" = local-only ]; then
     echo "error: local-only landing is default-branch-only because bin/fm-merge-local.sh merges into the local default branch; an integration base therefore needs a PR-raising mode (no-mistakes or direct-PR)" >&2
+    exit 1
+  fi
+fi
+
+# The screenshot pre-flight tells the worker to cite its evidence in the PR body,
+# so it only means anything where a PR exists. A silently dropped flag would look
+# recorded to firstmate while the worker was never asked for a screenshot.
+if [ "$UI" -eq 1 ]; then
+  [ "$KIND" = ship ] || {
+    echo "error: --ui applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract" >&2
+    exit 1
+  }
+  if [ "$MODE" = local-only ]; then
+    echo "error: --ui is refused on local-only because that mode raises no PR for the screenshots to be cited in; use no-mistakes or direct-PR for UI work that needs visual evidence" >&2
     exit 1
   fi
 fi
@@ -638,6 +667,20 @@ case "$MODE" in
 esac
 DOD=$(fm_dod_block "$MODE" "$ID" "$META_FILE" "$BASE") || exit 1
 
+# Evidence rules 8 and 9 (scout report fm-scout-loop-throughput-review 7.1, F-a
+# and F-b). Both name the PR body as the place the proof is cited, so local-only,
+# which raises no PR, carries neither. Rule 10 is the UI screenshot pre-flight and
+# renders only for a task firstmate marked --ui; its fixed path and viewports mean
+# the reviewer has nothing left to ask for.
+EVIDENCE_RULES=
+if [ "$MODE" != local-only ]; then
+  EVIDENCE_RULES='
+8. Acceptance: number each criterion; the PR body cites each number with its proof.
+9. For each bug or rule, write the failing test first, show it red, then green, and cite both in the PR body.'
+  [ "$UI" -eq 0 ] || EVIDENCE_RULES="$EVIDENCE_RULES"'
+10. This task touches the UI: before you report the work done, save a screenshot of each changed view at viewport widths 375, 768 and 1440 under `docs/evidence/'"$ID"'/`, and cite those paths in the PR body.'
+fi
+
 # The Setup sentence has to describe the worktree the worker is actually in.
 # bin/fm-spawn.sh --base leaves it on the named integration branch, so saying
 # "default branch" there would be plainly false to the worker reading it.
@@ -689,7 +732,7 @@ $RULE1
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
    every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
-   daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
+   daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.$EVIDENCE_RULES
 
 $UNTRUSTED_CONTENT_SECTION
 

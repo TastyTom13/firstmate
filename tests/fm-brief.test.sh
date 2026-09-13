@@ -290,6 +290,9 @@ base on a scout brief|brief-refused-b5 some-proj --scout --base integration|--ba
 base on a secondmate charter|brief-refused-b6 --secondmate --no-projects --base integration|--base applies only to ship briefs
 base on a local-only ship brief|brief-refused-b7 some-proj --mode local-only --base integration|local-only landing is default-branch-only
 malformed base on a ship brief|brief-refused-b8 some-proj --mode direct-PR --base -bad|must be a plain branch name
+ui on a scout brief|brief-refused-b9 some-proj --scout --ui|--ui applies only to ship briefs
+ui on a secondmate charter|brief-refused-b10 --secondmate --no-projects --ui|--ui applies only to ship briefs
+ui on a local-only ship brief|brief-refused-b11 some-proj --mode local-only --ui|raises no PR for the screenshots
 ROWS
   pass "fm-brief.sh: --yolo and scout/secondmate --mode are refused, never silently dropped"
 }
@@ -1111,6 +1114,88 @@ test_fable_prompting_additions_render() {
   pass "fm-brief.sh: fable-prompting Intent slot, Working discipline lines, cd caution, and ship verification step render for every scaffold"
 }
 
+# Evidence contract (scout report fm-scout-loop-throughput-review section 7.1,
+# F-a and F-b). Numbered acceptance criteria and a red-then-green test line give
+# the reviewer something checkable, and both cite their proof in the PR body, so
+# they render only for the modes that actually raise one.
+test_evidence_rules_render_only_where_a_pr_exists() {
+  local home id brief mode
+  home="$TMP_ROOT/evidence-rules-home"
+  mkdir -p "$home/data"
+
+  for mode in no-mistakes direct-PR; do
+    id="brief-evidence-$mode"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1 \
+      || fail "$mode: brief should scaffold"
+    brief="$home/data/$id/brief.md"
+    assert_grep "Acceptance: number each criterion; the PR body cites each number with its proof." "$brief" \
+      "$mode: brief lost the numbered acceptance criteria line"
+    assert_grep "For each bug or rule, write the failing test first, show it red, then green, and cite both in the PR body." "$brief" \
+      "$mode: brief lost the red-then-green test line"
+    assert_no_grep "EOF" "$brief" "$mode: brief leaked a heredoc EOF marker"
+  done
+
+  id="brief-evidence-local-only"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only >/dev/null 2>&1 \
+    || fail "local-only: brief should scaffold"
+  brief="$home/data/$id/brief.md"
+  assert_no_grep "Acceptance: number each criterion" "$brief" \
+    "local-only: a mode that raises no PR must not be told to cite one"
+  assert_no_grep "cite both in the PR body" "$brief" \
+    "local-only: a mode that raises no PR must not be told to cite one"
+
+  id="brief-evidence-scout"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1 \
+    || fail "scout: brief should scaffold"
+  assert_no_grep "Acceptance: number each criterion" "$home/data/$id/brief.md" \
+    "scout: a report is not a PR and must not carry the ship evidence rules"
+  pass "fm-brief.sh: acceptance-numbering and red-then-green rules render only for PR-raising ship briefs"
+}
+
+# --ui marks a UI-touching task at intake (F-b). The screenshot pre-flight names
+# one fixed output path and three fixed viewports so the pipeline has nothing left
+# to ask, and it renders ONLY when firstmate passed the flag.
+test_ui_screenshot_line_is_opt_in() {
+  local home id brief mode
+  home="$TMP_ROOT/ui-screenshot-home"
+  mkdir -p "$home/data"
+
+  for mode in no-mistakes direct-PR; do
+    id="brief-ui-$mode"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --ui >/dev/null 2>&1 \
+      || fail "$mode: a --ui ship brief should scaffold"
+    brief="$home/data/$id/brief.md"
+    assert_grep "viewport widths 375, 768 and 1440" "$brief" \
+      "$mode: --ui brief lost the fixed viewports"
+    assert_grep "docs/evidence/$id/" "$brief" \
+      "$mode: --ui brief lost the fixed screenshot output path"
+    assert_grep "cite those paths in the PR body" "$brief" \
+      "$mode: --ui brief lost the PR-body citation requirement"
+    assert_no_grep "EOF" "$brief" "$mode: --ui brief leaked a heredoc EOF marker"
+
+    id="brief-noui-$mode"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1 \
+      || fail "$mode: a brief without --ui should scaffold"
+    brief="$home/data/$id/brief.md"
+    assert_no_grep "viewport widths" "$brief" \
+      "$mode: a non-UI task carried the screenshot pre-flight anyway"
+    assert_no_grep "docs/evidence/" "$brief" \
+      "$mode: a non-UI task named the screenshot output path anyway"
+  done
+  pass "fm-brief.sh: the screenshot pre-flight renders only for --ui tasks"
+}
+
+# The flag has to be discoverable from the script's own help, which is the single
+# owner of its mechanics.
+test_help_documents_the_ui_flag() {
+  local help
+  help=$("$ROOT/bin/fm-brief.sh" --help)
+  assert_contains "$help" "--ui" "fm-brief.sh --help does not mention --ui"
+  assert_contains "$help" "375, 768 and 1440" "fm-brief.sh --help does not state the fixed viewports"
+  assert_contains "$help" "docs/evidence/<task-id>/" "fm-brief.sh --help does not state the fixed screenshot path"
+  pass "fm-brief.sh: --help documents the --ui screenshot pre-flight"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
@@ -1138,3 +1223,6 @@ test_env_file_block_is_opt_in_and_self_explaining
 test_pr_wait_follow_up_only_where_a_pr_exists
 test_built_by_line_reads_task_meta
 test_fable_prompting_additions_render
+test_evidence_rules_render_only_where_a_pr_exists
+test_ui_screenshot_line_is_opt_in
+test_help_documents_the_ui_flag
