@@ -282,13 +282,15 @@ status_is_paused_or_captain_held() {  # <status-line>
 # The test is deliberately narrow and fails closed toward surfacing the line.
 # All four gates must hold:
 #   1. the leading verb is `needs-decision`,
-#   2. the line DECLARES info severity ("[severity=info]", "severity: info",
-#      "severity=info", "info severity"); an undeclared severity never qualifies,
+#   2. the line has exactly one DECLARED severity and it is info ("[severity=info]",
+#      "severity: info", "severity=info", "info severity"); an undeclared or
+#      competing severity never qualifies,
 #   3. the ask names an evidence artefact, and
 #   4. no change vocabulary appears, so a finding asking to CHANGE what is
 #      delivered stays captain-facing even when it is labelled info.
 # Each vocabulary is overridable for a home with a different reviewer dialect.
 FM_CLASSIFY_INFO_SEVERITY_RE_DEFAULT='\[severity=info\]|severity[[:space:]]*[=:][[:space:]]*info|info[[:space:]-]severity'
+FM_CLASSIFY_SEVERITY_DECLARATION_RE_DEFAULT='\[severity[[:space:]]*[=:][[:space:]]*[[:alnum:]_-]+\]|severity[[:space:]]*[=:][[:space:]]*[[:alnum:]_-]+|[[:alnum:]_-]+[[:space:]-]severity'
 FM_CLASSIFY_EVIDENCE_ASK_WORDS_DEFAULT='screenshot|screenshots|screen capture|screen recording|screencast|log excerpt|log excerpts|log output|log line|log lines|measurement|measurements|benchmark number|timing number|citation|citations|evidence|proof'
 FM_CLASSIFY_CHANGE_ASK_WORDS_DEFAULT='change|changes|add|adds|remove|removes|drop|rename|renames|redesign|refactor|extend|extends|introduce|introduces|replace|replaces|support|guarantee|guarantees|behaviour|behavior|api|schema|feature|rework'
 
@@ -301,12 +303,21 @@ _fm_line_has_word() {  # <text> <alternation>
 
 # 0 when one status line is an info-severity, evidence-only ask-user finding.
 status_is_evidence_only_finding() {  # <status-line>
-  local line=$1 note
+  local line=$1 note declarations declaration declaration_count=0 info_count=0
   [ -n "$line" ] || return 1
   [ "$(status_line_verb "$line")" = 'needs-decision' ] || return 1
-  printf '%s' "$line" \
-    | grep -qiE "${FM_CLASSIFY_INFO_SEVERITY_RE:-$FM_CLASSIFY_INFO_SEVERITY_RE_DEFAULT}" \
-    || return 1
+  declarations=$(printf '%s' "$line" \
+    | grep -oiE "${FM_CLASSIFY_SEVERITY_DECLARATION_RE:-$FM_CLASSIFY_SEVERITY_DECLARATION_RE_DEFAULT}" \
+    || true)
+  while IFS= read -r declaration; do
+    [ -n "$declaration" ] || continue
+    declaration_count=$((declaration_count + 1))
+    printf '%s' "$declaration" \
+      | grep -qiE "${FM_CLASSIFY_INFO_SEVERITY_RE:-$FM_CLASSIFY_INFO_SEVERITY_RE_DEFAULT}" \
+      && info_count=$((info_count + 1))
+  done <<< "$declarations"
+  [ "$declaration_count" -eq 1 ] || return 1
+  [ "$info_count" -eq 1 ] || return 1
   note=$(status_line_note "$line")
   [ -n "$note" ] || return 1
   _fm_line_has_word "$note" \

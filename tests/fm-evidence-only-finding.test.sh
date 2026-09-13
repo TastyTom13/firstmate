@@ -41,6 +41,8 @@ test_shape_gates() {
     no "undeclared severity"
   assert_shape 'needs-decision [severity=high]: screenshot evidence missing for the settings screen' \
     no "declared non-info severity"
+  assert_shape 'needs-decision [severity=high]: screenshot evidence missing for the info severity report' \
+    no "a competing severity declaration"
   assert_shape 'needs-decision [severity=info]: add a screenshot step to the uploader and guarantee it retries' \
     no "an ask to change what is delivered"
   assert_shape 'needs-decision [severity=info]: pick REST or RPC for the sync endpoint' \
