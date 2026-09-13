@@ -1,0 +1,9 @@
+$ bin/fm-context-budget.sh --transcript session.jsonl --window 200000
+context 61% of 200000 tokens - suggest /stow now
+$ bin/fm-context-budget.sh --nudge ... (first idle Stop hook)
+exit=0
+context 61% of 200000 tokens - suggest /stow now
+$ bin/fm-context-budget.sh --nudge ... (same step, next turn)
+exit=1
+
+durable throttle record: demo-session 3 now
