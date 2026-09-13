@@ -43,7 +43,9 @@
 #     routine is escalated. The one narrow exception is an info-severity
 #     evidence-only ask-user finding, which ask-user-authority makes firstmate's
 #     own call: it is self-handled and recorded in state/.subsuper-self-handled
-#     instead of spending a captain digest slot.
+#     instead of spending a captain digest slot. The note is appended once per
+#     successfully classified span, but a failed marker commit can replay it on
+#     retry, which deliberately favours retaining the finding over a duplicate.
 #   - Bounded wedge latency: a stale pane without a declared wait is escalated
 #     only after it has been idle for STALE_ESCALATE_SECS
 #     (configurable), rechecked once. A wedged crewmate is therefore detected
@@ -710,11 +712,13 @@ escalate_add() {  # <state> <distilled-item>
 }
 
 # Durable self-handled note: state/.subsuper-self-handled holds one
-# "<epoch><TAB><item>" line per wake the daemon routed as an info-severity
-# evidence-only finding. Unlike the escalation buffer it is never injected, so
-# the finding costs no captain attention and waits for no digest; the status log
-# keeps its open decision record, and bin/fm-afk-return.sh presents this note as
-# catch-up evidence and clears it with the other delivery artifacts.
+# "<epoch><TAB><item>" line per successfully classified evidence-only span.
+# Unlike the escalation buffer it is never injected, so the finding costs no
+# captain attention and waits for no digest; the status log keeps its open
+# decision record, and bin/fm-afk-return.sh presents this note as catch-up
+# evidence and clears it with the other delivery artifacts. A failed marker
+# commit can replay the same note on retry, deliberately favouring retention
+# over a duplicate.
 self_handled_note_add() {  # <state> <distilled-item>
   local state=$1 item=$2 buf
   buf="$state/.subsuper-self-handled"

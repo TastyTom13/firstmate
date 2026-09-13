@@ -99,7 +99,7 @@ test_daemon_escalates_a_mixed_or_ordinary_signal() {
   pass "any other actionable event still reaches the captain-facing digest"
 }
 
-test_note_is_durable_and_advances_the_marker() {
+test_note_is_durable_and_advances_marker() {
   local state offset
   state=$(signal_home durable "$EVIDENCE_LINE")
   LOG="$state/.supervise-daemon.log"
@@ -124,11 +124,11 @@ test_note_is_durable_and_advances_the_marker() {
     || fail "handle_wake reported a classification failure on the repeat signal"
   [ "$(wc -l < "$state/.subsuper-self-handled")" -eq 1 ] \
     || fail "the same finding was noted twice: $(cat "$state/.subsuper-self-handled")"
-  pass "the self-handled note is durable, uninjected, and written once per finding"
+  pass "the self-handled note is durable and avoids repeats after marker commit"
 }
 
 test_shape_gates
 test_span_requires_every_event_to_have_the_shape
 test_daemon_self_handles_an_evidence_only_signal
 test_daemon_escalates_a_mixed_or_ordinary_signal
-test_note_is_durable_and_advances_the_marker
+test_note_is_durable_and_advances_marker
