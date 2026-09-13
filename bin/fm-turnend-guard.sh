@@ -160,9 +160,43 @@ budget_reset() {
   fm_lock_release "$BUDGET_LOCK"
 }
 
+# --- context-budget nudge ----------------------------------------------------
+# Captain ruling 2026-09-09 (token-burn report R1): firstmate suggests /stow
+# plus a fresh session, or compaction, at a low-disruption moment once the
+# session passes about 40 percent of its context, rather than running until the
+# window is dropped whole. This guard is the ONE surface that prints that
+# suggestion into a session; bin/fm-context-budget.sh owns the estimate and the
+# once-per-20-percent-step throttle, and docs/configuration.md "Context budget
+# nudge" owns the operator-facing contract. Do not add a second printing owner.
+# The nudge fires only from the idle allow path below, where supervision is not
+# needed at all, so it can never pre-empt the Stop-owned auto-arm, shorten a
+# park, or land inside a turn that is handling a wake. Everything else the
+# low-disruption test needs is checked here: away mode off, an empty durable
+# wake queue, no captain note still waiting, no unacknowledged steering message,
+# and no leftover task status record (which is also what could carry an open
+# worker decision). Claude mode only, because the transcript this reads is
+# Claude's own; every other harness allows the stop unchanged.
+context_budget_nudge() {
+  local transcript line
+  [ "$CLAUDE_MODE" -eq 1 ] || return 1
+  [ -e "$STATE/.afk" ] && return 1
+  [ -s "$STATE/.wake-queue" ] && return 1
+  compgen -G "$STATE/*.status" >/dev/null 2>&1 && return 1
+  compgen -G "$STATE/*.inbox/*.msg" >/dev/null 2>&1 && return 1
+  compgen -G "$STATE/inbox/*.note" >/dev/null 2>&1 && return 1
+  transcript=$(printf '%s' "$PAYLOAD" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+  [ -n "$transcript" ] || return 1
+  line=$("$SCRIPT_DIR/fm-context-budget.sh" --nudge \
+    --transcript "$transcript" --session "$SESSION_ID" 2>/dev/null) || return 1
+  [ -n "$line" ] || return 1
+  printf '%s\n' "$line" >&2
+  return 0
+}
+
 fm_supervision_status "$STATE" "$GRACE"
 if [ "$FM_SUP_NEEDED" = false ]; then
   [ -e "$FAILURE_NOTICE" ] || budget_reset
+  context_budget_nudge && exit 2
   exit 0
 fi
 if fm_watcher_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME"; then

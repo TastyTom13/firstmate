@@ -142,6 +142,15 @@ That hook is deliberately left to a follow-up alongside the deferred `preCompact
 If a passive adapter cannot invoke its SDK, or the Grok legacy fallback cannot find `grok` or a session id, the next pull-based `fm-guard.sh` call reports the problem.
 That warning uses `bin/fm-supervision-instructions.sh --repair-line`, so it always points to the active harness protocol rather than embedding another repair command.
 
+## Context budget nudge
+
+The Claude Stop path carries one advisory that is not about supervision: the context-budget suggestion to `/stow` and start fresh, or compact, once the session passes about 40 percent of its context.
+[`configuration.md`](configuration.md) "Context budget nudge" is the operator-facing owner of the bands, the throttle record, and the low-disruption definition, and `bin/fm-context-budget.sh` owns the estimate and the once-per-20-percent-step throttle.
+This guard is the only surface that prints that line into a session, so no second printing owner may be added.
+It fires exclusively from the idle allow path, where `fm_supervision_status` reports no supervision need at all, which is why it can never pre-empt the Stop-owned auto-arm, shorten a Cursor park, or land inside a turn that is handling a wake.
+The remaining low-disruption conditions are checked in the guard itself: away mode off, an empty durable wake queue, no captain inbox note still waiting, no unacknowledged steering message, and no leftover task status record.
+The line is delivered exactly like a supervision continuation, one stderr line with exit 2, and it deliberately does not touch `FM_CLAUDE_TURNEND_BLOCK_BUDGET` because it is not a supervision block; the step throttle is its own bound.
+
 ## Compatibility limits
 
 - Child crewmate and scout worktrees are outside scope.
@@ -165,6 +174,7 @@ That warning uses `bin/fm-supervision-instructions.sh --repair-line`, so it alwa
 `tests/fm-turnend-guard.test.sh` covers the predicate, main and secondmate primary scope, child-worktree exclusion, `FM_HOME` and `FM_STATE_OVERRIDE` precedence, the live-lock and fresh-beacon guard predicate, the cooperative `--claude` open-generation claim wait, monotonic failed-epoch progression, bounded attended fail-open, post-alarm continuation suppression, positive recovery reset, generation and legacy claim cases that must block or clear instead of allowing a blind stop, Pi logical-run latching, missing-`jq` behavior, all five primary registrations, Grok native and legacy selection, typed field precedence, malformed input, and exactly-one-path safety.
 `tests/fm-guard-stale-banner.test.sh` covers the pull-guard predicate, including the persistent-model fresh-leftover-beacon negative control, the auto-arm model's healthy fresh-beacon-without-a-watcher case and stale-beacon alarm, and the extension model's live-watcher path, ownership-qualified fresh hand-off, held-lock failures, independently broken ownership signals, stale-beacon alarm, queued-wake warning, and Pi and pi-signed harness routing.
 It also covers true-reason banner wording and reason-keyed episode dedup surviving a beacon mtime change.
+`tests/fm-context-budget.test.sh` covers the context-budget estimator, its verdict bands, the byte fallback, the once-per-step throttle with its session reset and post-compaction step-down, and the guard's idle-only delivery including every low-disruption suppression and the Claude-only restriction.
 `tests/fm-cursor-primary.test.sh` covers the Cursor park end to end over real processes with no harness installed: each tracked Claude-shaped entrypoint standing down on a Cursor payload, both follow-up sources, the bounded repair nag and its reset, the nested loop bounds, supersession, away-mode and lock-ownership inertness, Pi-host stand-down without Cursor identity and continued parking when `PI_CODING_AGENT` leaks alongside `CURSOR_AGENT` or `CURSOR_INVOKED_AS`, child-worktree exclusion, and that the adapter never exits 2.
 `FM_CURSOR_PRIMARY_LIVE_E2E=1 tests/fm-cursor-primary-live-e2e.test.sh` is the opt-in guard that proves the same behavior against the installed cursor-agent and fails naming the harness and version.
 `tests/fm-kimi-harness.test.sh` covers the separate Kimi crew hook's format preservation, idempotence, refusal cases, token guard, spawn registration, and teardown cleanup.

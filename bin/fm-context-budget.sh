@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# Context-budget estimator and once-per-step nudge throttle.
+#
+# The captain's 2026-09-09 ruling on token burn: firstmate should suggest /stow
+# plus a fresh session, or compaction, at a low-disruption moment once the
+# session passes about 40 percent of its context, rather than running a session
+# until it drops a full context window. This script owns the measurement and the
+# throttle; it never speaks to the session itself. The ONE surface that prints
+# the suggestion is the Claude Stop turn-end guard (bin/fm-turnend-guard.sh,
+# docs/turnend-guard.md), which calls this script in --nudge mode. Do not add a
+# second printing surface.
+#
+# Measurement. A Claude primary keeps its own transcript as a JSON-lines file
+# under ~/.claude/projects/<slugged-cwd>/<session-id>.jsonl, and every assistant
+# record carries the usage counters for that request. The newest such record's
+# input_tokens + cache_read_input_tokens + cache_creation_input_tokens +
+# output_tokens is the size of the context that request actually carried, so it
+# is the estimate used whenever jq can read one. With jq absent, or with no
+# usage record in the tail window, the fallback estimate is transcript bytes / 4
+# - deliberately coarse, and an overestimate on a session whose transcript is
+# longer than its live context.
+#
+# Modes.
+#   (default)  print one line: the estimated percentage and the verdict.
+#   --percent  print the integer percentage only.
+#   --nudge    throttle mode for the turn-end guard: print the same one line and
+#              exit 0 only when this session has crossed into a NEW 20 percent
+#              step at or above 40 percent; otherwise print nothing and exit 1.
+#
+# Verdicts follow the ruling's bands: under 40 percent is quiet, 40 to 60
+# percent suggests /stow at the next quiet moment, and over 60 percent suggests
+# /stow now.
+#
+# Throttle record. --nudge keeps state/.context-budget-nudged as one line,
+# "<session-id> <step>", where step is percent/20. A step is announced at most
+# once, a different session id resets the count, and a step BELOW the recorded
+# one (the session was compacted, so its context shrank) rewrites the record
+# down and stays silent, so the next real crossing announces again.
+#
+# Exit status: 0 printed a line, 1 nothing to say or nothing measurable. This
+# script never blocks and never writes outside the state directory.
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
+STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+
+NUDGE_RECORD="$STATE/.context-budget-nudged"
+TAIL_LINES=${FM_CONTEXT_TAIL_LINES:-400}
+case "$TAIL_LINES" in ''|*[!0-9]*|0) TAIL_LINES=400 ;; esac
+WINDOW=${FM_CONTEXT_WINDOW:-200000}
+case "$WINDOW" in ''|*[!0-9]*|0) WINDOW=200000 ;; esac
+
+TRANSCRIPT=${FM_CONTEXT_TRANSCRIPT:-}
+SESSION_ID=
+MODE=line
+
+usage() {
+  cat <<'USAGE'
+usage: fm-context-budget.sh [--transcript <path>] [--window <tokens>]
+                            [--session <id>] [--percent | --nudge]
+
+Estimates how full the current Claude session's context is and prints one
+verdict line. --nudge applies the once-per-20-percent-step throttle used by the
+Claude Stop turn-end guard and exits 1 when there is nothing new to say.
+USAGE
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --transcript) TRANSCRIPT=${2:-}; shift 2 || true ;;
+    --window) WINDOW=${2:-}; shift 2 || true ;;
+    --session) SESSION_ID=${2:-}; shift 2 || true ;;
+    --percent) MODE=percent; shift ;;
+    --nudge) MODE=nudge; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+case "$WINDOW" in ''|*[!0-9]*|0) WINDOW=200000 ;; esac
+
+# Claude slugs the working directory into a projects subdirectory by replacing
+# every "/" and "." with "-". Auto-detection is a convenience for a hand-run
+# command; the turn-end guard always passes the payload's own transcript_path.
+locate_transcript() {
+  local base slug dir newest
+  base=${CLAUDE_PROJECTS_DIR:-$HOME/.claude/projects}
+  [ -d "$base" ] || return 1
+  slug=$(printf '%s' "$PWD" | tr '/.' '--')
+  dir="$base/$slug"
+  [ -d "$dir" ] || return 1
+  newest=$(find "$dir" -maxdepth 1 -name '*.jsonl' -type f -print0 2>/dev/null \
+    | xargs -0 ls -t 2>/dev/null | head -n 1)
+  [ -n "$newest" ] || return 1
+  printf '%s\n' "$newest"
+}
+
+# Newest usage-bearing record in the tail window, as one integer.
+tokens_from_usage() {
+  local file=$1 value
+  command -v jq >/dev/null 2>&1 || return 1
+  value=$(tail -n "$TAIL_LINES" "$file" 2>/dev/null | jq -Rrs '
+    [ split("\n")[]
+      | fromjson?
+      | .message?.usage?
+      | select(type == "object")
+      | ((.input_tokens // 0) + (.cache_read_input_tokens // 0)
+         + (.cache_creation_input_tokens // 0) + (.output_tokens // 0))
+      | select(. > 0) ]
+    | last // empty
+  ' 2>/dev/null) || return 1
+  case "$value" in ''|*[!0-9]*) return 1 ;; esac
+  printf '%s\n' "$value"
+}
+
+tokens_from_bytes() {
+  local file=$1 bytes
+  bytes=$(wc -c < "$file" 2>/dev/null | tr -d ' ')
+  case "$bytes" in ''|*[!0-9]*|0) return 1 ;; esac
+  printf '%s\n' $((bytes / 4))
+}
+
+verdict_for() {  # <percent>
+  if [ "$1" -lt 40 ]; then
+    printf '%s\n' 'quiet'
+  elif [ "$1" -le 60 ]; then
+    printf '%s\n' 'suggest /stow at the next quiet moment'
+  else
+    printf '%s\n' 'suggest /stow now'
+  fi
+}
+
+# One line = "<session-id> <step>". A record whose session id does not match the
+# current one counts as no step announced yet.
+recorded_step() {  # <session-id>
+  local want=$1 line have_session have_step
+  line=$(head -n 1 "$NUDGE_RECORD" 2>/dev/null || true)
+  [ -n "$line" ] || { printf '0\n'; return 0; }
+  have_session=${line%% *}
+  have_step=${line##* }
+  case "$have_step" in ''|*[!0-9]*) printf '0\n'; return 0 ;; esac
+  [ "$have_session" = "$want" ] || { printf '0\n'; return 0; }
+  printf '%s\n' "$have_step"
+}
+
+write_step() {  # <session-id> <step>
+  local tmp
+  [ -d "$STATE" ] || return 0
+  tmp=$(mktemp "$NUDGE_RECORD.XXXXXX" 2>/dev/null) || return 0
+  printf '%s %s\n' "$1" "$2" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
+  mv -f "$tmp" "$NUDGE_RECORD" 2>/dev/null || rm -f "$tmp"
+}
+
+[ -n "$TRANSCRIPT" ] || TRANSCRIPT=$(locate_transcript || true)
+[ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ] || exit 1
+
+TOKENS=$(tokens_from_usage "$TRANSCRIPT" || tokens_from_bytes "$TRANSCRIPT" || true)
+case "$TOKENS" in ''|*[!0-9]*) exit 1 ;; esac
+
+PERCENT=$((TOKENS * 100 / WINDOW))
+
+if [ "$MODE" = percent ]; then
+  printf '%s\n' "$PERCENT"
+  exit 0
+fi
+
+LINE="context $PERCENT% of $WINDOW tokens - $(verdict_for "$PERCENT")"
+
+if [ "$MODE" = line ]; then
+  printf '%s\n' "$LINE"
+  exit 0
+fi
+
+# --nudge
+[ -n "$SESSION_ID" ] || SESSION_ID=unknown
+STEP=$((PERCENT / 20))
+LAST=$(recorded_step "$SESSION_ID")
+if [ "$STEP" -lt "$LAST" ]; then
+  write_step "$SESSION_ID" "$STEP"
+  exit 1
+fi
+[ "$PERCENT" -ge 40 ] || exit 1
+[ "$STEP" -gt "$LAST" ] || exit 1
+write_step "$SESSION_ID" "$STEP"
+printf '%s\n' "$LINE"
+exit 0
