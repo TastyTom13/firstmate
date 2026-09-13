@@ -229,6 +229,7 @@ case "$BAND" in
   'suggest /stow at the next quiet moment') BAND=next ;;
   *) BAND=now ;;
 esac
+# shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 state_is_writable || exit 1
 fm_lock_try_acquire "$NUDGE_LOCK" || exit 1
