@@ -1043,8 +1043,8 @@ _oldest_line_age() {  # <buf> -> seconds since the oldest buffered item first ar
 #     re-peek; gone -> clear; still declaring the wait, on an idle OR a busy pane
 #     -> escalate a recheck digest naming which human the wait is on, and reset
 #     the window (repeating bounded re-surface, never a wedge).
-#  3) heartbeat scan: every HEARTBEAT_SCAN_SECS, grep state/*.status for a
-#     captain-relevant line the per-wake classifier missed and escalate it.
+#  3) heartbeat scan: every HEARTBEAT_SCAN_SECS, inspect state/*.status for a
+#     captain-relevant line the per-wake classifier missed and route it.
 housekeeping() {  # <state>
   local state=$1 now due f key task win marker age last max_defer oldest pause_secs
   now=$(_now)
@@ -1198,7 +1198,11 @@ housekeeping() {  # <state>
       rest=${record#*$'\t'}; ident=${rest%%$'\t'*}
       if [ "$rc" -eq 0 ]; then
         event=${rest#*$'\t'}
-        if escalate_add "$state" "$(basename "$f"): $event (catch-all scan)"; then
+        if status_events_all_evidence_only "$event"; then
+          if self_handled_note_add "$state" "$(basename "$f"): $event (catch-all scan)"; then
+            mark_status_seen "$state" "$task" "$endpoint" "$ident" || true
+          fi
+        elif escalate_add "$state" "$(basename "$f"): $event (catch-all scan)"; then
           mark_status_seen "$state" "$task" "$endpoint" "$ident" || true
         fi
       elif ! mark_status_seen "$state" "$task" "$endpoint" "$ident"; then

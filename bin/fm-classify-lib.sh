@@ -289,7 +289,7 @@ status_is_paused_or_captain_held() {  # <status-line>
 #   4. no change vocabulary appears, so a finding asking to CHANGE what is
 #      delivered stays captain-facing even when it is labelled info.
 # Each vocabulary is overridable for a home with a different reviewer dialect.
-FM_CLASSIFY_INFO_SEVERITY_RE_DEFAULT='\[severity=info\]|severity[[:space:]]*[=:][[:space:]]*info|info[[:space:]-]severity'
+FM_CLASSIFY_INFO_SEVERITY_RE_DEFAULT='\[severity[[:space:]]*[=:][[:space:]]*info[[:space:]]*\]|severity[[:space:]]*[=:][[:space:]]*info([^[:alnum:]_-]|$)|(^|[^[:alnum:]_-])info[[:space:]-]severity([^[:alnum:]_-]|$)'
 FM_CLASSIFY_SEVERITY_DECLARATION_RE_DEFAULT='\[severity[[:space:]]*[=:][[:space:]]*[[:alnum:]_-]+\]|severity[[:space:]]*[=:][[:space:]]*[[:alnum:]_-]+|[[:alnum:]_-]+[[:space:]-]severity'
 FM_CLASSIFY_EVIDENCE_ASK_WORDS_DEFAULT='screenshot|screenshots|screen capture|screen recording|screencast|log excerpt|log excerpts|log output|log line|log lines|measurement|measurements|benchmark number|timing number|citation|citations|evidence|proof'
 FM_CLASSIFY_CHANGE_ASK_WORDS_DEFAULT='change|changes|add|adds|remove|removes|drop|rename|renames|redesign|refactor|extend|extends|introduce|introduces|replace|replaces|support|guarantee|guarantees|behaviour|behavior|api|schema|feature|rework'

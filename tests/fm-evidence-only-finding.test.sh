@@ -43,6 +43,10 @@ test_shape_gates() {
     no "declared non-info severity"
   assert_shape 'needs-decision [severity=high]: screenshot evidence missing for the info severity report' \
     no "a competing severity declaration"
+  assert_shape 'needs-decision [severity=infoish]: screenshot evidence missing for the settings screen' \
+    no "an infoish severity declaration"
+  assert_shape 'needs-decision [severity=info-extra]: screenshot evidence missing for the settings screen' \
+    no "an info-extra severity declaration"
   assert_shape 'needs-decision [severity=info]: add a screenshot step to the uploader and guarantee it retries' \
     no "an ask to change what is delivered"
   assert_shape 'needs-decision [severity=info]: pick REST or RPC for the sync endpoint' \
@@ -85,6 +89,21 @@ test_daemon_self_handles_an_evidence_only_signal() {
   [ "${decision%%|*}" = note ] \
     || fail "an evidence-only signal was routed as '${decision%%|*}', want 'note': $decision"
   pass "an evidence-only finding is routed away from the captain-facing digest"
+}
+
+test_daemon_self_handles_an_evidence_only_catchall() {
+  local state
+  state=$(signal_home catchall "$EVIDENCE_LINE")
+  rm -f "$state/.subsuper-last-scan"
+  FM_STATE_OVERRIDE="$state" housekeeping "$state"
+
+  [ -s "$state/.subsuper-self-handled" ] \
+    || fail "the catch-all did not write a durable self-handled note"
+  [ ! -e "$state/.subsuper-escalations" ] \
+    || fail "the catch-all buffered an evidence-only finding for the captain"
+  [ "$(status_seen_offset "$state" task)" -gt 0 ] \
+    || fail "the catch-all did not advance the evidence-only marker"
+  pass "the heartbeat catch-all routes evidence-only findings to durable notes"
 }
 
 test_daemon_escalates_a_mixed_or_ordinary_signal() {
@@ -132,5 +151,6 @@ test_note_is_durable_and_advances_marker() {
 test_shape_gates
 test_span_requires_every_event_to_have_the_shape
 test_daemon_self_handles_an_evidence_only_signal
+test_daemon_self_handles_an_evidence_only_catchall
 test_daemon_escalates_a_mixed_or_ordinary_signal
 test_note_is_durable_and_advances_marker
