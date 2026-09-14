@@ -457,6 +457,8 @@ Both still read the vault, so both still cost their approval pop-up; one pop-up 
 No run ever prints a value: the reports name keys and give one verdict each, and the injected values reach the rewrite through a mode-600 file in a private mode-700 temp directory removed on every exit path.
 
 A name the vault does not hold is reported and never injected, a saved name that injects no value is reported rather than mirrored, and a value a bare env line cannot carry - one holding a line break or edge whitespace - is refused rather than written back mangled.
+A duplicate configured key line is reported as `duplicate-key-lines` and refused rather than leaving the mirrored value ambiguous.
+One layer of matching surrounding single or double quotes is ignored when comparing an existing value, so `KEY="v"` and `KEY=v` are treated as the same mirror.
 A mirror reached through a symlink is refused rather than rewritten, because the rewrite lands its new content over the target and would replace the link with a regular file.
 An absent `config/env-sync.toml` is a refusal naming the path to write, because an empty run and a synced fleet would otherwise look identical.
 See [`docs/examples/env-sync.toml`](examples/env-sync.toml) for a starting point to copy.
