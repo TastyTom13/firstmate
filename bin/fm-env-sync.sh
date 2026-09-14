@@ -254,7 +254,9 @@ value_of() {
     || return 1
   decoded="$WORK/.decoded-$key"
   umask 077
-  printf '%s' "$encoded" | base64 -d > "$decoded" || return 1
+  if ! printf '%s' "$encoded" | base64 --decode > "$decoded" 2>/dev/null; then
+    printf '%s' "$encoded" | base64 -D > "$decoded" 2>/dev/null || return 1
+  fi
   chmod 600 "$decoded" || return 1
   cat "$decoded"
 }
