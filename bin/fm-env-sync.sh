@@ -262,8 +262,17 @@ value_of() {
 mirror_value() {
   local file=$1 prefix=$2 key=$3 line value
   [ -f "$file" ] || return 1
-  line=$(awk -v k="$prefix$key=" 'index($0, k) == 1 { print; found = 1; exit } END { exit found ? 0 : 1 }' "$file") \
-    || return 1
+  line=$(awk -v k="$prefix$key=" '
+    index($0, k) == 1 {
+      count++
+      if (count == 1) line = $0
+    }
+    END {
+      if (count > 1) exit 2
+      if (count == 1) { print line; exit 0 }
+      exit 1
+    }
+  ' "$file") || return $?
   value=${line#"$prefix$key="}
   if [ ${#value} -ge 2 ]; then
     case "$value" in
@@ -305,11 +314,24 @@ rewrite_mirror() {
     fi
     for key in "$@"; do
       value=$(value_of "$values" "$key") || exit 1
-      FM_ENV_SYNC_VALUE="$value" awk -v lhs="$prefix$key" '
-        index($0, lhs "=") == 1 && !done { printf "%s=%s\n", lhs, ENVIRON["FM_ENV_SYNC_VALUE"]; done = 1; next }
-        { print }
-        END { if (!done) printf "%s=%s\n", lhs, ENVIRON["FM_ENV_SYNC_VALUE"] }
-      ' "$tmp" > "$next" || exit 1
+      FM_ENV_SYNC_LHS="$prefix$key" FM_ENV_SYNC_VALUE="$value" \
+        LC_ALL=C perl -0777 -e '
+          local $/;
+          open my $fh, "<", $ARGV[0] or exit 1;
+          binmode $fh;
+          my $text = <$fh> // "";
+          close $fh or exit 1;
+          my ($lhs, $value) = @ENV{qw(FM_ENV_SYNC_LHS FM_ENV_SYNC_VALUE)};
+          my $line = qr/^\Q$lhs\E=[^\r\n]*(\r?\n|\z)/m;
+          if ($text =~ $line) {
+            $text =~ s/$line/$lhs . "=" . $value . $1/e;
+          } else {
+            $text .= "\n" if length($text) && substr($text, -1) ne "\n";
+            $text .= $lhs . "=" . $value . "\n";
+          }
+          binmode STDOUT;
+          print $text;
+        ' "$tmp" > "$next" || exit 1
       mv "$next" "$tmp" || exit 1
     done
     chmod 600 "$tmp" || exit 1
@@ -334,8 +356,9 @@ run_project() {
   if [ "$line_form" = export ]; then
     prefix='export '
   fi
-  local target keys=() key want have
+  local target keys=() key want have have_status
   local absent=() present=() pending=()
+  local mirrorable=0
   local gap=0
   local values="$WORK/values.tsv"
   read -r -a keys <<< "$key_list"
@@ -386,7 +409,15 @@ run_project() {
       gap=1
       continue
     fi
-    if have=$(mirror_value "$target" "$prefix" "$key"); then
+    have_status=0
+    have=$(mirror_value "$target" "$prefix" "$key") || have_status=$?
+    if [ "$have_status" -eq 2 ]; then
+      report "$key" "duplicate-key-lines"
+      gap=1
+      continue
+    fi
+    mirrorable=1
+    if [ "$have_status" -eq 0 ]; then
       if [ "$have" = "$want" ]; then
         report "$key" "in-sync"
         continue
@@ -407,6 +438,9 @@ run_project() {
   done
 
   if [ "${#pending[@]}" -eq 0 ]; then
+    if [ "$mode" = apply ] && [ "$DRY_RUN" -eq 0 ] && [ "$mirrorable" -eq 1 ] && [ -f "$target" ]; then
+      chmod 600 "$target" || return 4
+    fi
     return "$gap"
   fi
 

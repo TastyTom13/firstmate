@@ -139,6 +139,66 @@ TOML
   pass "apply rewrites only the configured lines and lands the file at mode 600"
 }
 
+test_apply_tightens_an_already_synced_mirror_in_place() {
+  local home target before out status=0 mode
+  home=$(make_home tighten-mode)
+  mkdir -p "$home/projects/scout"
+  target="$home/projects/scout/.env.local"
+  printf 'ALPHA_KEY=%s\nOTHER=keep\n' "$ALPHA_VALUE" > "$target"
+  chmod 644 "$target"
+  before=$(cksum "$target")
+  cat > "$home/config/env-sync.toml" <<'TOML'
+[scout]
+path = "projects/scout"
+keys = ["ALPHA_KEY"]
+TOML
+  out=$(run_sync "$home" apply 2>&1) || status=$?
+  expect_code 0 "$status" "already-synced apply exit"
+  assert_contains "$out" "ALPHA_KEY                    in-sync" "already-synced verdict"
+  mode=$(file_mode "$target")
+  [ "$mode" = "600" ] || fail "already-synced apply left mode $mode"
+  [ "$(cksum "$target")" = "$before" ] || fail "mode tightening rewrote content"
+  pass "apply tightens an already-synced mirror without rewriting it"
+}
+
+test_apply_preserves_an_unterminated_unrelated_line() {
+  local home target expected status=0
+  home=$(make_home unterminated-line)
+  mkdir -p "$home/projects/scout"
+  target="$home/projects/scout/.env.local"
+  expected="$home/expected.env"
+  printf 'ALPHA_KEY=%s\nOTHER=keep' "$ALPHA_VALUE" > "$target"
+  printf 'ALPHA_KEY=%s\nOTHER=keep' "$ALPHA_VALUE" > "$expected"
+  cat > "$home/config/env-sync.toml" <<'TOML'
+[scout]
+path = "projects/scout"
+keys = ["ALPHA_KEY"]
+TOML
+  run_sync "$home" apply >/dev/null 2>&1 || status=$?
+  expect_code 0 "$status" "unterminated-line apply exit"
+  cmp -s "$target" "$expected" || fail "untouched unterminated line changed"
+  pass "apply preserves an unrelated final line without a newline"
+}
+
+test_duplicate_configured_lines_are_refused() {
+  local home target out status=0
+  home=$(make_home duplicate-lines)
+  mkdir -p "$home/projects/scout"
+  target="$home/projects/scout/.env.local"
+  printf 'ALPHA_KEY=first\nALPHA_KEY=second\n' > "$target"
+  cat > "$home/config/env-sync.toml" <<'TOML'
+[scout]
+path = "projects/scout"
+keys = ["ALPHA_KEY"]
+TOML
+  out=$(run_sync "$home" apply 2>&1) || status=$?
+  expect_code 3 "$status" "duplicate-line apply exit"
+  assert_contains "$out" "ALPHA_KEY                    duplicate-key-lines" "duplicate-line verdict"
+  assert_exact_line "$target" "ALPHA_KEY=first" "duplicate mirror was rewritten"
+  assert_exact_line "$target" "ALPHA_KEY=second" "duplicate mirror was rewritten"
+  pass "apply refuses ambiguous duplicate configured lines"
+}
+
 test_apply_creates_an_absent_mirror_at_mode_600() {
   local home target status=0 mode
   home=$(make_home apply-create)
@@ -439,6 +499,9 @@ TOML
 
 test_projects_lists_configuration_without_touching_the_vault
 test_apply_rewrites_only_configured_lines
+test_apply_tightens_an_already_synced_mirror_in_place
+test_apply_preserves_an_unterminated_unrelated_line
+test_duplicate_configured_lines_are_refused
 test_apply_creates_an_absent_mirror_at_mode_600
 test_no_value_is_ever_printed
 test_check_reports_names_only_and_writes_nothing
