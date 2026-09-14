@@ -249,12 +249,14 @@ fetch_values() {
 # Echo the decoded value for one key from a values file, or return 1 when the
 # injection delivered no value for it.
 value_of() {
-  local file=$1 key=$2 encoded trailing
+  local file=$1 key=$2 encoded decoded
   encoded=$(awk -F '\t' -v k="$key" '$1 == k { print $2; found = 1; exit } END { exit found ? 0 : 1 }' "$file") \
     || return 1
-  trailing=$(printf '%s' "$encoded" | base64 -d | tail -c 1 | od -An -t x1 | tr -d ' \n') || return 1
-  [ "$trailing" = 0a ] && return 2
-  printf '%s' "$encoded" | base64 -d
+  decoded="$WORK/.decoded-$key"
+  umask 077
+  printf '%s' "$encoded" | base64 -d > "$decoded" || return 1
+  chmod 600 "$decoded" || return 1
+  cat "$decoded"
 }
 
 # Echo the value the mirror currently carries for one key, or return 1 when the
@@ -315,7 +317,7 @@ rewrite_mirror() {
       cat "$file" > "$tmp" || exit 1
     fi
     for key in "$@"; do
-      value=$(value_of "$values" "$key") || exit 1
+      value=$(cat "$WORK/.decoded-$key") || exit 1
       FM_ENV_SYNC_LHS="$prefix$key" FM_ENV_SYNC_VALUE="$value" \
         LC_ALL=C perl -0777 -e '
           local $/;
@@ -358,7 +360,7 @@ run_project() {
   if [ "$line_form" = export ]; then
     prefix='export '
   fi
-  local target keys=() key want want_status have have_status
+  local target keys=() key want want_status have have_status actual_bytes want_bytes
   local absent=() present=() pending=()
   local mirrorable=0
   local gap=0
@@ -410,6 +412,13 @@ run_project() {
     fi
     if [ "$want_status" -ne 0 ]; then
       report "$key" "vault-value-unset"
+      gap=1
+      continue
+    fi
+    actual_bytes=$(wc -c < "$WORK/.decoded-$key")
+    want_bytes=$(printf '%s' "$want" | wc -c)
+    if [ "$actual_bytes" -ne "$want_bytes" ]; then
+      report "$key" "value-not-mirrorable"
       gap=1
       continue
     fi

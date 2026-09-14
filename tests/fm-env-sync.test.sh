@@ -31,7 +31,7 @@ log="$home/av.log"
 case "\$1" in
   list)
     printf 'call: list\n' >> "\$log"
-    printf 'ALPHA_KEY\nBETA_KEY\nEMPTY_KEY\nNEWLINE_KEY\nTRAILING_NEWLINE_KEY\n'
+    printf 'ALPHA_KEY\nBETA_KEY\nEMPTY_KEY\nNEWLINE_KEY\nTRAILING_NEWLINE_KEY\nDOUBLE_TRAILING_NEWLINE_KEY\n'
     ;;
   inject)
     shift
@@ -43,6 +43,7 @@ case "\$1" in
         BETA_KEY) pairs+=("BETA_KEY=$BETA_VALUE") ;;
         NEWLINE_KEY) pairs+=("NEWLINE_KEY=first"\$'\n'"second") ;;
         TRAILING_NEWLINE_KEY) pairs+=("TRAILING_NEWLINE_KEY=last"\$'\n') ;;
+        DOUBLE_TRAILING_NEWLINE_KEY) pairs+=("DOUBLE_TRAILING_NEWLINE_KEY=last"\$'\n\n') ;;
       esac
       shift
     done
@@ -333,13 +334,15 @@ test_trailing_newline_value_is_refused() {
   cat > "$home/config/env-sync.toml" <<'TOML'
 [scout]
 path = "projects/scout"
-keys = ["TRAILING_NEWLINE_KEY"]
+keys = ["TRAILING_NEWLINE_KEY", "DOUBLE_TRAILING_NEWLINE_KEY"]
 TOML
   out=$(run_sync "$home" apply 2>&1) || status=$?
   expect_code 3 "$status" "trailing-newline apply exit"
   assert_contains "$out" "TRAILING_NEWLINE_KEY" "trailing-newline key verdict"
+  assert_contains "$out" "DOUBLE_TRAILING_NEWLINE_KEY" "double-trailing-newline key verdict"
   assert_contains "$out" "value-not-mirrorable" "trailing-newline refusal verdict"
   assert_no_grep "TRAILING_NEWLINE_KEY" "$target" "trailing-newline value was mirrored"
+  assert_no_grep "DOUBLE_TRAILING_NEWLINE_KEY" "$target" "double-trailing-newline value was mirrored"
   assert_exact_line "$target" "OTHER=keep" "trailing-newline refusal disturbed the mirror"
   pass "a vault value ending in a newline is refused"
 }
