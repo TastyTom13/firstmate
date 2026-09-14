@@ -31,7 +31,7 @@ log="$home/av.log"
 case "\$1" in
   list)
     printf 'call: list\n' >> "\$log"
-    printf 'ALPHA_KEY\nBETA_KEY\nEMPTY_KEY\nNEWLINE_KEY\n'
+    printf 'ALPHA_KEY\nBETA_KEY\nEMPTY_KEY\nNEWLINE_KEY\nTRAILING_NEWLINE_KEY\n'
     ;;
   inject)
     shift
@@ -42,6 +42,7 @@ case "\$1" in
         ALPHA_KEY) pairs+=("ALPHA_KEY=$ALPHA_VALUE") ;;
         BETA_KEY) pairs+=("BETA_KEY=$BETA_VALUE") ;;
         NEWLINE_KEY) pairs+=("NEWLINE_KEY=first"\$'\n'"second") ;;
+        TRAILING_NEWLINE_KEY) pairs+=("TRAILING_NEWLINE_KEY=last"\$'\n') ;;
       esac
       shift
     done
@@ -323,6 +324,26 @@ TOML
   pass "a saved name that injects no value is reported, not mirrored"
 }
 
+test_trailing_newline_value_is_refused() {
+  local home target out status=0
+  home=$(make_home trailing-newline)
+  mkdir -p "$home/projects/scout"
+  target="$home/projects/scout/.env.local"
+  printf 'OTHER=keep\n' > "$target"
+  cat > "$home/config/env-sync.toml" <<'TOML'
+[scout]
+path = "projects/scout"
+keys = ["TRAILING_NEWLINE_KEY"]
+TOML
+  out=$(run_sync "$home" apply 2>&1) || status=$?
+  expect_code 3 "$status" "trailing-newline apply exit"
+  assert_contains "$out" "TRAILING_NEWLINE_KEY" "trailing-newline key verdict"
+  assert_contains "$out" "value-not-mirrorable" "trailing-newline refusal verdict"
+  assert_no_grep "TRAILING_NEWLINE_KEY" "$target" "trailing-newline value was mirrored"
+  assert_exact_line "$target" "OTHER=keep" "trailing-newline refusal disturbed the mirror"
+  pass "a vault value ending in a newline is refused"
+}
+
 test_value_an_env_line_cannot_carry_is_refused() {
   local home target out status=0
   home=$(make_home unsafe-value)
@@ -509,6 +530,7 @@ test_dry_run_reports_the_same_work_and_writes_nothing
 test_name_the_vault_does_not_hold_is_never_injected
 test_vault_name_with_no_value_is_reported_not_mirrored
 test_value_an_env_line_cannot_carry_is_refused
+test_trailing_newline_value_is_refused
 test_quoted_mirror_value_matches_the_vault
 test_export_style_mirror_keeps_its_prefix
 test_project_without_optional_fields_still_syncs

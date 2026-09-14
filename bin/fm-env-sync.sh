@@ -249,9 +249,11 @@ fetch_values() {
 # Echo the decoded value for one key from a values file, or return 1 when the
 # injection delivered no value for it.
 value_of() {
-  local file=$1 key=$2 encoded
+  local file=$1 key=$2 encoded trailing
   encoded=$(awk -F '\t' -v k="$key" '$1 == k { print $2; found = 1; exit } END { exit found ? 0 : 1 }' "$file") \
     || return 1
+  trailing=$(printf '%s' "$encoded" | base64 -d | tail -c 1 | od -An -t x1 | tr -d ' \n') || return 1
+  [ "$trailing" = 0a ] && return 2
   printf '%s' "$encoded" | base64 -d
 }
 
@@ -356,7 +358,7 @@ run_project() {
   if [ "$line_form" = export ]; then
     prefix='export '
   fi
-  local target keys=() key want have have_status
+  local target keys=() key want want_status have have_status
   local absent=() present=() pending=()
   local mirrorable=0
   local gap=0
@@ -399,7 +401,14 @@ run_project() {
   [ -f "$values" ] || : > "$values"
 
   for key in "${present[@]}"; do
-    if ! want=$(value_of "$values" "$key"); then
+    want_status=0
+    want=$(value_of "$values" "$key") || want_status=$?
+    if [ "$want_status" -eq 2 ]; then
+      report "$key" "value-not-mirrorable"
+      gap=1
+      continue
+    fi
+    if [ "$want_status" -ne 0 ]; then
       report "$key" "vault-value-unset"
       gap=1
       continue
