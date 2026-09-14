@@ -317,6 +317,10 @@
       "audience": "operator-example"
     },
     {
+      "path": "docs/examples/env-sync.toml",
+      "audience": "operator-example"
+    },
+    {
       "path": "docs/examples/process-event-extension/file-signal.mjs",
       "audience": "operator-example"
     },
