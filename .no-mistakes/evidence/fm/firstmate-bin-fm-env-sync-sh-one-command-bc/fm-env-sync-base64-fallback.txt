@@ -1,0 +1,6 @@
+$ fm-env-sync.sh apply (BSD-style base64 fallback)
+p (/tmp/fm-env-sync-fallback.iKcRrv/projects/p/.env.local)
+  KEY                          added
+mirror:
+KEY=fallback-value
+mode: 600

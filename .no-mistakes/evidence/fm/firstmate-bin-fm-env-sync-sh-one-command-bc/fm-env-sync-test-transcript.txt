@@ -1,0 +1,20 @@
+ok - projects lists the configured mirrors without reading the vault
+ok - apply rewrites only the configured lines and lands the file at mode 600
+ok - apply tightens an already-synced mirror without rewriting it
+ok - apply preserves an unrelated final line without a newline
+ok - apply refuses ambiguous duplicate configured lines
+ok - apply creates an absent mirror at mode 600
+ok - no run prints a vault or mirrored value
+ok - check reports names only, writes nothing, and exits 3 while out of sync
+ok - --dry-run reports the pending work and writes nothing
+ok - a name the vault does not hold costs no injection and no file
+ok - a saved name that injects no value is reported, not mirrored
+ok - a value a bare env line cannot carry is refused, not mangled
+ok - a vault value ending in a newline is refused
+ok - a quoted mirror value equal to the vault is left alone
+ok - an export-style mirror keeps the prefix on rewritten and appended lines
+ok - a project that omits the optional fields still gets its keys
+ok - --project runs exactly one mirror and refuses an unknown name
+ok - an absent configuration refuses with the path to write
+ok - a malformed configuration refuses naming the problem
+ok - a mirror reached through a symlink is refused, not replaced
