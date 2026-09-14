@@ -1,0 +1,76 @@
+# Example config/env-sync.toml - copy into this home's gitignored config/ and
+# edit. docs/configuration.md "Project env mirrors (config/env-sync.toml)" owns
+# the schema; bin/fm-env-sync.sh owns the commands.
+#
+# List only the shared keys the vault should own. A value that exists in one
+# project and nowhere else - a database URL, an app's own signing secret - is
+# not worth a vault entry and belongs in that project's file alone.
+
+[scout]
+path = "projects/scout"
+file = ".env.local"
+keys = [
+  "EXA_API_KEY",
+  "EXA_API_KEY2",
+  "EXA_API_KEY3",
+  "EXA_API_KEY4",
+  "EXA_API_KEY5",
+  "APIFY_API_KEY",
+  "APIFY_API_KEY2",
+  "APIFY_API_KEY3",
+  "APIFY_API_KEY4",
+  "APIFY_API_KEY5",
+  "ZEROBOUNCE_API_KEY",
+  "HUNTER_API_KEY",
+  "GITHUB_TOKEN",
+  "FIRECRAWL_API_KEY",
+  "COMPANIES_HOUSE_API_KEY",
+  "PRODUCT_HUNT_TOKEN",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+  "RESEND_API_KEY",
+  "STITCH_API_KEY",
+  "DECK_API_KEY",
+]
+
+[doc-creator]
+path = "projects/doc-creator"
+file = ".env.local"
+keys = [
+  "DECK_API_KEY",
+  "NEXT_PUBLIC_LOGO_DEV_TOKEN",
+  "SCOUT_WEBHOOK_SECRET",
+]
+
+[mentum]
+path = "projects/mentum"
+file = ".env.local"
+keys = [
+  "ANTHROPIC_API_KEY",
+  "GEMINI_API_KEY",
+  "RESEND_API_KEY",
+  "STITCH_API_KEY",
+  "DAILY_API_KEY",
+  "MODAL_INFERENCE_TOKEN",
+]
+
+# Bull reads a direnv file, so its lines carry an `export ` prefix.
+[bull]
+path = "projects/bull"
+file = ".envrc"
+export = true
+keys = [
+  "ANTHROPIC_API_KEY",
+  "GEMINI_API_KEY",
+  "BULL_NEWSAPI_KEY",
+  "BULL_FRED_API_KEY",
+  "BULL_POLYMARKET_API_KEY",
+  "BULL_X_BEARER_TOKEN",
+]
+
+[forge]
+path = "projects/forge"
+file = ".env.local"
+keys = [
+  "FIRECRAWL_API_KEY",
+  "GEMINI_API_KEY",
+]

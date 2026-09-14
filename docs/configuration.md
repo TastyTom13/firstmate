@@ -421,6 +421,48 @@ Malformed JSON, an empty or malformed rule/default array, an unverified harness,
 While the file remains present, no crewmate or scout spawn may proceed without an explicit resolved harness; malformed configuration must be reported and corrected rather than selected around.
 Secondmate homes inherit this file from the primary, so a secondmate's own crewmates apply the same dispatch profile behavior.
 
+## Project env mirrors (config/env-sync.toml)
+
+`config/env-sync.toml` is an optional local, gitignored file naming, per project, the key names that project's env file should carry from Automic Vault.
+It is read only by [`bin/fm-env-sync.sh`](../bin/fm-env-sync.sh), whose header owns the commands, the exit codes, and the value-handling guarantees.
+This section is the single owner of the file's schema.
+
+**This is the captain's command, never a worker's.**
+Every vault read costs one human approval pop-up, so any unattended process that runs it hangs on a dialog nobody is there to click.
+Keeping unattended work running is the whole point of the mirror: a crewmate reads the mirrored file and never calls the vault at all.
+
+```toml
+[<project>]
+path = "projects/<clone>"
+file = ".env.local"
+export = false
+keys = [
+  "FIRST_KEY_NAME",
+  "SECOND_KEY_NAME",
+]
+```
+
+One table per project, named by the label `--project` selects.
+`path` is required and resolves against `FM_HOME` unless it is absolute.
+`file` is an optional bare filename, defaulting to `.env.local`.
+`export` is an optional boolean, defaulting to `false`; `true` writes and matches `export NAME=value` lines for a direnv-style file such as Bull's `.envrc`.
+`keys` is a required non-empty array of double-quoted variable names, and the file holds no values at any point.
+Comments are whole-line only, starting with `#`.
+Any other construction is a refusal naming the line, because a TOML feature a small parser silently mis-reads would put the wrong name into a real project's secrets file.
+
+`fm-env-sync.sh apply` rewrites only the configured lines of each project's env file and leaves every other line, comment, blank and ordering byte for byte; a configured key with no line yet is appended.
+The file is created at mode 600 when absent, and every applied file lands at mode 600, so a mirror that was world-readable is tightened rather than refilled.
+`fm-env-sync.sh check` reports the same verdicts and writes nothing, and `apply --dry-run` reports what apply would change and writes nothing.
+Both still read the vault, so both still cost their approval pop-up; one pop-up covers one project, which is what `--project` is for.
+No run ever prints a value: the reports name keys and give one verdict each, and the injected values reach the rewrite through a mode-600 file in a private mode-700 temp directory removed on every exit path.
+
+A name the vault does not hold is reported and never injected, a saved name that injects no value is reported rather than mirrored, and a value a bare env line cannot carry - one holding a line break or edge whitespace - is refused rather than written back mangled.
+A duplicate configured key line is reported as `duplicate-key-lines` and refused rather than leaving the mirrored value ambiguous.
+One layer of matching surrounding single or double quotes is ignored when comparing an existing value, so `KEY="v"` and `KEY=v` are treated as the same mirror.
+A mirror reached through a symlink is refused rather than rewritten, because the rewrite lands its new content over the target and would replace the link with a regular file.
+An absent `config/env-sync.toml` is a refusal naming the path to write, because an empty run and a synced fleet would otherwise look identical.
+See [`docs/examples/env-sync.toml`](examples/env-sync.toml) for a starting point to copy.
+
 ## Free-tier repository allowlist (config/free-tier-repos)
 
 `config/free-tier-repos` is an optional local, gitignored file listing the repository names that may be routed to a free-tier model provider, one name per line.
