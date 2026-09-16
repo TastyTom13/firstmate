@@ -76,6 +76,8 @@
 #       names each offending check, matches a glob against matrix shards, is
 #       independent of yolo, and changes nothing when the list is absent
 #   (az) an unreadable required-checks list refuses before the merge command
+#   (ba) an existing empty required-checks list changes nothing
+#   (bb) a comment-only required-checks list changes nothing
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -458,6 +460,44 @@ test_required_checks_absent_list_changes_nothing() {
   assert_no_grep 'statusCheckRollup' "$case_dir/gh.log" \
     "required-checks-absent: the status rollup was read although no list exists"
   pass "fm-pr-merge reads nothing and refuses nothing when no required list exists"
+}
+
+test_required_checks_empty_list_changes_nothing() {
+  local case_dir
+  case_dir=$(make_case required-checks-empty)
+  mkdir -p "$case_dir/wt" "$case_dir/config/required-checks"
+  add_gh_mocks "$case_dir" 5353535353535353535353535353535353535353
+  : > "$case_dir/config/required-checks/project"
+  write_github_checks "$case_dir" 'e2e-tests=COMPLETED/SKIPPED'
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 49
+
+  expect_code 0 "$RC" "required-checks-empty: an empty list must not refuse"
+  assert_grep 'pr merge 49 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    "required-checks-empty: the merge command did not run"
+  assert_no_grep 'statusCheckRollup' "$case_dir/gh.log" \
+    "required-checks-empty: the status rollup was read for an empty list"
+  pass "fm-pr-merge ignores an existing empty required-checks list"
+}
+
+test_required_checks_comment_only_list_changes_nothing() {
+  local case_dir
+  case_dir=$(make_case required-checks-comments)
+  mkdir -p "$case_dir/wt" "$case_dir/config/required-checks"
+  add_gh_mocks "$case_dir" 5454545454545454545454545454545454545454
+  printf '# intentionally no required checks\\n' > "$case_dir/config/required-checks/project"
+  write_github_checks "$case_dir" 'e2e-tests=COMPLETED/SKIPPED'
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 50
+
+  expect_code 0 "$RC" "required-checks-comments: a comment-only list must not refuse"
+  assert_grep 'pr merge 50 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    "required-checks-comments: the merge command did not run"
+  assert_no_grep 'statusCheckRollup' "$case_dir/gh.log" \
+    "required-checks-comments: the status rollup was read for a comment-only list"
+  pass "fm-pr-merge ignores a comment-only required-checks list"
 }
 
 test_required_checks_all_green_merges() {
@@ -2539,6 +2579,8 @@ test_distinct_merged_prs_keep_distinct_wakes
 test_uncommitted_marker_retry_is_never_silent
 test_secondmate_without_parent_binding_is_loud
 test_required_checks_absent_list_changes_nothing
+test_required_checks_empty_list_changes_nothing
+test_required_checks_comment_only_list_changes_nothing
 test_required_checks_all_green_merges
 test_required_checks_skipped_refuses_and_names_the_check
 test_required_checks_missing_refuses_and_names_the_check
