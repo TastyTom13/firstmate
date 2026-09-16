@@ -747,14 +747,22 @@ record_pr_base() {  # <branch>
 # read from config/required-checks/<clone directory name>. Prints the list and
 # succeeds with empty output when no list exists or the project cannot be told.
 required_checks_list() {
-  local project file
+  local project file rc
   project=$(grep '^project=' "$META" | tail -1 | cut -d= -f2- || true)
   project=${project%/}
   project=${project##*/}
   [ -n "$project" ] || return 0
   file="$CONFIG/required-checks/$project"
   [ -f "$file" ] && [ ! -L "$file" ] || return 0
-  grep -v '^[[:space:]]*\(#\|$\)' "$file" || true
+  if grep -v '^[[:space:]]*\(#\|$\)' "$file"; then
+    return 0
+  else
+    rc=$?
+  fi
+  if [ "$rc" -ne 1 ]; then
+    printf 'error: required checks file %s could not be read; refusing to merge\n' "$file" >&2
+    return 1
+  fi
 }
 
 # One live read of the head commit's status rollup. Each context becomes one
@@ -798,7 +806,9 @@ github_read_checks() {
 github_verify_required_checks() {
   local required pattern line kind name status conclusion verdict
   local matched offending=''
-  required=$(required_checks_list)
+  if ! required=$(required_checks_list); then
+    return 1
+  fi
   [ -n "$required" ] || return 0
   if [ "$PROVIDER" != github ]; then
     printf 'error: refusing to merge %s: required checks are only enforced for GitHub pull requests\n' "$URL" >&2

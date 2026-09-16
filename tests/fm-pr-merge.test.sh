@@ -75,6 +75,7 @@
 #       absent, SKIPPED, pending, or not SUCCESS on the head's status rollup,
 #       names each offending check, matches a glob against matrix shards, is
 #       independent of yolo, and changes nothing when the list is absent
+#   (az) an unreadable required-checks list refuses before the merge command
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -570,6 +571,31 @@ test_required_checks_pending_refuses() {
 
 # The gate is a status fact about the pull request, not a merge-authority
 # question, so a project whose standing posture is yolo is refused the same way.
+test_required_checks_unreadable_list_refuses_before_merge() {
+  local case_dir
+  case_dir=$(make_case required-checks-unreadable)
+  if [ "$(id -u)" -eq 0 ]; then
+    pass "fm-pr-merge unreadable required-checks assertion skipped as root"
+    return
+  fi
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 5252525252525252525252525252525252525252
+  write_required_checks "$case_dir" unit
+  chmod 000 "$case_dir/config/required-checks/project"
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 48
+
+  [ "$RC" -ne 0 ] || fail "required-checks-unreadable: an unreadable list was accepted"
+  assert_grep 'required checks file' "$case_dir/stderr" \
+    "required-checks-unreadable: the refusal did not name the file error"
+  assert_grep 'config/required-checks/project' "$case_dir/stderr" \
+    "required-checks-unreadable: the refusal did not name the unreadable file"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "required-checks-unreadable: the merge command ran despite the unreadable list"
+  pass "fm-pr-merge refuses an unreadable required-checks list before merging"
+}
+
 test_required_checks_refuse_regardless_of_yolo() {
   local case_dir
   case_dir=$(make_case required-checks-yolo)
@@ -2518,4 +2544,5 @@ test_required_checks_skipped_refuses_and_names_the_check
 test_required_checks_missing_refuses_and_names_the_check
 test_required_checks_glob_matches_shards
 test_required_checks_pending_refuses
+test_required_checks_unreadable_list_refuses_before_merge
 test_required_checks_refuse_regardless_of_yolo
