@@ -350,7 +350,8 @@ test_an_unmarked_row_keeps_the_title_its_backlog_row_has() {
   home=$(make_home ideas-unmarked); data="$home/unmarked-payload.json"
   jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
     prs_live:false, captains_call:[],
-    underway:[{id:"ship-b", state:"working", doing:"Idea: capture box for the board",
+    underway:[{id:"ship-b", name:"Idea: capture box for the board", state:"working",
+               doing:"Idea: capture box for the board",
                kind:"ship", repo:"sample"}],
     landed:[{id:"ship-c", what:"Idea: capture box shipped", owner:"(main)", repo:"sample"}],
     charted:[{id:"ship-a", title:"Idea: capture box for the board", repo:"sample",
@@ -525,7 +526,8 @@ test_a_promoted_idea_row_drops_the_prefix_too() {
   home=$(make_home ideas-promoted); data="$home/promoted-payload.json"
   jq -n '{schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-31T00:00Z",
     prs_live:false, captains_call:[],
-    underway:[{id:"idea-b", state:"working", doing:"Idea: repaint the hull",
+    underway:[{id:"idea-b", name:"Idea: repaint the hull", state:"working",
+               doing:"Idea: repaint the hull",
                kind:"ship", repo:"sample", idea:true}],
     landed:[{id:"idea-c", what:"Idea: scrub the deck", owner:"(main)", repo:"sample",
              idea:true}],
