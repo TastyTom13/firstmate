@@ -71,6 +71,15 @@
 #   (ax) --expect-base refuses a differing base before merging, merges and
 #       records the observed base when it matches, refuses an unreadable or
 #       malformed base, and changes nothing when it is omitted
+#   (ay) config/required-checks/<project> refuses a merge whose named checks are
+#       absent, SKIPPED, pending, or not SUCCESS on the head's status rollup,
+#       names each offending check, matches a glob against matrix shards, is
+#       independent of yolo, and changes nothing when the list is absent
+#   (az) an unreadable required-checks list refuses before the merge command
+#   (ba) an existing empty required-checks list changes nothing
+#   (bb) a comment-only required-checks list changes nothing
+#   (bc) a symlinked unreadable required-checks list refuses before merging
+#   (bd) a dangling required-checks symlink refuses before merging
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -115,6 +124,10 @@ make_case() {
   # answers from its own file rather than the queue-aware outcome fixture.
   printf 'main\n' > "$case_dir/github-base"
   : > "$case_dir/github-rules"
+  # The required-checks read asks for statusCheckRollup; a rollup with no
+  # further page and no contexts is the default, so only the cases that set a
+  # required list ever look at it.
+  printf 'more=false\n' > "$case_dir/github-checks"
   : > "$case_dir/gh.log"
   # No worktree/project on disk; fm-pr-check.sh tolerates a worktree it cannot
   # stat and simply skips the pr_head lookup via `gh` in that case, so give it
@@ -149,6 +162,7 @@ case "\${1:-} \${2:-}" in
     ;;
   "api graphql")
     case " \$* " in
+      *statusCheckRollup*) cat "\$FM_TEST_GH_CHECKS" ;;
       *isInMergeQueue*) cat "\$FM_TEST_GH_OUTCOME" ;;
       *baseRefName*) cat "\$FM_TEST_GH_BASE" ;;
       *) cat "\$FM_TEST_GH_OUTCOME" ;;
@@ -371,6 +385,8 @@ run_pr_merge() {
   FM_TEST_GH_OUTCOME="$case_dir/github-outcome" \
   FM_TEST_GH_BASE="$case_dir/github-base" \
   FM_TEST_GH_RULES="$case_dir/github-rules" \
+  FM_TEST_GH_CHECKS="$case_dir/github-checks" \
+  FM_CONFIG_OVERRIDE="$case_dir/config" \
   FM_TEST_META_AT_MERGE="$case_dir/meta-at-merge" \
   FM_TEST_REAL_MV="$REAL_MV" \
   FM_TEST_GLAB_LOG="$case_dir/glab.log" \
@@ -392,6 +408,296 @@ write_github_outcome() {
     "merged=$merged" \
     "queued=$queued" \
     "base=$base" > "$case_dir/github-outcome"
+}
+
+
+# write_required_checks <case_dir> <check-name>...: the per-project required
+# list, keyed by the clone's directory name, which is what the task's recorded
+# project path ends in.
+write_required_checks() {
+  local case_dir=$1
+  shift
+  mkdir -p "$case_dir/config/required-checks"
+  printf '%s\n' "$@" > "$case_dir/config/required-checks/project"
+}
+
+# write_github_checks <case_dir> <name>=<status>/<conclusion>...: the head's
+# status rollup as the gh mock hands it back, one check run per argument.
+write_github_checks() {
+  local case_dir=$1 spec name rest
+  shift
+  printf 'more=false\n' > "$case_dir/github-checks"
+  for spec in "$@"; do
+    name=${spec%%=*}
+    rest=${spec#*=}
+    printf 'check\t%s\t%s\t%s\n' "$name" "${rest%%/*}" "${rest#*/}" >> "$case_dir/github-checks"
+  done
+}
+
+# run_required_checks_case <name> <pr-number>: a GitHub case with a green
+# outcome, run to completion with stdout and stderr captured. Sets RC.
+run_required_checks_case() {
+  local case_dir=$1 number=$2
+  set +e
+  run_pr_merge "$case_dir" task-x1 "https://github.com/example/repo/pull/$number" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  RC=$?
+  set -e
+}
+
+# No list means no read and no new refusal: the merge runs exactly as before.
+test_required_checks_absent_list_changes_nothing() {
+  local case_dir
+  case_dir=$(make_case required-checks-absent)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 4444444444444444444444444444444444444444
+  write_github_checks "$case_dir" 'e2e-tests (1)=COMPLETED/SKIPPED'
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 40
+
+  expect_code 0 "$RC" "required-checks-absent: an absent list must not refuse"
+  assert_grep 'pr merge 40 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    "required-checks-absent: the merge command did not run as usual"
+  assert_no_grep 'statusCheckRollup' "$case_dir/gh.log" \
+    "required-checks-absent: the status rollup was read although no list exists"
+  pass "fm-pr-merge reads nothing and refuses nothing when no required list exists"
+}
+
+test_required_checks_empty_list_changes_nothing() {
+  local case_dir
+  case_dir=$(make_case required-checks-empty)
+  mkdir -p "$case_dir/wt" "$case_dir/config/required-checks"
+  add_gh_mocks "$case_dir" 5353535353535353535353535353535353535353
+  : > "$case_dir/config/required-checks/project"
+  write_github_checks "$case_dir" 'e2e-tests=COMPLETED/SKIPPED'
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 49
+
+  expect_code 0 "$RC" "required-checks-empty: an empty list must not refuse"
+  assert_grep 'pr merge 49 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    "required-checks-empty: the merge command did not run"
+  assert_no_grep 'statusCheckRollup' "$case_dir/gh.log" \
+    "required-checks-empty: the status rollup was read for an empty list"
+  pass "fm-pr-merge ignores an existing empty required-checks list"
+}
+
+test_required_checks_comment_only_list_changes_nothing() {
+  local case_dir
+  case_dir=$(make_case required-checks-comments)
+  mkdir -p "$case_dir/wt" "$case_dir/config/required-checks"
+  add_gh_mocks "$case_dir" 5454545454545454545454545454545454545454
+  printf '# intentionally no required checks\n' > "$case_dir/config/required-checks/project"
+  write_github_checks "$case_dir" 'e2e-tests=COMPLETED/SKIPPED'
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 50
+
+  expect_code 0 "$RC" "required-checks-comments: a comment-only list must not refuse"
+  assert_grep 'pr merge 50 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    "required-checks-comments: the merge command did not run"
+  assert_no_grep 'statusCheckRollup' "$case_dir/gh.log" \
+    "required-checks-comments: the status rollup was read for a comment-only list"
+  pass "fm-pr-merge ignores a comment-only required-checks list"
+}
+
+test_required_checks_all_green_merges() {
+  local case_dir
+  case_dir=$(make_case required-checks-green)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 4545454545454545454545454545454545454545
+  write_required_checks "$case_dir" lint unit
+  write_github_checks "$case_dir" lint=COMPLETED/SUCCESS unit=COMPLETED/SUCCESS extra=COMPLETED/SKIPPED
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 41
+
+  expect_code 0 "$RC" "required-checks-green: every required check is green, so the merge should run"
+  assert_grep 'pr merge 41 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    "required-checks-green: the merge command did not run"
+  pass "fm-pr-merge merges when every required check is SUCCESS"
+}
+
+test_required_checks_skipped_refuses_and_names_the_check() {
+  local case_dir
+  case_dir=$(make_case required-checks-skipped)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 4646464646464646464646464646464646464646
+  write_required_checks "$case_dir" lint unit
+  write_github_checks "$case_dir" lint=COMPLETED/SUCCESS unit=COMPLETED/SKIPPED
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 42
+
+  [ "$RC" -ne 0 ] || fail "required-checks-skipped: a SKIPPED required check was merged"
+  assert_grep 'unit' "$case_dir/stderr" "required-checks-skipped: the refusal did not name the check"
+  assert_grep 'SKIPPED' "$case_dir/stderr" "required-checks-skipped: the refusal did not say the check was skipped"
+  assert_no_grep 'lint' "$case_dir/stderr" "required-checks-skipped: the refusal named a check that passed"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "required-checks-skipped: the merge command ran despite the skipped check"
+  pass "fm-pr-merge refuses a SKIPPED required check and names it"
+}
+
+test_required_checks_missing_refuses_and_names_the_check() {
+  local case_dir
+  case_dir=$(make_case required-checks-missing)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 4747474747474747474747474747474747474747
+  write_required_checks "$case_dir" lint unit
+  write_github_checks "$case_dir" lint=COMPLETED/SUCCESS
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 43
+
+  [ "$RC" -ne 0 ] || fail "required-checks-missing: a missing required check was merged"
+  assert_grep 'unit' "$case_dir/stderr" "required-checks-missing: the refusal did not name the check"
+  assert_grep 'missing' "$case_dir/stderr" "required-checks-missing: the refusal did not say the check was absent"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "required-checks-missing: the merge command ran despite the missing check"
+  pass "fm-pr-merge refuses a required check absent from the rollup and names it"
+}
+
+test_required_checks_glob_matches_shards() {
+  local case_dir
+  case_dir=$(make_case required-checks-glob-green)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 4848484848484848484848484848484848484848
+  write_required_checks "$case_dir" 'e2e-tests*'
+  write_github_checks "$case_dir" 'e2e-tests (1)=COMPLETED/SUCCESS' 'e2e-tests (2)=COMPLETED/SUCCESS'
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 44
+
+  expect_code 0 "$RC" "required-checks-glob-green: green shards matched by a glob should merge"
+  assert_grep 'pr merge 44 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    "required-checks-glob-green: the merge command did not run"
+
+  # Acceptance 1: the same glob with SKIPPED shards refuses and names them.
+  case_dir=$(make_case required-checks-glob-skipped)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 4949494949494949494949494949494949494949
+  write_required_checks "$case_dir" 'e2e-tests*'
+  write_github_checks "$case_dir" 'e2e-tests (1)=COMPLETED/SKIPPED' 'e2e-tests (2)=COMPLETED/SKIPPED'
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 45
+
+  [ "$RC" -ne 0 ] || fail "required-checks-glob-skipped: SKIPPED shards matched by a glob were merged"
+  assert_grep 'e2e-tests (1)' "$case_dir/stderr" "required-checks-glob-skipped: the first shard was not named"
+  assert_grep 'e2e-tests (2)' "$case_dir/stderr" "required-checks-glob-skipped: the second shard was not named"
+  assert_grep 'SKIPPED' "$case_dir/stderr" "required-checks-glob-skipped: the refusal did not say SKIPPED"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "required-checks-glob-skipped: the merge command ran despite the skipped shards"
+  pass "fm-pr-merge matches a glob against matrix shards and refuses when any shard is SKIPPED"
+}
+
+test_required_checks_pending_refuses() {
+  local case_dir
+  case_dir=$(make_case required-checks-pending)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 5050505050505050505050505050505050505050
+  write_required_checks "$case_dir" unit
+  write_github_checks "$case_dir" 'unit=IN_PROGRESS/'
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 46
+
+  [ "$RC" -ne 0 ] || fail "required-checks-pending: a still-running required check was merged"
+  assert_grep 'unit' "$case_dir/stderr" "required-checks-pending: the refusal did not name the check"
+  assert_grep 'pending' "$case_dir/stderr" "required-checks-pending: the refusal did not say the check is pending"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "required-checks-pending: the merge command ran despite the pending check"
+  pass "fm-pr-merge refuses a required check that has not finished"
+}
+
+# The gate is a status fact about the pull request, not a merge-authority
+# question, so a project whose standing posture is yolo is refused the same way.
+test_required_checks_unreadable_list_refuses_before_merge() {
+  local case_dir
+  case_dir=$(make_case required-checks-unreadable)
+  if [ "$(id -u)" -eq 0 ]; then
+    pass "fm-pr-merge unreadable required-checks assertion skipped as root"
+    return
+  fi
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 5252525252525252525252525252525252525252
+  write_required_checks "$case_dir" unit
+  chmod 000 "$case_dir/config/required-checks/project"
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 48
+
+  [ "$RC" -ne 0 ] || fail "required-checks-unreadable: an unreadable list was accepted"
+  assert_grep 'required checks file' "$case_dir/stderr" \
+    "required-checks-unreadable: the refusal did not name the file error"
+  assert_grep 'config/required-checks/project' "$case_dir/stderr" \
+    "required-checks-unreadable: the refusal did not name the unreadable file"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "required-checks-unreadable: the merge command ran despite the unreadable list"
+  pass "fm-pr-merge refuses an unreadable required-checks list before merging"
+}
+
+test_required_checks_symlinked_unreadable_list_refuses_before_merge() {
+  local case_dir
+  case_dir=$(make_case required-checks-symlink-unreadable)
+  if [ "$(id -u)" -eq 0 ]; then
+    pass "fm-pr-merge symlinked unreadable-list assertion skipped as root"
+    return
+  fi
+  mkdir -p "$case_dir/wt" "$case_dir/config/required-checks"
+  add_gh_mocks "$case_dir" 5555555555555555555555555555555555555555
+  printf 'unit\n' > "$case_dir/config/required-checks/unreadable-target"
+  chmod 000 "$case_dir/config/required-checks/unreadable-target"
+  ln -s unreadable-target "$case_dir/config/required-checks/project"
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 51
+
+  [ "$RC" -ne 0 ] || fail "required-checks-symlink-unreadable: the symlink target was bypassed"
+  assert_grep 'config/required-checks/project' "$case_dir/stderr" \
+    "required-checks-symlink-unreadable: the refusal did not name the configured file"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "required-checks-symlink-unreadable: the merge command ran despite the unreadable target"
+  pass "fm-pr-merge refuses an unreadable symlinked required-checks list"
+}
+
+test_required_checks_dangling_symlink_refuses_before_merge() {
+  local case_dir
+  case_dir=$(make_case required-checks-symlink-dangling)
+  mkdir -p "$case_dir/wt" "$case_dir/config/required-checks"
+  add_gh_mocks "$case_dir" 5656565656565656565656565656565656565656
+  ln -s missing-target "$case_dir/config/required-checks/project"
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 52
+
+  [ "$RC" -ne 0 ] || fail "required-checks-symlink-dangling: the dangling symlink was bypassed"
+  assert_grep 'config/required-checks/project' "$case_dir/stderr" \
+    "required-checks-symlink-dangling: the refusal did not name the configured file"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "required-checks-symlink-dangling: the merge command ran despite the dangling symlink"
+  pass "fm-pr-merge refuses a dangling required-checks symlink"
+}
+
+test_required_checks_refuse_regardless_of_yolo() {
+  local case_dir
+  case_dir=$(make_case required-checks-yolo)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 5151515151515151515151515151515151515151
+  printf 'yolo=on\n' >> "$case_dir/state/task-x1.meta"
+  write_required_checks "$case_dir" unit
+  write_github_checks "$case_dir" unit=COMPLETED/FAILURE
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 47
+
+  [ "$RC" -ne 0 ] || fail "required-checks-yolo: a failed required check was merged under yolo"
+  assert_grep 'unit' "$case_dir/stderr" "required-checks-yolo: the refusal did not name the check"
+  assert_grep 'FAILURE' "$case_dir/stderr" "required-checks-yolo: the refusal did not give the check's conclusion"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "required-checks-yolo: the merge command ran despite the failed check"
+  pass "fm-pr-merge's required-checks refusal is independent of yolo"
 }
 
 # --expect-base is the guard that stops a unit of work built for an integration
@@ -2316,3 +2622,15 @@ test_queued_github_merge_leaves_the_poll_armed
 test_distinct_merged_prs_keep_distinct_wakes
 test_uncommitted_marker_retry_is_never_silent
 test_secondmate_without_parent_binding_is_loud
+test_required_checks_absent_list_changes_nothing
+test_required_checks_empty_list_changes_nothing
+test_required_checks_comment_only_list_changes_nothing
+test_required_checks_symlinked_unreadable_list_refuses_before_merge
+test_required_checks_dangling_symlink_refuses_before_merge
+test_required_checks_all_green_merges
+test_required_checks_skipped_refuses_and_names_the_check
+test_required_checks_missing_refuses_and_names_the_check
+test_required_checks_glob_matches_shards
+test_required_checks_pending_refuses
+test_required_checks_unreadable_list_refuses_before_merge
+test_required_checks_refuse_regardless_of_yolo

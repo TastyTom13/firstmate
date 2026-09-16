@@ -76,6 +76,24 @@
 # already requires; a base that cannot be read refuses the merge rather than
 # merging with the guard silently skipped. Without the flag nothing is read,
 # nothing is recorded, and the merge behaves exactly as it did before.
+#
+# config/required-checks/<project> is the per-project list of checks that must
+# be SUCCESS on the pull request's head before this script merges, standing in
+# for the "required status checks" rule GitHub branch protection would apply.
+# <project> is the clone's directory name, the last segment of the project=
+# path in the task's own metadata. One check name per line; a name may be an
+# exact job name or a shell glob such as e2e-tests* so matrix shards match.
+# Blank lines and lines starting with '#' are ignored. The head's status
+# rollup is read from the forge BEFORE any merge command runs, and the merge
+# is refused with one line naming every offending check when any name matches
+# nothing in the rollup, matches a check that is still pending, or matches a
+# check whose conclusion is anything but SUCCESS (SKIPPED included). The
+# refusal is a status fact, not a merge-authority question, so a project's
+# standing yolo posture never bypasses it. Reading the rollup needs gh on PATH
+# for a GitHub pull request, and a rollup that cannot be read refuses; a
+# GitLab merge request with a non-empty list refuses because only GitHub's
+# rollup is read here. An absent or empty list reads nothing and changes
+# nothing. docs/configuration.md "Required checks" owns the setting.
 # Usage: fm-pr-merge.sh <task-id> <pr-url> [--expect-base <branch>] [-- <extra forge merge args>]
 set -eu
 
@@ -83,6 +101,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
@@ -724,6 +743,118 @@ record_pr_base() {  # <branch>
   return "$rc"
 }
 
+# The required-checks list for this task's project, one name or glob per line,
+# read from config/required-checks/<clone directory name>. Prints the list and
+# succeeds with empty output when no list exists or the project cannot be told.
+required_checks_list() {
+  local project file rc
+  project=$(grep '^project=' "$META" | tail -1 | cut -d= -f2- || true)
+  project=${project%/}
+  project=${project##*/}
+  [ -n "$project" ] || return 0
+  file="$CONFIG/required-checks/$project"
+  [ -e "$file" ] || [ -L "$file" ] || return 0
+  if grep -v '^[[:space:]]*\(#\|$\)' "$file"; then
+    return 0
+  else
+    rc=$?
+  fi
+  if [ "$rc" -ne 1 ]; then
+    printf 'error: required checks file %s could not be read; refusing to merge\n' "$file" >&2
+    return 1
+  fi
+  return 0
+}
+
+# One live read of the head commit's status rollup. Each context becomes one
+# line: check<TAB>name<TAB>status<TAB>conclusion for a check run, and
+# status<TAB>context<TAB>state<TAB> for a commit status; a "more=" line says
+# whether a page was left unread, which refuses rather than judging half a
+# rollup. Sets FM_PR_GITHUB_CHECKS on success.
+FM_PR_GITHUB_CHECKS=
+github_read_checks() {
+  local lines
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "error: checking the pull request's required checks requires gh on PATH" >&2
+    return 1
+  fi
+  # shellcheck disable=SC2016  # GraphQL variables are literal query syntax.
+  if ! lines=$(gh api graphql \
+    -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{name status conclusion} ... on StatusContext{context state}}}}}}}}}}' \
+    -F "owner=$PR_OWNER" -F "repo=$PR_REPO" -F "number=$PR_NUMBER" \
+    --jq '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup as $r
+      | "more=" + (($r.contexts.pageInfo.hasNextPage // false) | tostring),
+        (($r.contexts.nodes // [])[]
+          | if .__typename == "CheckRun"
+            then "check\t" + (.name // "") + "\t" + (.status // "") + "\t" + (.conclusion // "")
+            else "status\t" + (.context // "") + "\t" + (.state // "") + "\t"
+            end)' 2>/dev/null); then
+    printf 'error: could not read the status checks of %s, so its required checks could not be judged; nothing was merged\n' "$URL" >&2
+    return 1
+  fi
+  case "$lines" in
+    more=false*) ;;
+    *)
+      printf 'error: the status checks of %s could not be read completely, so its required checks could not be judged; nothing was merged\n' "$URL" >&2
+      return 1
+      ;;
+  esac
+  FM_PR_GITHUB_CHECKS=$lines
+}
+
+# Judge every required name against the rollup and refuse, naming each
+# offending check, unless every match is a finished SUCCESS.
+github_verify_required_checks() {
+  local required pattern line kind name status conclusion verdict
+  local matched offending=''
+  if ! required=$(required_checks_list); then
+    return 1
+  fi
+  [ -n "$required" ] || return 0
+  if [ "$PROVIDER" != github ]; then
+    printf 'error: refusing to merge %s: required checks are only enforced for GitHub pull requests\n' "$URL" >&2
+    return 1
+  fi
+  github_read_checks || return 1
+  while IFS= read -r pattern; do
+    [ -n "$pattern" ] || continue
+    matched=false
+    while IFS=$'\t' read -r kind name status conclusion; do
+      [ "$kind" = check ] || [ "$kind" = status ] || continue
+      # shellcheck disable=SC2254  # the pattern is a deliberate glob.
+      case "$name" in
+        $pattern) ;;
+        *) continue ;;
+      esac
+      matched=true
+      if [ "$kind" = check ]; then
+        if [ "$status" != COMPLETED ]; then
+          verdict=pending
+        else
+          verdict=$conclusion
+        fi
+      else
+        case "$status" in
+          SUCCESS) verdict=SUCCESS ;;
+          PENDING|EXPECTED) verdict=pending ;;
+          *) verdict=$status ;;
+        esac
+      fi
+      [ "$verdict" = SUCCESS ] || offending="$offending, $name is ${verdict:-unreadable}"
+    done <<CHECKS
+$FM_PR_GITHUB_CHECKS
+CHECKS
+    [ "$matched" = true ] || offending="$offending, $pattern is missing"
+  done <<REQUIRED
+$required
+REQUIRED
+  if [ -n "$offending" ]; then
+    printf 'error: refusing to merge %s: required checks not green: %s; nothing was merged\n' \
+      "$URL" "${offending#, }" >&2
+    return 1
+  fi
+}
+
 if [ "$EXPECT_BASE_SET" -eq 1 ]; then
   read_pr_base || exit 1
   if [ "$FM_PR_OBSERVED_BASE" != "$EXPECT_BASE" ]; then
@@ -732,6 +863,8 @@ if [ "$EXPECT_BASE_SET" -eq 1 ]; then
     exit 1
   fi
 fi
+
+github_verify_required_checks || exit 1
 
 # Record before either forge call. This arms the merge poll without claiming a
 # landed outcome, so even a provider read failure after a real merge cannot

@@ -117,6 +117,25 @@ The same branch is passed to `bin/fm-brief.sh --base <branch>`, which records it
 Each flag is independent and omitting all three leaves default-branch behaviour exactly as it was.
 The exact flag mechanics live in each script's own header and `--help`, which are their single owner.
 
+## Required checks (config/required-checks/<project>)
+
+`config/required-checks/<project>` is an optional local, gitignored list of the checks that must be green on a pull request's head before firstmate merges it.
+It stands in for the "required status checks" rule GitHub branch protection would apply, for a private repository whose plan does not offer that rule.
+It is read only by [`bin/fm-pr-merge.sh`](../bin/fm-pr-merge.sh), whose header owns the read and refusal mechanics.
+This section is the single owner of the file's schema.
+
+`<project>` is the clone's directory name under `projects/`, which is the last segment of the project path recorded in the task's own durable record.
+One check name per line, matched against the names in the pull request head's status rollup: check-run names as GitHub Actions reports them, or commit-status contexts.
+A name may be an exact job name or a shell glob such as `e2e-tests*`, so every matrix shard of one job matches one line.
+Blank lines and lines starting with `#` are ignored.
+
+The merge is refused, with one line naming each offending check, when any listed name matches nothing in the rollup, matches a check that is still pending, or matches a check whose conclusion is anything but SUCCESS, so a SKIPPED shard refuses exactly like a failed one.
+A glob refuses when any of the checks it matches is not SUCCESS.
+The refusal is a status fact about the pull request, not a merge-authority question, so a project's standing `yolo` posture does not bypass it.
+A rollup that cannot be read refuses rather than merging with the check quietly skipped, and a GitLab merge request with a non-empty list refuses because only GitHub's rollup is read.
+An absent or empty list reads nothing and leaves the merge exactly as it was.
+The file is not inherited by secondmate homes, so a secondmate that merges for a project needs its own copy.
+
 ## Runtime backend (config/backend / FM_BACKEND)
 
 For spawn-capable adapters, the runtime session-provider backend controls where task windows/endpoints are created, captured, sent to, watched, and killed.
