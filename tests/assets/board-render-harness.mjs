@@ -6,7 +6,8 @@
 // Prints one JSON document:
 //   { stats:[{n,label}], fuel:{hidden,cells:[{tone,name,pct,fill,meta}]},
 //     usage:{hidden,sub,curves:[{name,now,bars,meta}],daily,spend,runs},
-//     charted:[{title,sub,badges,pickable}], underway:[title], landed:[title],
+//     underway:[{title,sub,badges}], charted:[{title,sub,badges,pickable}],
+//     landed:[title], empty, more, error,
 //     parkedIdeas:[{title,sub}], ideaCapture:{submitted,cleared,limitText,queued},
 //     submits:{decision,dispatch} (only with FM_BOARD_DRIVE_SUBMITS=1) }
 import { readFileSync } from "node:fs";
@@ -159,29 +160,32 @@ const fuel = {
   }),
 };
 
-// Underway and Recently Landed: the titles those two sections actually show.
-const titlesOf = (id) =>
-  (byId.get(id) || new Node("div")).children
+const rowsOf = (container) =>
+  container.children
     .filter((r) => r.className.split(/\s+/).includes("bb-row"))
-    .map((row) =>
-      row.children
-        .find((c) => c.className.includes("bb-row__main"))
-        ?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "");
-const underway = titlesOf("bb-underway");
-const landed = titlesOf("bb-landed");
+    .map((row) => {
+      const main = row.children.find((c) => c.className.includes("bb-row__main"));
+      return {
+        title: main?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "",
+        sub: main?.children.find((c) => c.className.includes("bb-row__sub"))?.textContent ?? "",
+        badges: badgesOf(row),
+        pickable: row.children.some((c) => c.className.includes("bb-pick") && !c.className.includes("spacer")),
+      };
+    });
+
+const uw = byId.get("bb-underway") || new Node("div");
+const underway = rowsOf(uw);
+
+// Recently Landed: the titles that section actually shows.
+const landed = (byId.get("bb-landed") || new Node("div")).children
+  .filter((r) => r.className.split(/\s+/).includes("bb-row"))
+  .map((row) =>
+    row.children
+      .find((c) => c.className.includes("bb-row__main"))
+      ?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "");
 
 const ch = byId.get("bb-charted") || new Node("div");
-const charted = ch.children
-  .filter((r) => r.className.split(/\s+/).includes("bb-row"))
-  .map((row) => {
-    const main = row.children.find((c) => c.className.includes("bb-row__main"));
-    return {
-      title: main?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "",
-      sub: main?.children.find((c) => c.className.includes("bb-row__sub"))?.textContent ?? "",
-      badges: badgesOf(row),
-      pickable: row.children.some((c) => c.className.includes("bb-pick") && !c.className.includes("spacer")),
-    };
-  });
+const charted = rowsOf(ch);
 // A fail-closed render replaces the page body instead of the board sections, so
 // surface it rather than reporting an empty board as a successful render.
 const errorText = [...byId.entries()]
