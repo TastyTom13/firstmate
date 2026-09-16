@@ -753,7 +753,7 @@ required_checks_list() {
   project=${project##*/}
   [ -n "$project" ] || return 0
   file="$CONFIG/required-checks/$project"
-  [ -f "$file" ] || return 0
+  [ -e "$file" ] || [ -L "$file" ] || return 0
   if grep -v '^[[:space:]]*\(#\|$\)' "$file"; then
     return 0
   else
@@ -763,6 +763,7 @@ required_checks_list() {
     printf 'error: required checks file %s could not be read; refusing to merge\n' "$file" >&2
     return 1
   fi
+  return 0
 }
 
 # One live read of the head commit's status rollup. Each context becomes one

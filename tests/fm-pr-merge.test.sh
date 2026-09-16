@@ -79,6 +79,7 @@
 #   (ba) an existing empty required-checks list changes nothing
 #   (bb) a comment-only required-checks list changes nothing
 #   (bc) a symlinked unreadable required-checks list refuses before merging
+#   (bd) a dangling required-checks symlink refuses before merging
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -659,6 +660,24 @@ test_required_checks_symlinked_unreadable_list_refuses_before_merge() {
   assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
     "required-checks-symlink-unreadable: the merge command ran despite the unreadable target"
   pass "fm-pr-merge refuses an unreadable symlinked required-checks list"
+}
+
+test_required_checks_dangling_symlink_refuses_before_merge() {
+  local case_dir
+  case_dir=$(make_case required-checks-symlink-dangling)
+  mkdir -p "$case_dir/wt" "$case_dir/config/required-checks"
+  add_gh_mocks "$case_dir" 5656565656565656565656565656565656565656
+  ln -s missing-target "$case_dir/config/required-checks/project"
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 52
+
+  [ "$RC" -ne 0 ] || fail "required-checks-symlink-dangling: the dangling symlink was bypassed"
+  assert_grep 'config/required-checks/project' "$case_dir/stderr" \
+    "required-checks-symlink-dangling: the refusal did not name the configured file"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "required-checks-symlink-dangling: the merge command ran despite the dangling symlink"
+  pass "fm-pr-merge refuses a dangling required-checks symlink"
 }
 
 test_required_checks_refuse_regardless_of_yolo() {
@@ -2607,6 +2626,7 @@ test_required_checks_absent_list_changes_nothing
 test_required_checks_empty_list_changes_nothing
 test_required_checks_comment_only_list_changes_nothing
 test_required_checks_symlinked_unreadable_list_refuses_before_merge
+test_required_checks_dangling_symlink_refuses_before_merge
 test_required_checks_all_green_merges
 test_required_checks_skipped_refuses_and_names_the_check
 test_required_checks_missing_refuses_and_names_the_check
