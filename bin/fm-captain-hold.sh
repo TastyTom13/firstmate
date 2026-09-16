@@ -953,15 +953,32 @@ report_retained_artifact_failure() {  # <task-id> <marker-path>
     "$1" "$2" "${FM_BACKLOG_TRANSITION_ERROR:-no reason reported}" >&2
 }
 
+# The retained record's arguments are the completion link (--pr or --report)
+# optionally followed by the per-model attribution note bin/fm-teardown.sh's
+# backlog_done_args always appends (--note, percent-encoded; the shape is
+# owned by bin/fm-backlog-transition-lib.sh). Only the link is applied here,
+# through `update`, which carries no note; the decoded note is left in
+# FM_CAPTAIN_HOLD_RETAINED_NOTE for the `done` close that follows, so an
+# answered captain hold still lands with its attribution.
+FM_CAPTAIN_HOLD_RETAINED_NOTE=
 apply_pending_retained_artifact() {  # <task-id>
   local id=$1 marker
   local -a args=()
+  FM_CAPTAIN_HOLD_RETAINED_NOTE=
   marker=$(fm_backlog_close_marker_path "$STATE" "$id") || return 1
   [ -e "$marker" ] || [ -L "$marker" ] || return 0
   fm_backlog_close_marker_validate "$marker" "$DATA" "$id" "$STATE" \
     || { report_retained_artifact_failure "$id" "$marker"; return 1; }
   [ "$FM_BACKLOG_CLOSE_VALIDATED_MODE" = retain ] || return 0
   args=("${FM_BACKLOG_CLOSE_VALIDATED_ARGS[@]+"${FM_BACKLOG_CLOSE_VALIDATED_ARGS[@]}"}")
+  if [ "${args[0]-}" = --note ]; then
+    FM_CAPTAIN_HOLD_RETAINED_NOTE=$(fm_backlog_note_percent_decode "${args[1]}")
+    return 0
+  fi
+  if [ "${args[2]-}" = --note ]; then
+    FM_CAPTAIN_HOLD_RETAINED_NOTE=$(fm_backlog_note_percent_decode "${args[3]}")
+    args=("${args[0]}" "${args[1]}")
+  fi
   case "${args[0]-}" in
     --pr|--report)
       fm_backlog_row_artifact_supported "$id" "${args[@]}" || return 0
@@ -976,7 +993,11 @@ close_answered() {  # <task-id> <release-0-or-1>
     tasks_axi unhold "$1" >/dev/null
   else
     apply_pending_retained_artifact "$1" || return 1
-    tasks_axi "done" "$1" >/dev/null
+    if [ -n "$FM_CAPTAIN_HOLD_RETAINED_NOTE" ]; then
+      tasks_axi "done" "$1" --note "$FM_CAPTAIN_HOLD_RETAINED_NOTE" >/dev/null
+    else
+      tasks_axi "done" "$1" >/dev/null
+    fi
   fi
 }
 

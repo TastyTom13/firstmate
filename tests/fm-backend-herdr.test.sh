@@ -1216,15 +1216,34 @@ shell_only_process_info_fixture() {  # <pane> <pid> [shell]
     "$1" "$2" "$2" "$2" "${3:-zsh}" "${3:-zsh}"
 }
 
-herdr_agent_state_over_shell() {  # <case-name> <agent-json> <process-info-json>
+# <process-table> is the fake operating-system process table the classifier
+# reads after the foreground sample proves no harness is running there: one
+# "pid ppid comm" row per line, so a nested worktree shell can sit under the
+# pane shell exactly as `treehouse get` leaves it. Every listed process answers
+# `ps -p <pid> -o args=` with its comm, so none of them reads as a harness.
+herdr_agent_state_over_shell() {  # <case-name> <agent-json> <process-info-json> <process-table>
   local dir log resp fb
   dir="$TMP_ROOT/$1"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
   printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
   printf '%s\n' "$2" > "$resp/2.out"
   printf '%s\n' "$3" > "$resp/3.out"
+  printf '%s\n' "$4" > "$dir/ps-table"
+  cat > "$dir/ps" <<SH
+#!/usr/bin/env bash
+table="$dir/ps-table"
+case "\$*" in
+  "-axo pid=,ppid=,comm=") cat "\$table" ;;
+  "-axo pid=,ppid=") awk '{ print \$1, \$2 }' "\$table" ;;
+  "-p "*" -o args=") awk -v p="\$2" '\$1 == p { print \$3; found = 1 } END { exit(found ? 0 : 1) }' "\$table" ;;
+  "-p "*" -o comm=") awk -v p="\$2" '\$1 == p { print \$3; found = 1 } END { exit(found ? 0 : 1) }' "\$table" ;;
+  "-p "*" -o stat=") printf 'Ss+\\n' ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$dir/ps"
   fb=$(make_herdr_fakebin "$dir")
   PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    FM_BACKEND_HERDR_SHELL_ONLY_PROOF_POLLS=1 \
+    FM_HERDR_PS_BIN="$dir/ps" FM_BACKEND_HERDR_IDLE_SHELL_PROOF_POLLS=1 \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_agent_state fmtest:w1:p2' "$ROOT"
 }
 
@@ -1232,7 +1251,8 @@ test_idle_pi_record_over_bare_shell_is_dead() {
   local out
   out=$(herdr_agent_state_over_shell pi-bare-shell \
     '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' \
-    "$(shell_only_process_info_fixture w1:p2 4242 zsh)")
+    "$(shell_only_process_info_fixture w1:p2 4242 zsh)" \
+    $'1 0 launchd\n4242 1 zsh')
   [ "$out" = dead ] || fail "a Pi pane that exited to its own shell must be recovery-grade dead, got '$out'"
   pass "fm_backend_herdr_agent_state: a Pi record left behind by an ended session over a bare shell is dead"
 }
@@ -1241,7 +1261,8 @@ test_idle_claude_record_over_bare_shell_is_dead() {
   local out
   out=$(herdr_agent_state_over_shell claude-bare-shell \
     '{"result":{"agent":{"agent":"claude","agent_status":"idle"}}}' \
-    "$(shell_only_process_info_fixture w1:p2 4343 bash)")
+    "$(shell_only_process_info_fixture w1:p2 4343 bash)" \
+    $'1 0 launchd\n4343 1 bash')
   [ "$out" = dead ] || fail "a Claude pane that exited to its own shell must be recovery-grade dead, got '$out'"
   pass "fm_backend_herdr_agent_state: a Claude record left behind by an ended session over a bare shell is dead"
 }
@@ -1250,7 +1271,8 @@ test_live_pi_composer_pane_still_refuses() {
   local out
   out=$(herdr_agent_state_over_shell pi-live-composer \
     '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' \
-    '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_process_group_id":4343,"foreground_processes":[{"pid":4343,"name":"node","argv0":"pi"}]}}}')
+    '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":4242,"foreground_process_group_id":4343,"foreground_processes":[{"pid":4343,"name":"node","argv0":"pi"}]}}}' \
+    $'1 0 launchd\n4242 1 zsh\n4343 4242 node')
   [ "$out" = alive ] || fail "a Pi pane still running its agent must stay alive, got '$out'"
   pass "fm_backend_herdr_agent_state: a pane whose foreground is still the Pi process stays alive"
 }
@@ -1276,7 +1298,8 @@ test_treehouse_nested_shell_record_is_dead() {
   local out
   out=$(herdr_agent_state_over_shell pi-treehouse-shell \
     '{"result":{"agent":{"agent":"pi","agent_status":"done"}}}' \
-    "$(treehouse_process_info_fixture w1:p2 58018 61323)")
+    "$(treehouse_process_info_fixture w1:p2 58018 61323)" \
+    $'1 0 launchd\n58018 1 zsh\n61323 58018 zsh')
   [ "$out" = dead ] || fail "a Pi pane that exited to its treehouse subshell must be recovery-grade dead, got '$out'"
   pass "fm_backend_herdr_agent_state: a record left over the nested shell of a treehouse pane is dead"
 }
@@ -1285,7 +1308,8 @@ test_treehouse_nested_shell_running_agent_stays_alive() {
   local out
   out=$(herdr_agent_state_over_shell pi-treehouse-live \
     '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' \
-    "$(treehouse_process_info_fixture w1:p2 58018 61540 node pi)")
+    "$(treehouse_process_info_fixture w1:p2 58018 61540 node pi)" \
+    $'1 0 launchd\n58018 1 zsh\n61540 58018 node')
   [ "$out" = alive ] || fail "a treehouse pane whose nested shell still runs its agent must stay alive, got '$out'"
   pass "fm_backend_herdr_agent_state: a treehouse pane still running its agent under the nested shell stays alive"
 }
@@ -2452,6 +2476,7 @@ make_death_lab() {  # <dir> <shell-pid>
 #!/usr/bin/env bash
 case "\$*" in
   "-axo pid=,ppid=") printf '1 0\n$pid 1\n' ;;
+  "-axo pid=,ppid=,comm=") printf '1 0 launchd\n$pid 1 zsh\n' ;;
   "-p $pid -o stat=") printf 'Ss+\n' ;;
   "-p $pid -o comm=") printf -- '-zsh\n' ;;
   *) exit 1 ;;

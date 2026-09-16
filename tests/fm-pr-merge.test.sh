@@ -478,9 +478,8 @@ test_required_checks_absent_list_changes_nothing() {
   run_required_checks_case "$case_dir" 40
 
   expect_code 0 "$RC" "required-checks-absent: an absent list must not refuse"
-  assert_grep 'pr merge 40 --repo example/repo --squash' "$case_dir/gh-axi.log" \
-    "required-checks-absent: the merge command did not run as usual"
-  assert_no_grep 'statusCheckRollup' "$case_dir/gh.log" \
+  assert_logged_gh_merge "$case_dir" 40 example/repo --squash
+  assert_no_grep 'commits(last:1)' "$case_dir/gh.log" \
     "required-checks-absent: the status rollup was read although no list exists"
   pass "fm-pr-merge reads nothing and refuses nothing when no required list exists"
 }
@@ -497,9 +496,8 @@ test_required_checks_empty_list_changes_nothing() {
   run_required_checks_case "$case_dir" 49
 
   expect_code 0 "$RC" "required-checks-empty: an empty list must not refuse"
-  assert_grep 'pr merge 49 --repo example/repo --squash' "$case_dir/gh-axi.log" \
-    "required-checks-empty: the merge command did not run"
-  assert_no_grep 'statusCheckRollup' "$case_dir/gh.log" \
+  assert_logged_gh_merge "$case_dir" 49 example/repo --squash
+  assert_no_grep 'commits(last:1)' "$case_dir/gh.log" \
     "required-checks-empty: the status rollup was read for an empty list"
   pass "fm-pr-merge ignores an existing empty required-checks list"
 }
@@ -516,9 +514,8 @@ test_required_checks_comment_only_list_changes_nothing() {
   run_required_checks_case "$case_dir" 50
 
   expect_code 0 "$RC" "required-checks-comments: a comment-only list must not refuse"
-  assert_grep 'pr merge 50 --repo example/repo --squash' "$case_dir/gh-axi.log" \
-    "required-checks-comments: the merge command did not run"
-  assert_no_grep 'statusCheckRollup' "$case_dir/gh.log" \
+  assert_logged_gh_merge "$case_dir" 50 example/repo --squash
+  assert_no_grep 'commits(last:1)' "$case_dir/gh.log" \
     "required-checks-comments: the status rollup was read for a comment-only list"
   pass "fm-pr-merge ignores a comment-only required-checks list"
 }
@@ -535,8 +532,7 @@ test_required_checks_all_green_merges() {
   run_required_checks_case "$case_dir" 41
 
   expect_code 0 "$RC" "required-checks-green: every required check is green, so the merge should run"
-  assert_grep 'pr merge 41 --repo example/repo --squash' "$case_dir/gh-axi.log" \
-    "required-checks-green: the merge command did not run"
+  assert_logged_gh_merge "$case_dir" 41 example/repo --squash
   pass "fm-pr-merge merges when every required check is SUCCESS"
 }
 
@@ -555,7 +551,7 @@ test_required_checks_skipped_refuses_and_names_the_check() {
   assert_grep 'unit' "$case_dir/stderr" "required-checks-skipped: the refusal did not name the check"
   assert_grep 'SKIPPED' "$case_dir/stderr" "required-checks-skipped: the refusal did not say the check was skipped"
   assert_no_grep 'lint' "$case_dir/stderr" "required-checks-skipped: the refusal named a check that passed"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "required-checks-skipped: the merge command ran despite the skipped check"
   pass "fm-pr-merge refuses a SKIPPED required check and names it"
 }
@@ -574,7 +570,7 @@ test_required_checks_missing_refuses_and_names_the_check() {
   [ "$RC" -ne 0 ] || fail "required-checks-missing: a missing required check was merged"
   assert_grep 'unit' "$case_dir/stderr" "required-checks-missing: the refusal did not name the check"
   assert_grep 'missing' "$case_dir/stderr" "required-checks-missing: the refusal did not say the check was absent"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "required-checks-missing: the merge command ran despite the missing check"
   pass "fm-pr-merge refuses a required check absent from the rollup and names it"
 }
@@ -591,8 +587,7 @@ test_required_checks_glob_matches_shards() {
   run_required_checks_case "$case_dir" 44
 
   expect_code 0 "$RC" "required-checks-glob-green: green shards matched by a glob should merge"
-  assert_grep 'pr merge 44 --repo example/repo --squash' "$case_dir/gh-axi.log" \
-    "required-checks-glob-green: the merge command did not run"
+  assert_logged_gh_merge "$case_dir" 44 example/repo --squash
 
   # Acceptance 1: the same glob with SKIPPED shards refuses and names them.
   case_dir=$(make_case required-checks-glob-skipped)
@@ -608,7 +603,7 @@ test_required_checks_glob_matches_shards() {
   assert_grep 'e2e-tests (1)' "$case_dir/stderr" "required-checks-glob-skipped: the first shard was not named"
   assert_grep 'e2e-tests (2)' "$case_dir/stderr" "required-checks-glob-skipped: the second shard was not named"
   assert_grep 'SKIPPED' "$case_dir/stderr" "required-checks-glob-skipped: the refusal did not say SKIPPED"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "required-checks-glob-skipped: the merge command ran despite the skipped shards"
   pass "fm-pr-merge matches a glob against matrix shards and refuses when any shard is SKIPPED"
 }
@@ -627,7 +622,7 @@ test_required_checks_pending_refuses() {
   [ "$RC" -ne 0 ] || fail "required-checks-pending: a still-running required check was merged"
   assert_grep 'unit' "$case_dir/stderr" "required-checks-pending: the refusal did not name the check"
   assert_grep 'pending' "$case_dir/stderr" "required-checks-pending: the refusal did not say the check is pending"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "required-checks-pending: the merge command ran despite the pending check"
   pass "fm-pr-merge refuses a required check that has not finished"
 }
@@ -654,7 +649,7 @@ test_required_checks_unreadable_list_refuses_before_merge() {
     "required-checks-unreadable: the refusal did not name the file error"
   assert_grep 'config/required-checks/project' "$case_dir/stderr" \
     "required-checks-unreadable: the refusal did not name the unreadable file"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "required-checks-unreadable: the merge command ran despite the unreadable list"
   pass "fm-pr-merge refuses an unreadable required-checks list before merging"
 }
@@ -678,7 +673,7 @@ test_required_checks_symlinked_unreadable_list_refuses_before_merge() {
   [ "$RC" -ne 0 ] || fail "required-checks-symlink-unreadable: the symlink target was bypassed"
   assert_grep 'config/required-checks/project' "$case_dir/stderr" \
     "required-checks-symlink-unreadable: the refusal did not name the configured file"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "required-checks-symlink-unreadable: the merge command ran despite the unreadable target"
   pass "fm-pr-merge refuses an unreadable symlinked required-checks list"
 }
@@ -696,7 +691,7 @@ test_required_checks_dangling_symlink_refuses_before_merge() {
   [ "$RC" -ne 0 ] || fail "required-checks-symlink-dangling: the dangling symlink was bypassed"
   assert_grep 'config/required-checks/project' "$case_dir/stderr" \
     "required-checks-symlink-dangling: the refusal did not name the configured file"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "required-checks-symlink-dangling: the merge command ran despite the dangling symlink"
   pass "fm-pr-merge refuses a dangling required-checks symlink"
 }
@@ -716,7 +711,7 @@ test_required_checks_refuse_regardless_of_yolo() {
   [ "$RC" -ne 0 ] || fail "required-checks-yolo: a failed required check was merged under yolo"
   assert_grep 'unit' "$case_dir/stderr" "required-checks-yolo: the refusal did not name the check"
   assert_grep 'FAILURE' "$case_dir/stderr" "required-checks-yolo: the refusal did not give the check's conclusion"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "required-checks-yolo: the merge command ran despite the failed check"
   pass "fm-pr-merge's required-checks refusal is independent of yolo"
 }
@@ -744,7 +739,7 @@ test_expect_base_mismatch_refuses_before_the_merge() {
   assert_grep 'integration' "$case_dir/stderr" "expect-base-mismatch: the refusal did not print the expected base"
   assert_grep 'nothing was merged' "$case_dir/stderr" \
     "expect-base-mismatch: the refusal did not say the merge did not happen"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "expect-base-mismatch: the merge command ran despite the base mismatch"
   pass "fm-pr-merge refuses a base that differs from --expect-base, before merging"
 }
@@ -764,8 +759,7 @@ test_expect_base_match_merges_and_records_the_base() {
   set -e
 
   expect_code 0 "$rc" "expect-base-match: a matching base should merge normally"
-  assert_grep 'pr merge 32 --repo example/repo --squash' "$case_dir/gh-axi.log" \
-    "expect-base-match: the merge command did not run with its usual arguments"
+  assert_logged_gh_merge "$case_dir" 32 example/repo --squash
   assert_grep 'pr_base=integration' "$case_dir/state/task-x1.meta" \
     "expect-base-match: the observed base was not recorded in the task metadata"
   assert_grep 'pr=https://github.com/example/repo/pull/32' "$case_dir/state/task-x1.meta" \
@@ -788,8 +782,7 @@ test_expect_base_extra_args_still_reach_the_forge() {
   set -e
 
   expect_code 0 "$rc" "expect-base-extra-args: the merge should still succeed"
-  grep -qxF 'pr merge 33 --repo example/repo --merge' "$case_dir/gh-axi.log" \
-    || fail "expect-base-extra-args: the caller's merge method did not reach the forge"
+  assert_logged_gh_merge "$case_dir" 33 example/repo --merge
   pass "fm-pr-merge consumes --expect-base without disturbing the forge arguments"
 }
 
@@ -812,7 +805,7 @@ test_expect_base_refuses_when_the_base_cannot_be_read() {
   [ "$rc" -ne 0 ] || fail "expect-base-unreadable: the merge ran with the base check skipped"
   assert_grep 'requires gh on PATH' "$case_dir/stderr" \
     "expect-base-unreadable: the refusal did not name the missing tool"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "expect-base-unreadable: the merge command ran without a readable base"
   pass "fm-pr-merge refuses rather than merging when the base branch cannot be read"
 }
@@ -833,7 +826,7 @@ test_expect_base_rejects_a_malformed_branch_name() {
   [ "$rc" -ne 0 ] || fail "expect-base-malformed: a malformed branch name was accepted"
   assert_grep 'must be a plain branch name' "$case_dir/stderr" \
     "expect-base-malformed: the refusal did not explain the accepted shape"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "expect-base-malformed: the merge command ran on a malformed expected base"
   pass "fm-pr-merge rejects a malformed --expect-base before doing anything"
 }
@@ -857,7 +850,7 @@ test_expect_base_rejects_a_malformed_observed_branch_name() {
     "expect-base-observed-malformed: the refusal did not name the invalid observed base"
   assert_grep 'not a branch' "$case_dir/stderr" \
     "expect-base-observed-malformed: the refusal did not print the observed value"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "expect-base-observed-malformed: the merge command ran on a malformed forge base"
   assert_no_grep 'pr_base=' "$case_dir/state/task-x1.meta" \
     "expect-base-observed-malformed: malformed forge base was recorded"
@@ -881,8 +874,7 @@ test_no_expect_base_reads_and_records_nothing() {
   expect_code 0 "$rc" "expect-base-absent: an ordinary merge should still succeed"
   assert_no_grep 'pr_base=' "$case_dir/state/task-x1.meta" \
     "expect-base-absent: a base was recorded without being asked for"
-  assert_grep 'pr merge 36 --repo example/repo --squash' "$case_dir/gh-axi.log" \
-    "expect-base-absent: the ordinary merge stopped working"
+  assert_logged_gh_merge "$case_dir" 36 example/repo --squash
   pass "fm-pr-merge without --expect-base reads no base and records none"
 }
 

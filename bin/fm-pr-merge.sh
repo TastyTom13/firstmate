@@ -148,8 +148,6 @@ CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
-# shellcheck source=bin/fm-wake-lib.sh
-. "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-branch-name-lib.sh
 . "$SCRIPT_DIR/fm-branch-name-lib.sh"
 # shellcheck source=bin/fm-backlog-transition-lib.sh
@@ -364,6 +362,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 }
 META="$STATE/$ID.meta"
 
+# shellcheck source=bin/fm-wake-lib.sh
+. "$SCRIPT_DIR/fm-wake-lib.sh"
 # Role partition: merging is MAIN-owned; the Pi supervision branch reports the
 # green PR and never merges (contract: bin/fm-lease-lib.sh; no-op in homes
 # without a branch actor). This precedes reading the task record, because the
@@ -1218,9 +1218,14 @@ record_pr_base() {  # <branch>
   local branch=$1 lock tmp rc=0
   lock=$(fm_meta_lock_path "$META") || return 1
   fm_lock_acquire_wait "$lock"
+  # The PR identity block bin/fm-pr-check.sh writes (pr= then pr_head=) must
+  # stay the file's tail: bin/fm-pr-lib.sh's identity parser refuses any other
+  # key after pr=, so pr_base= is placed ahead of that block, where a later
+  # pr-check rewrite also keeps it.
   if tmp=$(mktemp "$STATE/.fm-pr-base.XXXXXX"); then
-    if grep -v '^pr_base=' "$META" > "$tmp" \
+    if grep -v -e '^pr_base=' -e '^pr=' -e '^pr_head=' "$META" > "$tmp" \
       && printf 'pr_base=%s\n' "$branch" >> "$tmp" \
+      && { grep -e '^pr=' -e '^pr_head=' "$META" >> "$tmp" || true; } \
       && chmod 0600 "$tmp" \
       && mv -f -- "$tmp" "$META"; then
       tmp=
