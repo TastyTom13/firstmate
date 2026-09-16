@@ -78,6 +78,7 @@
 #   (az) an unreadable required-checks list refuses before the merge command
 #   (ba) an existing empty required-checks list changes nothing
 #   (bb) a comment-only required-checks list changes nothing
+#   (bc) a symlinked unreadable required-checks list refuses before merging
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -486,7 +487,7 @@ test_required_checks_comment_only_list_changes_nothing() {
   case_dir=$(make_case required-checks-comments)
   mkdir -p "$case_dir/wt" "$case_dir/config/required-checks"
   add_gh_mocks "$case_dir" 5454545454545454545454545454545454545454
-  printf '# intentionally no required checks\\n' > "$case_dir/config/required-checks/project"
+  printf '# intentionally no required checks\n' > "$case_dir/config/required-checks/project"
   write_github_checks "$case_dir" 'e2e-tests=COMPLETED/SKIPPED'
   : > "$case_dir/gh-axi.log"
 
@@ -634,6 +635,30 @@ test_required_checks_unreadable_list_refuses_before_merge() {
   assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
     "required-checks-unreadable: the merge command ran despite the unreadable list"
   pass "fm-pr-merge refuses an unreadable required-checks list before merging"
+}
+
+test_required_checks_symlinked_unreadable_list_refuses_before_merge() {
+  local case_dir
+  case_dir=$(make_case required-checks-symlink-unreadable)
+  if [ "$(id -u)" -eq 0 ]; then
+    pass "fm-pr-merge symlinked unreadable-list assertion skipped as root"
+    return
+  fi
+  mkdir -p "$case_dir/wt" "$case_dir/config/required-checks"
+  add_gh_mocks "$case_dir" 5555555555555555555555555555555555555555
+  printf 'unit\n' > "$case_dir/config/required-checks/unreadable-target"
+  chmod 000 "$case_dir/config/required-checks/unreadable-target"
+  ln -s unreadable-target "$case_dir/config/required-checks/project"
+  : > "$case_dir/gh-axi.log"
+
+  run_required_checks_case "$case_dir" 51
+
+  [ "$RC" -ne 0 ] || fail "required-checks-symlink-unreadable: the symlink target was bypassed"
+  assert_grep 'config/required-checks/project' "$case_dir/stderr" \
+    "required-checks-symlink-unreadable: the refusal did not name the configured file"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "required-checks-symlink-unreadable: the merge command ran despite the unreadable target"
+  pass "fm-pr-merge refuses an unreadable symlinked required-checks list"
 }
 
 test_required_checks_refuse_regardless_of_yolo() {
@@ -2581,6 +2606,7 @@ test_secondmate_without_parent_binding_is_loud
 test_required_checks_absent_list_changes_nothing
 test_required_checks_empty_list_changes_nothing
 test_required_checks_comment_only_list_changes_nothing
+test_required_checks_symlinked_unreadable_list_refuses_before_merge
 test_required_checks_all_green_merges
 test_required_checks_skipped_refuses_and_names_the_check
 test_required_checks_missing_refuses_and_names_the_check

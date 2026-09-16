@@ -753,7 +753,7 @@ required_checks_list() {
   project=${project##*/}
   [ -n "$project" ] || return 0
   file="$CONFIG/required-checks/$project"
-  [ -f "$file" ] && [ ! -L "$file" ] || return 0
+  [ -f "$file" ] || return 0
   if grep -v '^[[:space:]]*\(#\|$\)' "$file"; then
     return 0
   else
