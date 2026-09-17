@@ -361,15 +361,8 @@ test_hook_silent_with_live_lock_and_fresh_beacon() {
   pass "fm-turnend-guard: silent no-op with a live watcher lock and fresh beacon"
 }
 
-# The away-mode daemon's singleton lock, as bin/fm-supervise-daemon.sh records
-# it: the portable lock helper's pid file plus the pid-identity the daemon writes
-# for itself right after acquiring the lock.
-record_daemon_lock() {
-  local dir=$1 pid=$2 identity=$3
-  mkdir -p "$dir/state/.supervise-daemon.lock"
-  printf '%s\n' "$pid" > "$dir/state/.supervise-daemon.lock/pid"
-  printf '%s\n' "$identity" > "$dir/state/.supervise-daemon.lock/pid-identity"
-}
+# The away-mode daemon's singleton lock is recorded by record_daemon_lock,
+# defined with the away-daemon cases further down.
 
 test_hook_afk_live_daemon_allows_between_watcher_runs() {
   local dir pid identity out status out_claude status_claude
