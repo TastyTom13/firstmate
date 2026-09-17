@@ -2479,8 +2479,12 @@ wedge_stale_wakes() {  # <state> <window>
 # emitted. The wake reason is the watcher's supervisor-facing output contract, so
 # the number in it is the thing under test: it must describe the wait that is
 # actually holding the lane, not whatever unrelated record happened to be handy.
+# This fork routes a standing declaration through handle_paused_stale before
+# the working-verdict deferral is ever consulted (pause_state_class, fork PR
+# #12), so the published age reads `paused Ns` or `captain-held Ns` there and
+# `waiting Ns` on upstream's wedge_defer_wait path; either is the wait's age.
 wedge_reported_wait_secs() {  # <watch-out>
-  sed -n 's/.*waiting \([0-9][0-9]*\)s.*/\1/p' "$1" | head -1
+  sed -nE 's/.*(waiting|paused|captain-held) ([0-9]+)s.*/\2/p' "$1" | head -1
 }
 
 test_wedge_threshold_defers_to_a_declared_wait_under_a_working_verdict() {
@@ -2516,7 +2520,7 @@ test_wedge_threshold_defers_to_a_declared_wait_under_a_working_verdict() {
   reported=$(wedge_reported_wait_secs "$out")
   [ -n "$reported" ] && [ "$reported" -ge 1900 ] \
     || fail "the declared-wait recheck reported '${reported}'s rather than the age of the declaration itself: $(cat "$out")"
-  grep -F 'declared wait' "$out" >/dev/null \
+  grep -F 'declared' "$out" >/dev/null \
     || fail "the declared-wait recheck did not name its evidence as declared: $(cat "$out")"
   # A `paused:` declaration names an external dependency the worker chose, so its
   # recheck asks the reader to confirm that dependency - never to answer or
@@ -2531,17 +2535,21 @@ test_wedge_threshold_defers_to_a_declared_wait_under_a_working_verdict() {
     && fail "the declared-wait recheck was worded as a possible wedge"
   ack_stopped_cycle "$state" || fail "could not acknowledge the declared-wait recheck"
 
-  # A wait the worker said would already be over stops explaining the silence,
-  # so the exemption ends exactly where the declaration does - as long as nothing
-  # ELSE accounts for the quiet.
+  # A wait the worker said would already be over is rechecked at once as a
+  # declaration whose clearing time has passed. Under this fork's rule the
+  # declaration still outranks the working verdict, so the recheck names the
+  # elapsed time and asks whether the wait cleared instead of escalating the
+  # pane as a wedge (upstream escalates here; fork PR #12 does not).
   past=$(iso_utc_at "$(( $(date +%s) - 7200 ))")
   dir=$(wedge_threshold_fixture declared-wait-elapsed "paused: waiting on the build queue until $past" 0)
   state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"; capture="$dir/pane.txt"
   wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$working" exit \
     || fail "a declared wait whose own clearing time had passed stayed silent"
-  grep -F "possible wedge, escalation 1" "$out" >/dev/null \
-    || fail "an elapsed declared wait did not keep the unchanged wedge wording: $(cat "$out")"
-  ack_stopped_cycle "$state" || fail "could not acknowledge the elapsed-declaration escalation"
+  grep -F "declared clearing time has passed" "$out" >/dev/null \
+    || fail "an elapsed declared wait was not rechecked as elapsed: $(cat "$out")"
+  grep -F "possible wedge" "$out" >/dev/null \
+    && fail "an elapsed declared wait was wedge-escalated under a working verdict: $(cat "$out")"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the elapsed-declaration recheck"
 
   # The other direction: the same working verdict with no declaration at all
   # keeps the unchanged ladder.
@@ -2558,7 +2566,7 @@ test_wedge_threshold_defers_to_a_declared_wait_under_a_working_verdict() {
   done
   grep -F 'demand-deep-inspection: same pane has wedge-escalated 3 times in a row' "$out" >/dev/null \
     || fail "an undeclared working lane lost the demand-deep-inspection wording: $(cat "$out")"
-  pass "a declared wait is not wedge-escalated by a working verdict, while an elapsed declaration and an undeclared lane both keep the unchanged ladder"
+  pass "a declared wait is not wedge-escalated by a working verdict, an elapsed declaration is rechecked as elapsed, and an undeclared lane keeps the unchanged ladder"
 }
 
 # The other status-line record. A verified `captain-held:` transfer also reaches
