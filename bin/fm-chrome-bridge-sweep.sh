@@ -43,6 +43,12 @@ if [ "${1:-}" = --watch-owner ]; then
   while [ -d "$WATCH_STATE" ] && [ -e "$WATCH_META" ] && [ -d "$WATCH_WORKTREE" ] \
      && [ "$(date +%s)" -lt "$WATCH_DEADLINE" ]; do
     WATCH_BRIDGE_PID=
+    # Narrow the table to bridge rows in one grep before the shell reads any of
+    # it: a pass with no bridge on the host, the common case for the whole
+    # life of most tasks, then costs one ps and one grep rather than a shell
+    # loop over every process, which is what made a fleet of these watchers a
+    # measurable share of a loaded host.
+    # shellcheck disable=SC2009  # the row's pid AND command text are both needed; pgrep prints one or the other
     while IFS= read -r WATCH_ROW; do
       WATCH_PID=${WATCH_ROW%% *}
       WATCH_COMMAND=${WATCH_ROW#* }
@@ -52,7 +58,7 @@ if [ "${1:-}" = --watch-owner ]; then
       esac
       WATCH_CWD=$(lsof -a -p "$WATCH_PID" -d cwd -Fn 2>/dev/null | awk '/^n/ { sub(/^n/, ""); print; exit }') || continue
       case "$WATCH_CWD" in "$WATCH_WORKTREE"|"$WATCH_WORKTREE"/*) WATCH_BRIDGE_PID=$WATCH_PID; break ;; esac
-    done < <(ps -axo pid=,command= 2>/dev/null)
+    done < <(ps -axo pid=,command= 2>/dev/null | grep -F 'chrome-devtools-axi-bridge.js' || true)
     if [ -n "$WATCH_BRIDGE_PID" ]; then
       "$0" --record-owner "$WATCH_TASK" "$WATCH_WORKTREE" "$WATCH_BRIDGE_PID" "$WATCH_SESSION_ROOT" "$WATCH_STATE" && exit 0
     fi

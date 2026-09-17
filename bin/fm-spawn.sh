@@ -4626,8 +4626,13 @@ spawn_send_key "$T" Enter
 # and their regressions assert byte for byte, and the bridge starts long after
 # it anyway. The watcher exits on its own once the record is written, when the
 # task worktree is gone, or at its deadline, so it never outlives the task.
+# The session root must be a real pid: a backend that cannot name one (or a
+# test double standing in for tmux) yields nothing to attribute a bridge to, so
+# no watcher is started rather than one that polls for a bridge it could never
+# bind (and, one per spawn, would compete with the work under test for CPU).
 if [ "$KIND" != secondmate ]; then
   BRIDGE_SESSION_ROOT=$(fm_backend_pane_pid "$BACKEND" "$T" 2>/dev/null || true)
+  case "$BRIDGE_SESSION_ROOT" in ''|*[!0-9]*) BRIDGE_SESSION_ROOT= ;; esac
   if [ -n "$BRIDGE_SESSION_ROOT" ]; then
     (
       "$SCRIPT_DIR/fm-chrome-bridge-sweep.sh" --watch-owner "$ID" "$WT" "$STATE" "$BRIDGE_SESSION_ROOT" \

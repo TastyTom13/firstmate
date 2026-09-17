@@ -446,16 +446,21 @@ spawn_secondmate_task() {
 }
 
 teardown_task() {  # <id> <home>
-  local id=$1 home=$2 err rc
+  local id=$1 home=$2 err rc=0
   err=$(mktemp "$TMP_ROOT/teardown-$id.XXXXXX") || return 1
-  if FM_GATE_REFUSE_BYPASS=1 FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+  # Capture the status on the command itself: `rc=$?` after an `if` whose
+  # condition failed reads the if statement's own status, which is 0, and a
+  # refused teardown (the shared project slot lock is contended by the
+  # concurrent sibling teardown) would then report success and skip the retry
+  # finish_concurrent_teardown owes it.
+  FM_GATE_REFUSE_BYPASS=1 FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
       FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
       FM_CONFIG_OVERRIDE="$home/config" \
-      "$ROOT/bin/fm-teardown.sh" "$id" --force 2>"$err"; then
+      "$ROOT/bin/fm-teardown.sh" "$id" --force 2>"$err" || rc=$?
+  if [ "$rc" -eq 0 ]; then
     rm -f "$err"
     return 0
   fi
-  rc=$?
   if grep -F "release only its own records with: bin/fm-teardown.sh $id --release-shared-record" "$err" >/dev/null 2>&1; then
     FM_GATE_REFUSE_BYPASS=1 FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
       FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
