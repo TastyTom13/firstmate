@@ -2263,24 +2263,27 @@ parked_watch_round() {  # <state> <fakebin> <out> <capture> <window> <exit|absor
 # --- a live worker parked on a declared wait: pane churn must not re-alarm ----
 # The 2026-08/09 alarm loop, in both observed forms - a worker parked on the
 # CAPTAIN (captain-held, five consecutive alarms) and one parked on the PIPELINE
-# (paused:, dozens across one day). pause_state_class deliberately returns `none`
-# for either while the agent is still ALIVE, so that a worker genuinely waiting on
-# a decision is never silenced; first sight of each distinct stale hash therefore
-# reaches surface_nonterminal_stale. An idle parked pane still churns its hash (a
-# clock, a token counter), so every tick used to re-enter that first-sight path and
-# wake firstmate - the throttle was written by the very wake it should have
-# prevented, and the hash-change path cleared it again before it was ever read.
-# The contract pinned here: the FIRST sight still surfaces, further sights inside
-# PAUSE_RESURFACE_SECS are absorbed, and the window's end still re-surfaces once,
-# so a forgotten wait cannot rot invisibly.
+# (paused:, dozens across one day). This fork's pause_state_class treats the
+# declaration as authoritative for the stale path (fork PR #12): a parked worker
+# is absorbed from its FIRST sight, whether its agent is live or not, because the
+# first-sight bare `stale:` wake on a live parked pane was itself the loop - an
+# idle parked pane churns its hash (a clock, a token counter), and every new hash
+# used to be another first sight. Upstream instead surfaces the first sight and
+# throttles the rest; that contract is not this fork's, so this case pins the
+# fork's: no sight of a standing declaration wakes firstmate inside
+# PAUSE_RESURFACE_SECS, a replacement declaration is absorbed the same way (its
+# own status signal is what surfaces, and is pre-acknowledged here), and the
+# window's end, measured from the declaration's own status line, re-surfaces
+# exactly once as a recheck naming the wait, so a forgotten wait cannot rot
+# invisibly.
 test_live_declared_wait_churn_honors_the_resurface_throttle() {
   local spec name status_line dir state fakebin out capture_file statusf window key
-  local sig round wakes bare text throttle replacement
+  local sig round wakes bare text replacement recheck_word
   for spec in \
-    'paused-pipeline-churn|paused: waiting on the validation run to finish' \
-    'captain-held-churn|captain-held [key=route]: awaiting the captain on the routing call'
+    'paused-pipeline-churn|paused: waiting on the validation run to finish|awaiting external' \
+    'captain-held-churn|captain-held [key=route]: awaiting the captain on the routing call|awaiting the captain'
   do
-    name=${spec%%|*}; status_line=${spec#*|}
+    name=${spec%%|*}; status_line=${spec#*|}; recheck_word=${status_line#*|}; status_line=${status_line%%|*}
     dir=$(make_case "$name"); state="$dir/state"; fakebin="$dir/fakebin"
     out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/parked.status"
     window="test:fm-parked"
@@ -2288,18 +2291,16 @@ test_live_declared_wait_churn_honors_the_resurface_throttle() {
     printf '%s\n' "$status_line" > "$statusf"
     sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-parked_status"
     key=$(printf '%s' "$window" | tr ':/.' '___')
-    throttle="$state/.paused-resurfaced-$key"
 
-    # First sight of a parked-but-live worker must still surface: the state is
-    # inconclusive and firstmate has to look at it.
+    # First sight of a parked-but-live worker is absorbed: the declaration is
+    # the worker's own statement that this idle stretch is expected.
     text='parked, elapsed 1s'
     printf '%s' "$text" > "$capture_file"
     printf '%s' "$(hash_text "$text")" > "$state/.hash-$key"
     printf '1\n' > "$state/.count-$key"
-    parked_watch_round "$state" "$fakebin" "$out" "$capture_file" "$window" exit \
-      || fail "[$name] first sight of a parked live worker did not surface"
-    ack_stopped_cycle "$state" || fail "[$name] could not acknowledge the first surface"
-    [ -e "$throttle" ] || fail "[$name] the first surface recorded no re-surface throttle"
+    parked_watch_round "$state" "$fakebin" "$out" "$capture_file" "$window" absorb \
+      || fail "[$name] first sight of a parked live worker was not absorbed: $(cat "$out")"
+    [ -e "$state/.paused-$key" ] || fail "[$name] the absorbed first sight recorded no pause marker"
 
     # The pane now churns while the SAME declared wait stands, each round fully
     # handled as a real supervision turn would. Every one of these used to alarm.
@@ -2312,14 +2313,14 @@ test_live_declared_wait_churn_honors_the_resurface_throttle() {
         "$state/.wake-queue" 2>/dev/null || echo 0)
       [ "$wakes" -eq 0 ] \
         || fail "[$name] pane churn re-alarmed a parked worker $wakes time(s) inside the re-surface window"
-      [ -e "$throttle" ] || fail "[$name] pane churn cleared the re-surface throttle"
+      [ -e "$state/.paused-$key" ] || fail "[$name] pane churn cleared the pause marker"
       round=$((round + 1))
     done
 
-    # A direct wait-to-wait transition starts a NEW declaration even though the
-    # same window remains parked. Its first sight must not inherit the previous
-    # declaration's throttle, or an unrelated replacement wait can stay silent
-    # for nearly the whole old cadence window.
+    # A direct wait-to-wait transition is a new declaration on the same parked
+    # window. Its own status signal is the wake that announces it (acknowledged
+    # here as a handled signal would be); as a stale it is absorbed exactly like
+    # the declaration it replaced, and its window starts from its own line.
     case "$name" in
       paused-pipeline-churn) replacement='paused: waiting on the replacement validation run' ;;
       captain-held-churn) replacement='captain-held [key=release]: awaiting the captain on the release call' ;;
@@ -2327,15 +2328,11 @@ test_live_declared_wait_churn_honors_the_resurface_throttle() {
     printf '%s\n' "$replacement" >> "$statusf"
     sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-parked_status"
     printf 'replacement wait, elapsed 1s' > "$capture_file"
-    parked_watch_round "$state" "$fakebin" "$out" "$capture_file" "$window" exit \
-      || fail "[$name] a replacement declared wait inherited the previous wait's re-surface throttle"
+    parked_watch_round "$state" "$fakebin" "$out" "$capture_file" "$window" absorb \
+      || fail "[$name] a replacement declared wait was not absorbed on first sight: $(cat "$out")"
     wakes=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w { n++ } END { print n + 0 }' \
       "$state/.wake-queue" 2>/dev/null || echo 0)
-    bare=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w && $5 == "stale: " w { n++ } END { print n + 0 }' \
-      "$state/.wake-queue" 2>/dev/null || echo 0)
-    [ "$wakes" -eq 1 ] || fail "[$name] replacement declared wait produced $wakes first wakes instead of one"
-    [ "$bare" -eq 1 ] || fail "[$name] replacement declared wait changed the wake identity: $(cat "$state/.wake-queue")"
-    ack_stopped_cycle "$state" || fail "[$name] could not acknowledge the replacement wait's first surface"
+    [ "$wakes" -eq 0 ] || fail "[$name] replacement declared wait produced $wakes stale wakes instead of none"
 
     printf 'replacement wait, elapsed 2s' > "$capture_file"
     parked_watch_round "$state" "$fakebin" "$out" "$capture_file" "$window" absorb \
@@ -2344,9 +2341,11 @@ test_live_declared_wait_churn_honors_the_resurface_throttle() {
       "$state/.wake-queue" 2>/dev/null || echo 0)
     [ "$wakes" -eq 0 ] || fail "[$name] replacement wait re-alarmed $wakes time(s) inside its own re-surface window"
 
-    # End of the window: the wait must re-surface exactly once, on the same plain
-    # identity as before, so absorbing churn never becomes silence.
-    set_mtime "$(( $(date +%s) - 2000 ))" "$throttle"
+    # End of the window, measured from the declaration's own status line: the
+    # wait must re-surface exactly once, as a recheck that names the wait rather
+    # than a bare stale, so absorbing churn never becomes silence.
+    set_mtime "$(( $(date +%s) - 2000 ))" "$statusf"
+    sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-parked_status"
     printf 'parked, elapsed 5s' > "$capture_file"
     parked_watch_round "$state" "$fakebin" "$out" "$capture_file" "$window" exit \
       || fail "[$name] a parked worker did not re-surface once its re-surface window elapsed"
@@ -2355,9 +2354,11 @@ test_live_declared_wait_churn_honors_the_resurface_throttle() {
     bare=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w && $5 == "stale: " w { n++ } END { print n + 0 }' \
       "$state/.wake-queue" 2>/dev/null || echo 0)
     [ "$wakes" -eq 1 ] || fail "[$name] elapsed re-surface window produced $wakes wakes instead of one"
-    [ "$bare" -eq 1 ] || fail "[$name] elapsed re-surface changed the wake identity: $(cat "$state/.wake-queue")"
+    [ "$bare" -eq 0 ] || fail "[$name] elapsed re-surface raised a bare stale instead of a recheck: $(cat "$state/.wake-queue")"
+    grep -F "$recheck_word" "$out" >/dev/null \
+      || fail "[$name] the elapsed re-surface did not name which human the wait is on: $(cat "$out")"
   done
-  pass "a parked live worker surfaces once, absorbs pane churn for the whole re-surface window, then re-surfaces when it elapses"
+  pass "a parked live worker is absorbed from first sight, absorbs pane churn and a replacement declaration for the whole re-surface window, then re-surfaces once as a recheck"
 }
 
 test_live_paused_until_controls_recheck_time() {

@@ -251,7 +251,7 @@ The optional local, gitignored `config/watch-thresholds` retunes this home's sup
 It holds `KEY=value` lines, one per line, with `#` comment lines and blank lines allowed; whitespace around the key and the value is ignored.
 Exactly four keys are accepted, each a whole number of seconds, and each keeps its existing built-in default when the file does not set it:
 
-- `FM_PAUSE_RESURFACE_SECS` (default `3600`): how long a declared wait, external or captain-held, stays declared before it re-surfaces once as a recheck.
+- `FM_PAUSE_RESURFACE_SECS` (default `14400`): how long a declared wait, external or captain-held, stays declared before it re-surfaces once as a recheck.
 - `FM_STALE_ESCALATE_SECS` (default `240`): idle seconds before a provably-working stale pane escalates as a possible wedge.
 - `FM_SIGNAL_GRACE` (default `30`): seconds the watcher lingers after a signal so trailing signals coalesce into one wake.
 - `FM_HEARTBEAT_SCAN_SECS` (default `300`): cadence of the away-mode daemon's catch-all status scan.
