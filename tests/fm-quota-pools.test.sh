@@ -134,8 +134,31 @@ test_an_estimated_reading_is_marked_as_an_estimate() {
 # which is the validator this array has to satisfy.
 board_accepts() {  # <home> <pools-json>
   local home=$1 data
-  mkdir -p "$home/state" "$home/data"
-  fm_fake_exit0 "$home/fakebin" lavish-axi
+  mkdir -p "$home/state" "$home/data" "$home/fakebin"
+  # The board arms a poll only on a Lavish session it can see open after
+  # opening it, so the stub reports the opened shape the real lavish-axi emits
+  # (the same stub tests/fm-bearings-board-render.test.sh uses).
+  cat > "$home/fakebin/lavish-axi" <<'SH'
+#!/usr/bin/env bash
+case "${1-}" in
+  --version) printf '0.1.61\n' ;;
+  '')
+    printf 'sessions[1]{file,status,url,pending_prompts}:\n'
+    [ ! -s "$FM_HOME/lavish-open" ] \
+      || printf '  %s,open,"http://127.0.0.1/session/pools",0\n' "$(cat "$FM_HOME/lavish-open")"
+    ;;
+  poll)
+    while [ "$SECONDS" -lt "${FM_TEST_STUB_MAX_BLOCK_SECONDS:-120}" ]; do sleep 1; done
+    exit 75
+    ;;
+  *)
+    real=$(cd "$(dirname "$1")" && pwd -P)/$(basename "$1")
+    printf '%s\n' "$real" > "$FM_HOME/lavish-open"
+    printf 'session:\n  status: opened\n'
+    ;;
+esac
+SH
+  chmod +x "$home/fakebin/lavish-axi"
   data="$home/payload.json"
   jq -n --argjson pools "$2" '{
     schema:"fm-bearings-board.v1", home:"pool-home", generated:"2026-08-31T00:00Z",

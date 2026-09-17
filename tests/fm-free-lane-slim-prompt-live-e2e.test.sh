@@ -29,20 +29,20 @@
 # extension-registered tool, and the AGENTS.md sentinel, or the guard fails
 # rather than passing vacuously on a setup that no longer reproduces discovery.
 #
-# Run explicitly with FM_FREE_LANE_SLIM_LIVE_E2E=1. An absent pi or node is
-# reported and skipped. Every failure names pi and its version, because the
-# expected cause is a vendor flag change rather than a bug in this repo.
+# It opens with the shared live gate (tests/lib.sh's fm_live_gate) as
+# default-on, because it spends no model tokens: it runs wherever pi and node
+# are installed, FM_FREE_LANE_SLIM_LIVE_E2E=0 or FM_LIVE=0 turns it off, and
+# FM_FREE_LANE_SLIM_LIVE_E2E=1 makes an absent tool a failure rather than a
+# skip. Every failure names pi and its version, because the expected cause is
+# a vendor flag change rather than a bug in this repo.
 set -u
 
+# shellcheck source=tests/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+fm_live_gate default-on FM_FREE_LANE_SLIM_LIVE_E2E pi node
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-if [ "${FM_FREE_LANE_SLIM_LIVE_E2E:-0}" != 1 ]; then
-  echo "skip: set FM_FREE_LANE_SLIM_LIVE_E2E=1 to run the live free-lane pi-flag guard"
-  exit 0
-fi
-
-command -v pi >/dev/null 2>&1 || { echo "skip: pi is not installed; nothing to verify the free-lane flags against"; exit 0; }
-command -v node >/dev/null 2>&1 || { echo "skip: node is not installed; the mock provider endpoint needs it"; exit 0; }
 
 PI_VERSION=$(pi --version 2>/dev/null | head -1)
 [ -n "$PI_VERSION" ] || PI_VERSION=version-unknown

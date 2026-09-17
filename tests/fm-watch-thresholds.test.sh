@@ -102,7 +102,7 @@ test_defaults_hold_with_no_file() {
   got=$(watcher_value "$home" STALE_ESCALATE_SECS)
   [ "$got" = 240 ] || fail "stale escalate default changed with no file present: [$got]"
   got=$(watcher_value "$home" PAUSE_RESURFACE_SECS)
-  [ "$got" = 3600 ] || fail "pause resurface default changed with no file present: [$got]"
+  [ "$got" = 14400 ] || fail "pause resurface default changed with no file present: [$got]"
   got=$(daemon_value "$home" FM_HEARTBEAT_SCAN_SECS HEARTBEAT_SCAN_SECS_DEFAULT)
   [ "$got" = 300 ] || fail "heartbeat scan default changed with no file present: [$got]"
 
@@ -176,7 +176,7 @@ FM_PAUSE_RESURFACE_SECS=-90
   got=$(watcher_value "$home" SIGNAL_GRACE)
   [ "$got" = 30 ] || fail "a non-integer value was accepted instead of ignored: [$got]"
   got=$(watcher_value "$home" PAUSE_RESURFACE_SECS)
-  [ "$got" = 3600 ] || fail "a negative value was accepted instead of ignored: [$got]"
+  [ "$got" = 14400 ] || fail "a negative value was accepted instead of ignored: [$got]"
 
   err=$(watcher_stderr "$home")
   case "$err" in
@@ -205,7 +205,7 @@ test_unreadable_file_is_tolerated() {
   got=$(watcher_value "$home" STALE_ESCALATE_SECS)
   [ "$got" = 240 ] || fail "an unreadable file did not fall back to the built-in default: [$got]"
   got=$(watcher_value "$home" PAUSE_RESURFACE_SECS)
-  [ "$got" = 3600 ] || fail "an unreadable file disturbed another key's default: [$got]"
+  [ "$got" = 14400 ] || fail "an unreadable file disturbed another key's default: [$got]"
   err=$(watcher_stderr "$home")
   [ "$(printf '%s\n' "$err" | grep -c 'fm-watch-thresholds')" = 1 ] \
     || fail "an unreadable file was not reported once: [$err]"
