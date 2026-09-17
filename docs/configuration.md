@@ -644,6 +644,35 @@ The ownership watcher starts after a pane launch when the backend supplies its p
 Task cleanup scopes attribution to that task's exact isolated copy so its bridge, MCP child, and Chrome descendants do not survive the worker.
 Session start runs only the bounded summary and prints the exact inspect and apply commands when orphan candidates exist.
 
+## Scout runner outage check (config/hp-runner-check)
+
+[`bin/fm-hp-runner-check.sh`](../bin/fm-hp-runner-check.sh) is an optional registered check for the `TastyTom13/Scout` GitHub Actions queue and the `hp-scout-1` self-hosted runner.
+It reads runner `status` and `busy` values plus the count of queued workflow runs through `gh`.
+When the queued count is greater than the configured queue threshold for the configured number of consecutive polls, it reports if `hp-scout-1` is offline or absent, or if every online runner is idle.
+The default queue threshold is 3 and the default consecutive-poll threshold is 2.
+A poll at or below the queue threshold, a busy online runner while `hp-scout-1` is online, or an unreadable GitHub response breaks the streak.
+An unchanged outage is reported once until a clear poll starts a new episode.
+An API, response-validation, or configuration failure is also reported once because it leaves the detector blind.
+
+The optional local, gitignored `config/hp-runner-check` file accepts these exact keys:
+
+```sh
+QUEUE_THRESHOLD=3
+CONSECUTIVE_POLLS=2
+```
+
+`QUEUE_THRESHOLD` must be a whole number from 0 to 10000, and `CONSECUTIVE_POLLS` must be a whole number from 1 to 100.
+Blank lines and lines beginning with `#` are ignored.
+Unknown keys, duplicates, and malformed values are reported instead of silently falling back.
+This file is not inherited by secondmate homes.
+
+Arm the check once in the home with `bin/fm-hp-runner-check.sh arm`.
+That command atomically writes `state/hp-runner.check.sh` with mode `0700` and binds its bytes with `bin/fm-check-register.sh`, so the existing watcher polls it on `FM_CHECK_INTERVAL` and turns its single report line into a `check:` wake.
+The authenticated `gh` session needs read access to Actions runs and repository Actions runners for `TastyTom13/Scout`.
+Each GitHub read is hard-bounded, and the script keeps its probe budget below `FM_CHECK_TIMEOUT`.
+`state/.hp-runner-check` retains the consecutive-poll streak and report suppression state.
+Run `bin/fm-hp-runner-check.sh disarm` to unregister the generated check and remove that poll record.
+
 ## Watched tool updates (config/watched-tools.json)
 
 `config/watched-tools.json` is an optional local, gitignored list of the tools this home depends on.
