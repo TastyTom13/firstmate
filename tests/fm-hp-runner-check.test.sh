@@ -160,7 +160,8 @@ test_arm_writes_registers_and_runs_the_shim() {
   expect_code 0 "$status" "arm exit"
   assert_present "$home/state/hp-runner.check.sh" "arm did not write the check shim"
   assert_present "$home/state/hp-runner.check-trust" "arm did not register the check shim"
-  mode=$(stat -f '%Lp' "$home/state/hp-runner.check.sh" 2>/dev/null || stat -c '%a' "$home/state/hp-runner.check.sh")
+  mode=$(bash -c '. "$1"; fm_pr_file_mode "$2"' _ \
+    "$ROOT/bin/fm-pr-lib.sh" "$home/state/hp-runner.check.sh")
   [ "$mode" = 700 ] || fail "armed shim mode is $mode, expected 700"
 
   status=0
