@@ -137,6 +137,8 @@
 # `verify` is read-only and is called by scout teardown, so teardown cannot
 # erase a source before this gate has succeeded: every recorded inventory
 # entry must still be durable and no keyed status decision may be open.
+# An answered row moved out of the live markdown backlog by Done retention stays
+# durable through the configured Done archive and verifies from there.
 # Metadata compatibility: the attestation keeps the historical
 # `decisions_reviewed=1` and `decision_keys=` keys, and an inventory entry that
 # names no existing task resolves through the legacy `<origin>-decision-<entry>`
@@ -521,10 +523,75 @@ resolution_block() {  # <mode>
     "$DECISION_DIGEST" "$1" "$label" "$DECISION_TEXT"
 }
 
+# Resolve the configured markdown Done archive beside the live backlog.
+# tasks-axi's archive is history rather than an active backlog, so its own show
+# command deliberately does not read these rows. Return 1 when this backend has
+# no markdown archive and 2 when the configured archive cannot be read.
+CAPTAIN_DONE_ARCHIVE=
+captain_done_archive_file() {
+  local data root backend archive_rel
+  data=$(fm_backlog_data_absolute "$DATA") || return 2
+  root=$(fm_backlog_root "$data") || return 2
+  backend=$(fm_tasks_axi_backend "$root") || return 2
+  [ "$backend" = markdown ] || return 1
+  archive_rel=$(awk '
+    /^[[:space:]]*\[/ {
+      table = $0
+      sub(/^[[:space:]]*\[[[:space:]]*/, "", table)
+      sub(/[[:space:]]*\].*/, "", table)
+      next
+    }
+    table == "markdown" && /^[[:space:]]*archive[[:space:]]*=/ {
+      value = $0
+      sub(/^[^=]*=[[:space:]]*/, "", value)
+      sub(/[[:space:]]*#.*/, "", value)
+      gsub(/^[[:space:]"'\'']+|[[:space:]"'\'']+$/, "", value)
+      last = value
+    }
+    END { if (last != "") print last }
+  ' "$root/.tasks.toml" 2>/dev/null) || return 2
+  archive_rel=${archive_rel:-data/done-archive.md}
+  case "$archive_rel" in
+    /*) CAPTAIN_DONE_ARCHIVE=$archive_rel ;;
+    *) CAPTAIN_DONE_ARCHIVE="$root/$archive_rel" ;;
+  esac
+}
+
+# Read all archived incarnations of one id. The archive uses dated headings,
+# not a live `## Done` section, but retains each canonical task bullet and its
+# indented body. The caller decides whether those rows contain a resolution.
+ARCHIVED_TASK_BODY=
+archive_task_lookup() {  # <task-id>
+  local id=$1 status=0
+  ARCHIVED_TASK_BODY=
+  captain_done_archive_file || return $?
+  [ -e "$CAPTAIN_DONE_ARCHIVE" ] || return 1
+  [ -r "$CAPTAIN_DONE_ARCHIVE" ] || return 2
+  ARCHIVED_TASK_BODY=$(awk -v wanted="$id" '
+    function is_task(line) { return line ~ /^- \[[xX]\] [^ ]+ - / }
+    is_task($0) {
+      capture = ($3 == wanted)
+      if (capture) found = 1
+      next
+    }
+    capture && ($0 ~ /^[[:space:]]/ || $0 == "") { print; next }
+    capture { capture = 0 }
+    END { if (!found) exit 1 }
+  ' "$CAPTAIN_DONE_ARCHIVE") || status=$?
+  return "$status"
+}
+
 # Durable state of one captain call: an active captain hold (annotations
 # surviving even when a date gate has expired) or a recorded captain answer.
-verify_hold_durable() {  # <task-id>
-  local id=$1 show state hold_kind body
+verify_hold_durable() {  # <task-id> [resolution-source]
+  local id=$1 source=${2:-live} show state hold_kind body
+  if [ "$source" = archive ]; then
+    archive_task_lookup "$id" || fail "captain-held task $id is absent from this home's configured backlog and Done archive (data directory $DATA)"
+    body=$ARCHIVED_TASK_BODY
+    body_has_resolution_record "$body" \
+      || fail "archived captain-held task $id has no recorded captain answer"
+    return 0
+  fi
   task_show "$id" || fail "captain-held task $id is absent from this home's configured backlog (data directory $DATA)"
   show=$TASK_SHOW_OUTPUT
   state=$(show_field "$show" state)
@@ -732,22 +799,34 @@ resolve_migrated_entry() {  # <origin-or-empty> <entry>
 }
 
 # Resolve one inventory entry or channel key to the task that carries it: the
-# exact task id when it exists, else the legacy derived identity, else - on the
-# beads backend - the migrated row the markdown-to-beads hold migration wrote.
-# Prints "<resolved id> <how>", where <how> is exact, legacy, migrated-note or
-# migrated-prefix, so a caller can record which evidence carried the attestation.
+# exact live task id, an exact or legacy-derived archived markdown row, the live
+# legacy-derived identity, or the row written by markdown-to-beads migration.
+# Prints "<resolved id> <how>", where <how> is exact, legacy, archived,
+# migrated-note or migrated-prefix, so a caller can record which evidence
+# carried the attestation.
 resolve_entry() {  # <origin-or-empty> <entry>; prints "<id> <how>" or fails
-  local origin=$1 entry=$2 legacy migrated rc
+  local origin=$1 entry=$2 legacy migrated rc archive_status=0
   if task_show "$entry"; then
     printf '%s exact' "$entry"
     return 0
   fi
+  archive_task_lookup "$entry" || archive_status=$?
+  case "$archive_status" in
+    0) printf '%s archived' "$entry"; return 0 ;;
+    2) fail "the configured Done archive could not be read while resolving $entry" ;;
+  esac
   if [ -n "$origin" ] && [ "$origin" != "$BINDING_ANY" ]; then
     legacy=$(legacy_hold_id "$origin" "$entry")
     if task_show "$legacy"; then
       printf '%s legacy' "$legacy"
       return 0
     fi
+    archive_status=0
+    archive_task_lookup "$legacy" || archive_status=$?
+    case "$archive_status" in
+      0) printf '%s archived' "$legacy"; return 0 ;;
+      2) fail "the configured Done archive could not be read while resolving $legacy" ;;
+    esac
   fi
   rc=0
   migrated=$(resolve_migrated_entry "$origin" "$entry") || rc=$?
@@ -818,7 +897,11 @@ verify_entry_durable() {  # <origin-or-empty> <entry>; prints "<id> <how>"
     exit "$resolve_status"
   fi
   printf '%s\n' "$resolved"
-  verify_hold_durable "${resolved%% *}"
+  if [ "${resolved##* }" = archived ]; then
+    verify_hold_durable "${resolved%% *}" archive
+  else
+    verify_hold_durable "${resolved%% *}"
+  fi
 }
 
 command_hold() {

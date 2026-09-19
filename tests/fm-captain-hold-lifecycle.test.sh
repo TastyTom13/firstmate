@@ -833,6 +833,38 @@ test_answer_records_and_closes() {
   pass "answer records the captain's words, closes idempotently, and releases routed work"
 }
 
+# Done retention moves old rows out of the live backlog, but the archived row
+# remains the durable answer record the completion gate must accept.
+test_verify_accepts_an_archived_answer() {
+  local home id call archive
+  home=$(make_home archived-answer)
+  id=sample-archive-review
+  call=sample-archive-call
+  archive="$home/data/done-archive.md"
+  tasks_in "$home" add "$id" "Review the archived answer path" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create the archived-answer origin"
+  write_origin_meta "$home" "$id"
+  run_captain "$home" hold "$call" \
+    --title "Choose the archive option" --reason "captain archive choice pending" --repo sample >/dev/null \
+    || fail "could not register the archived captain-held task"
+  run_captain "$home" complete "$id" "$call" >/dev/null \
+    || fail "completion failed for the archived captain-call inventory"
+  printf 'Use the archived option.\n' > "$home/archive-decision.txt"
+  run_captain "$home" answer "$call" --decision-file "$home/archive-decision.txt" >/dev/null \
+    || fail "could not answer the captain-held task before retention"
+  tasks_in "$home" prune --state "done" --keep 0 >/dev/null \
+    || fail "could not archive the answered captain-held task through Done retention"
+  if tasks_in "$home" show "$call" --full >/dev/null 2>&1; then
+    fail "Done retention left the answered captain-held task in the live backlog"
+  fi
+  assert_grep "$call" "$archive" "Done retention did not archive the answered captain-held task"
+  assert_grep "Resolution recorded by fm-captain-hold" "$archive" \
+    "Done retention lost the archived captain answer"
+  run_captain "$home" verify "$id" >/dev/null \
+    || fail "verify rejected the recorded answer after Done retention archived it"
+  pass "verify accepts an answered captain call from the configured Done archive"
+}
+
 # --release lifts the hold instead of closing, preserving the work item's own
 # body under the record; a re-held task later accepts a new answer.
 test_release_frees_held_work() {
@@ -3985,6 +4017,7 @@ test_hold_decodes_a_bare_scalar_body_without_the_nonref_default
 test_retained_body_keeps_its_utf8_bytes
 test_completion_gate_attests_and_transfers
 test_answer_records_and_closes
+test_verify_accepts_an_archived_answer
 test_release_frees_held_work
 test_hold_stamp_precedes_hold_visibility
 test_interrupted_answer_preserves_hold_age
