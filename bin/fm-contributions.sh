@@ -40,11 +40,9 @@
 # A failed observation is retried once, after FM_CONTRIBUTIONS_RETRY_DELAY
 # seconds (default 2), before it is recorded as unavailable; a retry skipped
 # or cut short by the exhausted budget stays silent like any other budget cutoff.
-# A record whose durable observation already holds a terminal merged or closed
-# state is settled: it is excluded from the next poll's work entirely, so a
-# terminal record is confirmed by exactly one more successful observation and
-# never re-observed, and a failing observation on an already-terminal record
-# never prints unavailable while it waits for that one confirming read.
+# A record whose durable observation already holds a terminal state is settled:
+# merged records are excluded permanently, while closed-unmerged records are
+# rechecked after 24 hours. A failing terminal recheck remains silent.
 # API failure leaves error evidence; an expired or absent observation is not
 # silence. FM_CONTRIBUTIONS_MAX_AGE (default 900 seconds) bounds freshness.
 # FM_CONTRIBUTIONS_NOW supplies an ISO UTC clock for tests, otherwise UTC now.
@@ -273,22 +271,24 @@ publish_pending() { # task canonical-url record-file
 }
 
 poll() {
-  local task url old kind error observed terminal_before
+  local task url old kind error observed terminal_before remaining
   local -a row
   acquire
   get_input
   read_saved
   [ "$ERRORS" -eq 0 ] || printf 'contributions: %s unreadable durable record(s)\n' "$ERRORS"
-  # One line per distinct URL: the URL, then every owning task. A URL whose
-  # every owning record is already settled (a confirmed terminal merged or
-  # closed observation) is dropped here, before any forge call is spent on it.
-  jq_lib -nr --slurpfile input "$TMP/input.json" --slurpfile saved "$TMP/saved.json" '
+  # One line per distinct URL: the URL, then every owning task. Settled merged
+  # records are dropped, while settled closed records re-enter after 24 hours.
+  jq_lib -nr --slurpfile input "$TMP/input.json" --slurpfile saved "$TMP/saved.json" \
+    --argjson now "$EPOCH" --argjson recheck_age 86400 '
     known($input[0];$saved[0])
     | map(. as $k | . + {
         at:([$saved[0][] | select(.task == $k.task) | .records[] | select(.url == $k.url) | .checked_at] | first // ""),
-        settled:([$saved[0][] | select(.task == $k.task) | .records[] | select(.url == $k.url) | (.settled // false)] | first // false)})
-    | group_by(.url) | map({url:.[0].url,at:(map(.at) | min),tasks:(map(.task) | unique),settled:(all(.[]; .settled))})
-    | map(select(.settled | not))
+        settled:([$saved[0][] | select(.task == $k.task) | .records[] | select(.url == $k.url) | (.settled // false)] | first // false),
+        state:([$saved[0][] | select(.task == $k.task) | .records[] | select(.url == $k.url) | .observation.state] | first // "")})
+    | group_by(.url) | map({url:.[0].url,at:(map(.at) | min),tasks:(map(.task) | unique),
+        recheck:any(.[]; (.settled | not) or (.state != "merged" and (($now - ((.at | try fromdateiso8601 catch 0)) >= $recheck_age))) )})
+    | map(select(.recheck))
     | sort_by(.at,.tasks[0],.url)[] | [.url] + .tasks | @tsv' > "$TMP/known.tsv"
   DEADLINE=$(( $(date +%s) + BUDGET ))
   BUDGET_EXHAUSTED=0
@@ -299,9 +299,12 @@ poll() {
     observed=0
     observe "$url" || observed=$?
     if [ "$observed" -ne 0 ] && [ "$BUDGET_EXHAUSTED" -eq 0 ]; then
-      sleep "$RETRY_DELAY"
-      observed=0
-      observe "$url" || observed=$?
+      remaining=$((DEADLINE - $(date +%s)))
+      if [ "$remaining" -gt "$RETRY_DELAY" ]; then
+        sleep "$RETRY_DELAY"
+        observed=0
+        observe "$url" || observed=$?
+      fi
     fi
     # An observation the budget cut short is unmeasured, not unavailable: keep
     # every owner's prior record so the URL is observed first next poll.
@@ -333,8 +336,6 @@ poll() {
             seen:($events | map(.token)),
             pending:(($old.pending // []) + [$events[] | select(.token as $t | ($old.seen // [] | index($t)) == null)] | unique_by(.token)),
             settled:($o.state == "merged" or $o.state == "closed")}' > "$TMP/row.json"
-      elif [ "$terminal_before" -eq 1 ]; then
-        cp "$old" "$TMP/row.json"
       else
         error='forge observation unavailable or changed during read'
         jq --arg now "$NOW" --arg error "$error" '.checked_at=$now | .error=$error' "$old" > "$TMP/row.json"

@@ -685,6 +685,36 @@ SH
   pass 'a settled terminal record is excluded from the poll and never re-observed'
 }
 
+test_closed_issue_reopens_on_slow_recheck() {
+  local home out
+  home=$(new_home reopened-issue)
+  mkdir -p "$home/root/bin" "$home/forge"
+  printf '#!/bin/sh\nexit 0\n' > "$home/root/bin/fm-guard.sh"
+  chmod +x "$home/root/bin/fm-guard.sh"
+  printf -- '- [ ] filed - Reopenable issue https://github.com/o/r/issues/9 (repo: sample) (kind: ship)\n' >> "$home/data/backlog.md"
+  mkdir -p "$home/data/filed"
+  jq -n --arg task filed --arg url 'https://github.com/o/r/issues/9' --arg at '2026-09-15T08:00:00Z' '
+    {schema:"fm-contributions.v1",task:$task,records:[{url:$url,kind:"issue",checked_at:$at,error:null,pending:[],seen:[],notified:[],settled:true,
+      observation:{state:"closed",head:null,ready:false,checks:[],reviews:[],events:[]}}]}' > "$home/data/filed/contributions.json"
+  cat > "$home/fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+set -eu
+case "$*" in
+  'api repos/o/r/issues/9') printf '{"state":"open","user":{"login":"author"},"labels":[]}\n' ;;
+  'api repos/o/r/issues/9/comments?'*) printf '[[]]\n' ;;
+  'api repos/o/r/issues/9/events?'*) printf '[[]]\n' ;;
+  *) printf 'unexpected gh fixture call: %s\n' "$*" >&2; exit 1 ;;
+esac
+SH
+  chmod +x "$home/fakebin/gh"
+  out=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" poll) || fail 'slow recheck of a closed issue failed'
+  [ -z "$out" ] || fail "reopened issue produced an unexpected wake: $out"
+  jq -e '.records[0].observation.state == "open" and .records[0].settled == false' \
+    "$home/data/filed/contributions.json" >/dev/null \
+    || fail 'a reopened issue did not clear settlement after its slow recheck'
+  pass 'a closed issue is rechecked after a day and resumes polling when reopened'
+}
+
 test_newly_terminal_record_settles_after_one_confirming_observation() {
   local home out
   home=$(new_home newly-terminal)
@@ -725,7 +755,7 @@ SH
 }
 
 failures=0
-for test_name in test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_persists_through_retry_and_wakes test_transient_failure_recovers_on_retry test_shared_url_observed_once test_settled_terminal_record_is_not_reobserved test_newly_terminal_record_settles_after_one_confirming_observation; do
+for test_name in test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_persists_through_retry_and_wakes test_transient_failure_recovers_on_retry test_shared_url_observed_once test_settled_terminal_record_is_not_reobserved test_closed_issue_reopens_on_slow_recheck test_newly_terminal_record_settles_after_one_confirming_observation; do
   ( "$test_name" ) || failures=$((failures + 1))
 done
 [ "$failures" -eq 0 ] || fail "$failures contribution regressions"
