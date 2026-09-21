@@ -146,7 +146,7 @@ with_home() {
   PATH="$home/fakebin:$PATH" FORGE="$home/forge" HEAD_A="$HEAD_A" \
     FM_HOME="$home" FM_ROOT_OVERRIDE="$home/root" FM_STATE_OVERRIDE="$home/state" \
     FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
-    FM_CONTRIBUTIONS_NOW="$NOW" "$@"
+    FM_CONTRIBUTIONS_NOW="$NOW" FM_CONTRIBUTIONS_RETRY_DELAY=0 "$@"
 }
 
 registered_checks() {
@@ -560,6 +560,10 @@ case "$fault:$*" in
     printf '%s\n' "$(( $(cat "$FORGE/clock") + 100 ))" > "$FORGE/clock"
     printf 'HTTP 502\n' >&2; exit 1 ;;
   fail:'api repos/o/r/pulls/8/reviews?'*) printf 'HTTP 502\n' >&2; exit 1 ;;
+  fail-once:'api repos/o/r/pulls/8/reviews?'*)
+    [ -f "$FORGE/fail-once-used" ] && exec "$(dirname "$0")/gh-fixture" "$@"
+    : > "$FORGE/fail-once-used"
+    printf 'HTTP 502\n' >&2; exit 1 ;;
   hang:'api repos/o/r/pulls/8') sleep 4 ;;
   head:'pr view '*) printf '{"headRefOid":"%s","reviewDecision":"APPROVED"}\n' "$(printf 'b%.0s' $(seq 40))"; exit 0 ;;
 esac
@@ -596,25 +600,41 @@ test_budget_exhaustion_keeps_prior_record() { # exhaust|hang
 test_budget_refusal_between_calls() { test_budget_exhaustion_keeps_prior_record exhaust; }
 test_budget_bounded_call_timeout() { test_budget_exhaustion_keeps_prior_record hang; }
 
-test_genuine_failure_near_deadline_is_unavailable() {
-  local home out
+test_genuine_failure_persists_through_retry_and_wakes() {
+  local home out calls
   home=$(new_home genuine-failure)
   forge_home "$home"
   wrap_forge "$home"
   mutate_record "$home" delivery '.records[0].checked_at="2026-09-15T08:00:00Z"'
-  /bin/date +%s > "$home/forge/clock"
-  printf 'fail-late\n' > "$home/forge/fault"
+  printf 'fail\n' > "$home/forge/fault"
   out=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" poll) || fail 'poll failed on a genuine forge failure'
   [ "$out" = 'contributions: observation unavailable for https://github.com/o/r/pull/8' ] \
-    || fail "a genuine forge failure past the deadline was swallowed: $out"
+    || fail "a genuine forge failure that persisted through the retry was swallowed: $out"
+  calls=$(grep -cF 'api repos/o/r/pulls/8/reviews?' "$home/forge/calls")
+  [ "$calls" = 2 ] || fail "a genuine failure was not retried exactly once before waking: $calls calls"
   jq -e --arg now "$NOW" '.records[0].checked_at == $now
     and .records[0].error == "forge observation unavailable or changed during read"' \
     "$home/data/delivery/contributions.json" >/dev/null || fail 'a genuine forge failure left no error evidence'
-  pass 'a genuine forge failure inside the budget still records the error and wakes'
+  pass 'a genuine forge failure that persists through one retry still records the error and wakes'
+}
+
+test_transient_failure_recovers_on_retry() {
+  local home out
+  home=$(new_home transient-failure)
+  forge_home "$home"
+  wrap_forge "$home"
+  mutate_record "$home" delivery '.records[0].checked_at="2026-09-15T08:00:00Z"'
+  printf 'fail-once\n' > "$home/forge/fault"
+  out=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" poll) || fail 'poll failed on a transient forge failure'
+  [ -z "$out" ] || fail "a failure that recovered on retry still printed noise: $out"
+  jq -e --arg now "$NOW" '.records[0].checked_at == $now and .records[0].error == null' \
+    "$home/data/delivery/contributions.json" >/dev/null \
+    || fail 'a retry that recovered did not record a clean observation'
+  pass 'a single transient forge failure recovers silently on the retry'
 }
 
 test_shared_url_observed_once() {
-  local mode home out calls expected
+  local mode home out calls expected first_call_expected
   for mode in ok fail head; do
     home=$(new_home "shared-once-$mode")
     forge_home "$home"
@@ -623,7 +643,9 @@ test_shared_url_observed_once() {
     printf '%s\n' "$mode" > "$home/forge/fault"
     out=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" poll) || fail "shared-owner poll failed ($mode)"
     calls=$(grep -cFx 'api repos/o/r/pulls/8' "$home/forge/calls")
-    [ "$calls" = 1 ] || fail "a URL owned by two tasks was observed $calls times in one poll ($mode)"
+    if [ "$mode" = ok ]; then first_call_expected=1; else first_call_expected=2; fi
+    [ "$calls" = "$first_call_expected" ] \
+      || fail "a URL owned by two tasks was observed $calls times across its attempts in one poll ($mode)"
     if [ "$mode" = ok ]; then
       expected=null
       [ -z "$out" ] || fail "a healthy shared observation printed: $out"
@@ -637,11 +659,103 @@ test_shared_url_observed_once() {
         "$home/data/$task/contributions.json" >/dev/null || fail "owner $task did not receive the shared result ($mode)"
     done
   done
-  pass 'a URL owned by two tasks is observed once and every owner receives the result'
+  pass 'a URL owned by two tasks is observed once per attempt (retried at most once) and every owner receives the result'
+}
+
+test_settled_terminal_record_is_not_reobserved() {
+  local home out
+  home=$(new_home settled-terminal)
+  mkdir -p "$home/root/bin" "$home/forge"
+  printf '#!/bin/sh\nexit 0\n' > "$home/root/bin/fm-guard.sh"
+  chmod +x "$home/root/bin/fm-guard.sh"
+  record "$home" delivery 8 merged mergeable
+  mutate_record "$home" delivery '.records[0].settled = true'
+  cat > "$home/fakebin/gh" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$home/forge/calls"
+exit 1
+SH
+  chmod +x "$home/fakebin/gh"
+  out=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" poll) \
+    || fail 'poll failed on an already-settled terminal record'
+  [ -z "$out" ] || fail "a settled terminal record printed noise: $out"
+  [ ! -s "$home/forge/calls" ] \
+    || fail "a settled terminal record was re-observed: $(cat "$home/forge/calls")"
+  [ ! -s "$home/state/.wake-queue" ] || fail 'a settled terminal record enqueued a wake'
+  pass 'a settled terminal record is excluded from the poll and never re-observed'
+}
+
+test_closed_issue_reopens_on_slow_recheck() {
+  local home out
+  home=$(new_home reopened-issue)
+  mkdir -p "$home/root/bin" "$home/forge"
+  printf '#!/bin/sh\nexit 0\n' > "$home/root/bin/fm-guard.sh"
+  chmod +x "$home/root/bin/fm-guard.sh"
+  printf -- '- [ ] filed - Reopenable issue https://github.com/o/r/issues/9 (repo: sample) (kind: ship)\n' >> "$home/data/backlog.md"
+  mkdir -p "$home/data/filed"
+  jq -n --arg task filed --arg url 'https://github.com/o/r/issues/9' --arg at '2026-09-15T08:00:00Z' '
+    {schema:"fm-contributions.v1",task:$task,records:[{url:$url,kind:"issue",checked_at:$at,error:null,pending:[],seen:[],notified:[],settled:true,
+      observation:{state:"closed",head:null,ready:false,checks:[],reviews:[],events:[]}}]}' > "$home/data/filed/contributions.json"
+  cat > "$home/fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+set -eu
+case "$*" in
+  'api repos/o/r/issues/9') printf '{"state":"open","user":{"login":"author"},"labels":[]}\n' ;;
+  'api repos/o/r/issues/9/comments?'*) printf '[[]]\n' ;;
+  'api repos/o/r/issues/9/events?'*) printf '[[]]\n' ;;
+  *) printf 'unexpected gh fixture call: %s\n' "$*" >&2; exit 1 ;;
+esac
+SH
+  chmod +x "$home/fakebin/gh"
+  out=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" poll) || fail 'slow recheck of a closed issue failed'
+  [ -z "$out" ] || fail "reopened issue produced an unexpected wake: $out"
+  jq -e '.records[0].observation.state == "open" and .records[0].settled == false' \
+    "$home/data/filed/contributions.json" >/dev/null \
+    || fail 'a reopened issue did not clear settlement after its slow recheck'
+  pass 'a closed issue is rechecked after a day and resumes polling when reopened'
+}
+
+test_newly_terminal_record_settles_after_one_confirming_observation() {
+  local home out
+  home=$(new_home newly-terminal)
+  forge_home "$home"
+  cat > "$home/fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+set -eu
+printf '%s\n' "$*" >> "$FORGE/calls"
+case "$*" in
+  'pr view '*headRefOid,reviewDecision*)
+    jq -n --arg head "$(cat "$FORGE/head")" '{headRefOid:$head,reviewDecision:"APPROVED"}' ;;
+  'api repos/o/r/pulls/8')
+    jq -n --arg head "$(cat "$FORGE/head")" \
+      '{state:"closed",user:{login:"author"},head:{sha:$head},draft:false,mergeable:true,merged_at:"2026-09-15T08:00:00Z"}' ;;
+  'api repos/o/r/issues/'*'/comments?'*) jq -s . "$FORGE/comments.json" ;;
+  'api repos/o/r/pulls/8/reviews?'*) jq -s . "$FORGE/reviews.json" ;;
+  'api repos/o/r/pulls/8/comments?'*) jq -s . "$FORGE/inline.json" ;;
+  'api repos/o/r/commits/'*'/check-runs?'*)
+    printf '[{"check_runs":[{"name":"test","id":1,"status":"completed","conclusion":"success","started_at":"2026-09-16T08:00:00Z"}]}]\n' ;;
+  'api repos/o/r/commits/'*'/statuses?'*) printf '[[]]\n' ;;
+  'api repos/o/r') printf '{"permissions":{"push":false}}\n' ;;
+  *) printf 'unexpected gh fixture call: %s\n' "$*" >&2; exit 1 ;;
+esac
+SH
+  chmod +x "$home/fakebin/gh"
+  : > "$home/forge/calls"
+  out=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" poll) || fail 'poll failed observing a newly terminal PR'
+  [ -z "$out" ] || fail "a successful confirming observation printed noise: $out"
+  jq -e '.records[0].settled == true and .records[0].observation.state == "merged"' \
+    "$home/data/delivery/contributions.json" >/dev/null \
+    || fail 'a newly merged PR was not settled after its confirming observation'
+  : > "$home/forge/calls"
+  out=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" poll) || fail 'second poll failed after settling'
+  [ -z "$out" ] || fail "a settled record printed noise on the following poll: $out"
+  [ ! -s "$home/forge/calls" ] \
+    || fail "a just-settled record was re-observed on the very next poll: $(cat "$home/forge/calls")"
+  pass 'a record that turns terminal settles after one confirming observation and is never polled again'
 }
 
 failures=0
-for test_name in test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_near_deadline_is_unavailable test_shared_url_observed_once; do
+for test_name in test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_persists_through_retry_and_wakes test_transient_failure_recovers_on_retry test_shared_url_observed_once test_settled_terminal_record_is_not_reobserved test_closed_issue_reopens_on_slow_recheck test_newly_terminal_record_settles_after_one_confirming_observation; do
   ( "$test_name" ) || failures=$((failures + 1))
 done
 [ "$failures" -eq 0 ] || fail "$failures contribution regressions"
