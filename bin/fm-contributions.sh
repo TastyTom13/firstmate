@@ -37,6 +37,14 @@
 # Each distinct URL is observed once per poll and applied to every owner. When
 # the budget runs out mid-observation, the poll ends with that URL's records
 # untouched; only a genuine forge failure or head change records an error.
+# A failed observation is retried once, after FM_CONTRIBUTIONS_RETRY_DELAY
+# seconds (default 2), before it is recorded as unavailable; a retry skipped
+# or cut short by the exhausted budget stays silent like any other budget cutoff.
+# A record whose durable observation already holds a terminal merged or closed
+# state is settled: it is excluded from the next poll's work entirely, so a
+# terminal record is confirmed by exactly one more successful observation and
+# never re-observed, and a failing observation on an already-terminal record
+# never prints unavailable while it waits for that one confirming read.
 # API failure leaves error evidence; an expired or absent observation is not
 # silence. FM_CONTRIBUTIONS_MAX_AGE (default 900 seconds) bounds freshness.
 # FM_CONTRIBUTIONS_NOW supplies an ISO UTC clock for tests, otherwise UTC now.
@@ -77,9 +85,11 @@ NOW=${FM_CONTRIBUTIONS_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
 EPOCH=$(jq -nr --arg now "$NOW" '$now | fromdateiso8601') || fail 'invalid observation clock'
 MAX_AGE=${FM_CONTRIBUTIONS_MAX_AGE:-900}
 BUDGET=${FM_CONTRIBUTIONS_BUDGET:-20}
+RETRY_DELAY=${FM_CONTRIBUTIONS_RETRY_DELAY:-2}
 case "$MAX_AGE" in ''|*[!0-9]*) fail 'invalid freshness bound' ;; esac
 case "$BUDGET" in ''|*[!0-9]*) fail 'invalid poll budget' ;; esac
 [ "$BUDGET" -ge 1 ] && [ "$BUDGET" -le 25 ] || fail 'poll budget must be 1..25 seconds'
+case "$RETRY_DELAY" in ''|*[!0-9]*) fail 'invalid retry delay' ;; esac
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-contributions.XXXXXX")
 LOCK_HELD=0
 cleanup() {
@@ -263,16 +273,22 @@ publish_pending() { # task canonical-url record-file
 }
 
 poll() {
-  local task url old kind error observed
+  local task url old kind error observed terminal_before
   local -a row
   acquire
   get_input
   read_saved
   [ "$ERRORS" -eq 0 ] || printf 'contributions: %s unreadable durable record(s)\n' "$ERRORS"
-  # One line per distinct URL: the URL, then every owning task.
+  # One line per distinct URL: the URL, then every owning task. A URL whose
+  # every owning record is already settled (a confirmed terminal merged or
+  # closed observation) is dropped here, before any forge call is spent on it.
   jq_lib -nr --slurpfile input "$TMP/input.json" --slurpfile saved "$TMP/saved.json" '
-    known($input[0];$saved[0]) | map(. as $k | . + {at:([$saved[0][] | select(.task == $k.task) | .records[] | select(.url == $k.url) | .checked_at] | first // "")})
-    | group_by(.url) | map({url:.[0].url,at:(map(.at) | min),tasks:(map(.task) | unique)})
+    known($input[0];$saved[0])
+    | map(. as $k | . + {
+        at:([$saved[0][] | select(.task == $k.task) | .records[] | select(.url == $k.url) | .checked_at] | first // ""),
+        settled:([$saved[0][] | select(.task == $k.task) | .records[] | select(.url == $k.url) | (.settled // false)] | first // false)})
+    | group_by(.url) | map({url:.[0].url,at:(map(.at) | min),tasks:(map(.task) | unique),settled:(all(.[]; .settled))})
+    | map(select(.settled | not))
     | sort_by(.at,.tasks[0],.url)[] | [.url] + .tasks | @tsv' > "$TMP/known.tsv"
   DEADLINE=$(( $(date +%s) + BUDGET ))
   BUDGET_EXHAUSTED=0
@@ -282,17 +298,30 @@ poll() {
     url=${row[0]}
     observed=0
     observe "$url" || observed=$?
+    if [ "$observed" -ne 0 ] && [ "$BUDGET_EXHAUSTED" -eq 0 ]; then
+      sleep "$RETRY_DELAY"
+      observed=0
+      observe "$url" || observed=$?
+    fi
     # An observation the budget cut short is unmeasured, not unavailable: keep
     # every owner's prior record so the URL is observed first next poll.
     [ "$BUDGET_EXHAUSTED" -eq 0 ] || break
-    [ "$observed" -eq 0 ] || printf 'contributions: observation unavailable for %s\n' "$url"
+    # A retry that still fails on a record already holding a terminal state
+    # never wakes; it waits silently for the one confirming observation.
+    terminal_before=0
+    if [ "$observed" -ne 0 ]; then
+      jq -e --arg url "$url" \
+        'any(.[] | .records[] | select(.url == $url) | .observation.state; . == "merged" or . == "closed")' \
+        "$TMP/saved.json" >/dev/null 2>&1 && terminal_before=1
+      [ "$terminal_before" -eq 1 ] || printf 'contributions: observation unavailable for %s\n' "$url"
+    fi
     case "$url" in */issues/*) kind=issue ;; *) kind="pr" ;; esac
     for task in "${row[@]:1}"; do
       fm_pr_task_id_valid "$task" || { printf 'contributions: invalid durable task id\n'; continue; }
       old="$TMP/old.json"
       jq -n --slurpfile saved "$TMP/saved.json" --arg task "$task" --arg url "$url" --arg kind "$kind" '
         ([$saved[0][] | select(.task == $task) | .records[] | select(.url == $url)] | first)
-        // {url:$url,kind:$kind,checked_at:null,observation:null,verdict:null,seen:[],pending:[],notified:[]}' > "$old"
+        // {url:$url,kind:$kind,checked_at:null,observation:null,verdict:null,seen:[],pending:[],notified:[],settled:false}' > "$old"
       if [ "$observed" -eq 0 ]; then
         jq -n --arg now "$NOW" --slurpfile old "$old" --slurpfile observation "$TMP/observation.json" '
           $old[0] as $old | $observation[0] as $o
@@ -302,7 +331,10 @@ poll() {
           | $old + {checked_at:$now,error:null,
             observation:($o + {absent_checks:((($old.observation.absent_checks // []) + [($old.observation.checks // [])[] | .name]) - [$o.checks[].name] | unique)}),
             seen:($events | map(.token)),
-            pending:(($old.pending // []) + [$events[] | select(.token as $t | ($old.seen // [] | index($t)) == null)] | unique_by(.token))}' > "$TMP/row.json"
+            pending:(($old.pending // []) + [$events[] | select(.token as $t | ($old.seen // [] | index($t)) == null)] | unique_by(.token)),
+            settled:($o.state == "merged" or $o.state == "closed")}' > "$TMP/row.json"
+      elif [ "$terminal_before" -eq 1 ]; then
+        cp "$old" "$TMP/row.json"
       else
         error='forge observation unavailable or changed during read'
         jq --arg now "$NOW" --arg error "$error" '.checked_at=$now | .error=$error' "$old" > "$TMP/row.json"
