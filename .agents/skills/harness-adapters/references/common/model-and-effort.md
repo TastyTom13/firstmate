@@ -41,10 +41,3 @@ An account-reaching listing that omits a model is concrete unsupported evidence;
 An unreachable surface establishes nothing; report uncertainty instead of a verdict.
 
 For a matched profile array, return to `quota-array-dispatch` only after establishing every candidate's harness support, provider relationship, and uncertainty.
-
-## Claude `opus` calibration
-
-Effort level names do not mean the same amount of thinking across models.
-For `harness=claude`, the `opus` alias resolves to Opus 5.5 as of 2026-09-25, and Opus 5.5 at `medium` matches or beats Opus 5 at `high` on coding and knowledge work.
-When the fallback above chooses effort for an `opus` worker, `medium` is the default and `high` is for design judgement, where the fallback would otherwise reach for `xhigh`.
-A per-task captain instruction or a configured profile or pin still wins.
