@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Steer a task by durable record: write the message into the task's steering
 # inbox and ring a constant doorbell line into its terminal, best-effort.
-# Usage: fm-send.sh <target> [--resolve-key <key>]... [--fire-and-forget <delivery-id>] <text...>
+# Usage: fm-send.sh <target> [--resolve-key <key>]... [--fire-and-forget <delivery-id>] [--pasted-file <path>] <text...>
 #   <target> may be an exact task id, a legacy fm-<id> task label resolved
 #   through this home's state/<id>.meta, or an explicit well-formed backend
 #   target. fm-send refuses unresolved guesses rather than falling back to a
@@ -198,6 +198,18 @@
 # refused with --key, with an explicit backend target (no task ledger in this
 # home), and with an empty message.
 #
+# Pasted content (opt-in): --pasted-file <path> names a file holding text the
+# captain pasted in from somewhere else. The recorded body becomes the steer's
+# own words, a blank line, the note that explains the marking, a blank line,
+# and the file's text wrapped in matching random-id <pasted_content> tags
+# (bin/fm-pasted-content-lib.sh owns the tags, id, and note). It rides the
+# inbox plane only, because a pasted block is multi-line and the typed plane
+# is one terminal line: it is refused with --key and for text that would take
+# the typed plane, and an unreadable, empty, or whitespace-only file is refused
+# before anything is marked, recorded, or typed. Each send draws a fresh id, so
+# a later identical re-run is a new record. Without the flag the recorded body
+# is byte-identical to what it was before the flag existed.
+#
 # After a successful TYPED-plane submit fm-send pauses FM_SEND_SETTLE seconds
 # (default 1, 0 disables) before returning: submit confirmation only proves the
 # text was accepted, but the harness needs a beat to spin up the turn before its
@@ -250,6 +262,8 @@ fi
 . "$SCRIPT_DIR/fm-task-inbox-lib.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
+# shellcheck source=bin/fm-pasted-content-lib.sh
+. "$SCRIPT_DIR/fm-pasted-content-lib.sh"
 
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the requested message WILL still be sent.' "$SCRIPT_DIR/fm-guard.sh" || true
 
@@ -456,6 +470,8 @@ fi
 # message exactly as before, so ordinary sends are byte-identical.
 RESOLVE_KEYS=
 FIRE_AND_FORGET_ID=
+PASTED_FILE_SET=0
+PASTED_FILE=
 fm_send_add_resolve_key() { # <key>
   local k=$1
   case "$k" in
@@ -506,9 +522,42 @@ while :; do
     FIRE_AND_FORGET_ID=${1#--fire-and-forget=}
     shift
     ;;
+  --pasted-file)
+    [ $# -ge 2 ] || {
+      echo "error: --pasted-file requires a path" >&2
+      exit 1
+    }
+    [ "$PASTED_FILE_SET" = 0 ] || {
+      echo "error: duplicate --pasted-file" >&2
+      exit 1
+    }
+    PASTED_FILE=$2
+    PASTED_FILE_SET=1
+    shift 2
+    ;;
+  --pasted-file=*)
+    [ "$PASTED_FILE_SET" = 0 ] || {
+      echo "error: duplicate --pasted-file" >&2
+      exit 1
+    }
+    PASTED_FILE=${1#--pasted-file=}
+    PASTED_FILE_SET=1
+    shift
+    ;;
   *) break ;;
   esac
 done
+
+# Wrap the pasted file before any durable mutation, so an unreadable or empty
+# file refuses with nothing marked, recorded, or typed.
+PASTED_BLOCK=
+if [ "$PASTED_FILE_SET" = 1 ]; then
+  if [ "${1:-}" = "--key" ]; then
+    echo "error: --pasted-file cannot accompany --key; a pasted block needs a text steer" >&2
+    exit 1
+  fi
+  PASTED_BLOCK=$(fm_pasted_content_wrap "$PASTED_FILE") || exit 1
+fi
 
 if [ "$TARGET_BACKEND" != remote ]; then
   fm_backend_validate "$TARGET_BACKEND" || exit 1
@@ -847,6 +896,18 @@ else
       *) INBOX_PLANE=1 ;;
       esac
     fi
+  fi
+  if [ -n "$PASTED_BLOCK" ]; then
+    if [ "$INBOX_PLANE" != 1 ]; then
+      fm_send_known_undelivered_cleanup || true
+      echo "error: --pasted-file needs the inbox plane (a text steer to a task recorded in this home); a harness-native invocation or an explicit backend target is typed as one terminal line and cannot carry a pasted block; nothing was sent" >&2
+      exit 1
+    fi
+    MESSAGE="$MESSAGE
+
+$FM_PASTED_CONTENT_NOTE
+
+$PASTED_BLOCK"
   fi
   if [ "$INBOX_PLANE" = 1 ] && [ "$TARGET_BACKEND" = remote ]; then
     # Remote inbox leg: the message becomes a durable record in the remote
