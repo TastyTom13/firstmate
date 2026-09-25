@@ -58,6 +58,14 @@
 # crash or marker failure may produce a rare duplicate rather than silently lose
 # a wake.
 #
+# Elapsed-time signal (Opus 5.5 prompting guide, "Time signals for multiagent
+# harnesses"): a watcher re-ring and the watcher's unread-instruction
+# escalation end with `elapsed <n>s since the steer`, measured from the
+# record's mtime (fm_task_inbox_elapsed_note). There is no budget because a
+# steer's cost cannot be predicted; the brief scaffold carries the guide's
+# matching time sentence. The first ring from bin/fm-send.sh stays the constant
+# line, and the record format is unchanged.
+#
 # Inbox paths containing bytes outside printable ASCII are unsupported. The
 # doorbell refuses them rather than sending terminal control bytes to a pane.
 #
@@ -250,22 +258,35 @@ fm_task_inbox_body() {  # <record-path>
   return 1
 }
 
+# `elapsed <n>s since the steer` for one record, from its mtime (set when the
+# record is written). Fails without output when the mtime cannot be read.
+fm_task_inbox_elapsed_note() {  # <record-path>
+  local m now
+  m=$(fm_path_mtime "$1") || return 1
+  now=$(date +%s)
+  [ "$now" -ge "$m" ] || now=$m
+  printf 'elapsed %ss since the steer' "$((now - m))"
+}
+
 # The constant self-describing doorbell line for the inbox containing a record.
+# An optional elapsed note (fm_task_inbox_elapsed_note) is appended on the same
+# line for a re-ring; a second line would submit separately in the pane.
 # Self-describing on purpose: a worker whose brief predates the inbox contract
 # still receives the complete instruction in the line itself. The leading `: `
 # is the POSIX shell no-op, so the same line typed into a pane whose agent has
 # exited (a bare shell) runs nothing; see the dead-pane note in the header.
 # A non-printable path fails without output so terminal controls never reach
 # the pane's line discipline.
-fm_task_inbox_doorbell_line() {  # <record-path>
-  local dir=${1%/*} abs quoted LC_ALL=C
+fm_task_inbox_doorbell_line() {  # <record-path> [elapsed-note]
+  local dir=${1%/*} note=${2:-} abs quoted LC_ALL=C
   abs=$(cd "$dir" 2>/dev/null && pwd) || abs=$dir
-  case "$abs" in
+  case "$abs$note" in
     *[![:print:]]*) return 1 ;;
   esac
   quoted=$(printf '%s' "$abs" | sed "s/'/'\\\\''/g")
   printf ": Firstmate instruction waiting: list '%s'/*.msg and, in numeric order, read and act on each, then mv each handled file to '%s'/handled/." \
     "$quoted" "$quoted"
+  [ -z "$note" ] || printf ' %s' "$note"
 }
 
 # Ring the doorbell, best-effort: one endpoint-liveness pre-check, one advisory
@@ -282,12 +303,12 @@ fm_task_inbox_doorbell_line() {  # <record-path>
 # CONSTANT line the worker recovers semantically, while skipping on ambiguous
 # verdicts would starve a harness whose idle screen the classifier cannot
 # positively identify (that classifier is advisory here by design).
-fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
-  local backend=$1 target=$2 rec=$3 label=${4:-} line cstate verdict
+fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label] [elapsed-note]
+  local backend=$1 target=$2 rec=$3 label=${4:-} note=${5:-} line cstate verdict
   case "$(fm_backend_agent_state "$backend" "$target" 2>/dev/null || true)" in
     dead|missing) return 3 ;;
   esac
-  if ! line=$(fm_task_inbox_doorbell_line "$rec"); then
+  if ! line=$(fm_task_inbox_doorbell_line "$rec" "$note"); then
     return 2
   fi
   cstate=$(fm_backend_composer_state "$backend" "$target" "$label" 2>/dev/null) || cstate=unknown

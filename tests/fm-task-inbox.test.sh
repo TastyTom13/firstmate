@@ -512,6 +512,9 @@ test_watcher_rerings_idle_pane_quietly() {
   done
   grep -qF "Firstmate instruction waiting: list '$state/t1.inbox'/*.msg" "$log" \
     || { kill "$pid" 2>/dev/null; fail "the watcher never re-rang the doorbell:"$'\n'"$(cat "$log")"; }
+  # A re-ring carries the time since the steer at the end of its one line.
+  grep -qE "^: Firstmate instruction waiting: .* elapsed [0-9]{6,}s since the steer$" "$log" \
+    || { kill "$pid" 2>/dev/null; fail "the re-ring did not end with the elapsed time since the steer:"$'\n'"$(cat "$log")"; }
   kill -0 "$pid" 2>/dev/null \
     || fail "a healthy re-ring must not wake firstmate (watcher exited):"$'\n'"$(cat "$out")"
   [ ! -s "$state/.wake-queue" ] \
@@ -635,6 +638,8 @@ test_watcher_escalates_once_after_budget() {
     || fail "the escalation should queue a stale wake naming the unread instruction:"$'\n'"$(cat "$state/.wake-queue" 2>/dev/null)"
   grep -qF "$rec" "$state/.wake-queue" \
     || fail "the stale wake should name the record path:"$'\n'"$(cat "$state/.wake-queue")"
+  grep -qE "unread firstmate instruction: .*; elapsed [0-9]{6,}s since the steer\)" "$state/.wake-queue" \
+    || fail "the escalation should carry the elapsed time since the steer:"$'\n'"$(cat "$state/.wake-queue")"
   [ "$(grep -cF 'unread firstmate instruction' "$state/.wake-queue")" = 1 ] \
     || fail "the escalation must fire exactly once:"$'\n'"$(cat "$state/.wake-queue")"
   grep -qF 'stale:' "$out" || fail "the watcher should exit through the ordinary stale wake:"$'\n'"$(cat "$out")"
@@ -659,6 +664,8 @@ test_watcher_dead_pane_escalates_once_without_ringing() {
   grep -qF "agent has exited" "$state/.wake-queue" \
     || fail "the stale wake should say the agent has exited:"$'\n'"$(cat "$state/.wake-queue")"
   grep -qF "$rec" "$state/.wake-queue" || fail "the stale wake should name the record path"
+  grep -qE "agent has exited.*; elapsed [0-9]{6,}s since the steer\)" "$state/.wake-queue" \
+    || fail "the dead-pane escalation should carry the elapsed time since the steer:"$'\n'"$(cat "$state/.wake-queue")"
   [ -f "$rec" ] || fail "the durable record must survive for recovery"
   [ "$(cat "$state/t1.inbox/.escalated")" = "${rec##*/}" ] \
     || fail "the escalation marker should suppress further surfacing of this record"
