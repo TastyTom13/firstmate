@@ -1,0 +1,8 @@
+ok - local-only worktree with HEAD on a fork remote is torn down and the home summary is refreshed
+ok - teardown retires only its browser bridge, MCP, and Chrome family
+ok - teardown retires its browser bridge after zellij confirms the endpoint is gone
+ok - teardown rejects malformed zellij shutdown inventory
+ok - teardown retires its browser bridge after cmux confirms the endpoint is gone
+ok - teardown rejects malformed cmux shutdown inventory
+ok - teardown retires its browser bridge after orca confirms the endpoint is gone
+ok - teardown closes its own backlog item before reporting success
