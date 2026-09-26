@@ -104,6 +104,7 @@ Cleanup owns the whole workspace and uses `close-workspace`.
 cmux also refuses to remove the only workspace in a macOS window while returning a misleading success response.
 When the task is last in its window, Firstmate creates one unfocused unnamed sibling workspace in that same window, closes the task workspace, and leaves the window with cmux's fresh default workspace.
 The sibling never carries an `fm-` title and is ignored by recovery.
+Browser-bridge cleanup then inventories every cmux window and runs only when neither the exact workspace id nor its scoped task title remains; any unreadable window or workspace inventory preserves the bridge.
 
 The exact window membership is re-read before this operation.
 A selected workspace that is not last closes normally; selection itself is not the trigger.

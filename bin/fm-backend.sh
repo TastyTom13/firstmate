@@ -753,6 +753,8 @@ fm_backend_send_text_submit() {  # <backend> <target> <text> <retries> <enter-sl
 # resolves a failed close against the window's exact recorded identity, Orca
 # reports a close its missing CLI never attempted, and the remaining arms
 # still report 0 for a close command that failed after being accepted.
+# Callers that need proof after this best-effort operation use
+# fm_backend_endpoint_confirmed_gone below.
 # docs/verification/runtime-backends.md "Endpoint close" is the per-backend
 # record.
 fm_backend_kill() {  # <backend> <target>
@@ -767,6 +769,23 @@ fm_backend_kill() {  # <backend> <target>
     orca) fm_backend_orca_kill "$@" ;;
     cmux) fm_backend_cmux_kill "$@" ;;
     *) echo "error: no kill implementation for backend '$backend'" >&2; return 1 ;;
+  esac
+}
+
+# fm_backend_endpoint_confirmed_gone: strict post-close absence proof for
+# backends whose ordinary recovery classifier is intentionally unavailable.
+# Every adapter requires a successful structural inventory or a typed
+# not-found response for the exact recorded endpoint; an unreadable backend
+# never counts as gone.
+fm_backend_endpoint_confirmed_gone() {  # <backend> <target> [expected-label]
+  local backend=$1
+  shift
+  fm_backend_source "$backend" || return 1
+  case "$backend" in
+    zellij) fm_backend_zellij_endpoint_confirmed_gone "$@" ;;
+    orca) fm_backend_orca_endpoint_confirmed_gone "$@" ;;
+    cmux) fm_backend_cmux_endpoint_confirmed_gone "$@" ;;
+    *) return 1 ;;
   esac
 }
 

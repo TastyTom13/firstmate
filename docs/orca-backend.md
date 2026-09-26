@@ -64,6 +64,7 @@ A missing, unreadable, or mismatched identity preserves metadata and stops rathe
 After those checks, Firstmate closes the exact terminal and releases the exact worktree with Orca's worktree command.
 It never raw-deletes an Orca worktree.
 A close the CLI never attempted, because `orca` is not on the path, stops cleanup with the metadata intact even under `--force`: removing those records would leave nothing on disk naming a terminal that may still be live.
+After a close, browser-bridge cleanup requires Orca's typed `terminal_not_found` response for the exact terminal handle before it signals any process owned by the task worktree; a generic read failure remains unconfirmed and preserves the bridge.
 Reinstall the CLI and rerun; [`verification/runtime-backends.md`](verification/runtime-backends.md) "Endpoint close" owns what this arm can and cannot prove about its own close.
 
 ## Active limits

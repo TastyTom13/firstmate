@@ -611,6 +611,23 @@ fm_backend_cmux_window_of_workspace() {  # <workspace_id> -> "<window_id> <count
 # target is the last one in its window a throwaway sibling is created first,
 # leaving that window a fresh default workspace (never an fm-<home>- title, so
 # recovery/list_live ignore it) - cmux's own "closed the last tab" outcome.
+fm_backend_cmux_endpoint_confirmed_gone() {  # <target> [expected-label]
+  local target=$1 expected_label=${2:-} expected_title wins wid wss
+  fm_backend_cmux_parse_target "$target" || return 1
+  [ -z "$expected_label" ] || expected_title=$(fm_backend_cmux_scoped_title "$expected_label")
+  wins=$(fm_backend_cmux_cli list-windows --json --id-format uuids 2>/dev/null) || return 1
+  printf '%s' "$wins" | jq -e 'type == "array" and all(.[]; .id | type == "string" and length > 0)' >/dev/null 2>&1 || return 1
+  while IFS= read -r wid; do
+    [ -n "$wid" ] || continue
+    wss=$(fm_backend_cmux_cli workspace list --json --id-format uuids --window "$wid" 2>/dev/null) || return 1
+    printf '%s' "$wss" | jq -e --arg id "$FM_BACKEND_CMUX_WORKSPACE" --arg title "${expected_title:-}" '
+      (.workspaces | type == "array")
+      and ([.workspaces[]? | select(.id == $id or ($title != "" and .title == $title))] | length == 0)
+    ' >/dev/null 2>&1 || return 1
+  done < <(printf '%s' "$wins" | jq -r '.[] | .id' 2>/dev/null)
+  return 0
+}
+
 fm_backend_cmux_kill() {  # <target> [unused] [expected-label]
   local expected_label=${3:-} wsid wininfo win count
   if [ -n "$expected_label" ]; then

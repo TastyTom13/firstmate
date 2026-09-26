@@ -363,8 +363,11 @@ The refusal is reached only through a close that could not do its job, and each 
 | cmux | 0, silent | 0, not yet distinguishable |
 | herdr | 0, silent | 0 from this arm; `bin/fm-teardown.sh` gates every Herdr record removal on `fm_backend_herdr_endpoint_confirmed_gone` instead |
 
-The three arms that still report 0 need a presence re-read taken after their own close, and the close-then-read timing that re-read depends on cannot be established without the real Zellij, Orca, and cmux binaries.
-Guessing it is what a refusal must never rest on: a gate that refused an already-exited session would break ordinary cleanup on every task, which is a worse failure than the stranded endpoint it would be trying to prevent.
+The three arms that still report 0 cannot use that return value alone as absence proof.
+For browser-bridge cleanup, teardown now performs a separate strict post-close read: Zellij requires a successful session and pane inventory omitting the exact pane, cmux requires successful workspace inventories across every listed window omitting both the exact workspace id and scoped title, and Orca requires the typed `terminal_not_found` response for the exact handle.
+Malformed responses, generic errors, and unreadable inventories authorize no signal.
+The fixture proof was refreshed on 2026-09-26 with `bin/fm-test-run.sh tests/fm-teardown.test.sh`; its Zellij, cmux, and Orca cases each close a fake endpoint, prove absence through the backend's structural response, and verify the worktree-owned bridge receives TERM and KILL through `FM_BRIDGE_PS_FILE`, `FM_BRIDGE_CWD_FILE`, and `FM_BRIDGE_KILL_LOG` without starting a real process or backend.
+Guessing is what a refusal must never rest on: a gate that refused an already-exited session would break ordinary cleanup on every task, while a read failure treated as absence could signal a bridge whose worker remains live.
 tmux's re-read is deliberately exact - `=session` plus a whole-line window-name match - because a prefix match would read a neighboring window as this window's survivor, which is the same exactness the cleanup identity boundary above already requires.
 It is also deliberately conservative about the read itself, sharing `fm_backend_tmux_window_inventory` with `fm_backend_tmux_agent_state` so both mean the same thing by an absent session: only a definitive missing-session, missing-server, or connect-error response proves the window gone.
 Any other read failure - a momentarily unresponsive server, or a teardown PATH without tmux on it - refuses, because a read that could not run is not evidence of absence.
