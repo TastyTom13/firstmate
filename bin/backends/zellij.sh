@@ -597,7 +597,12 @@ fm_backend_zellij_endpoint_confirmed_gone() {  # <target>
   fi
   panes=$(fm_backend_zellij_cli "$FM_BACKEND_ZELLIJ_SESSION" action list-panes --json 2>/dev/null) || return 1
   printf '%s' "$panes" | jq -e --argjson p "$FM_BACKEND_ZELLIJ_PANE" '
-    type == "array" and ([.[]? | select(.id == $p and .is_plugin == false)] | length == 0)
+    type == "array"
+    and all(.[]; type == "object"
+      and (.id | type == "number")
+      and (.tab_id | type == "number")
+      and (.is_plugin | type == "boolean"))
+    and ([.[] | select(.id == $p and .is_plugin == false)] | length == 0)
   ' >/dev/null 2>&1
 }
 

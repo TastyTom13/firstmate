@@ -759,8 +759,8 @@ SH
 }
 
 test_teardown_retires_browser_bridge_on_structurally_confirmed_backend() {
-  local backend=$1 case_dir rc target extra_meta expected scoped_title
-  case_dir=$(make_case "browser-bridge-$backend")
+  local backend=$1 malformed=${2:-} case_dir rc target extra_meta expected scoped_title
+  case_dir=$(make_case "browser-bridge-$backend${malformed:+-malformed}")
   write_meta "$case_dir" local-only ship
   case "$backend" in
     zellij)
@@ -771,7 +771,8 @@ test_teardown_retires_browser_bridge_on_structurally_confirmed_backend() {
 case "$*" in
   "list-sessions --short --no-formatting") printf '%s\n' firstmate ;;
   *"action list-panes --json"*)
-    if [ -e "$FM_FAKE_ENDPOINT_CLOSED" ]; then printf '%s\n' '[]';
+    if [ -e "$FM_FAKE_ENDPOINT_CLOSED" ]; then
+      if [ "$FM_FAKE_MALFORMED" = zellij ]; then printf '%s\n' '[{"id":7}]'; else printf '%s\n' '[]'; fi
     else printf '%s\n' '[{"id":7,"tab_id":3,"is_plugin":false}]'; fi ;;
   *"action list-tabs --json"*)
     if [ -e "$FM_FAKE_ENDPOINT_CLOSED" ]; then printf '%s\n' '[]';
@@ -794,8 +795,10 @@ case "$*" in
     printf '%s\n' '{"panes":[{"surface_ids":["bbbbbbbb-1111-1111-1111-111111111111"]}]}' ;;
   "list-windows --json --id-format uuids") printf '%s\n' '[{"id":"win-1"}]' ;;
   "workspace list --json --id-format uuids --window win-1")
-    if [ -e "$FM_FAKE_ENDPOINT_CLOSED" ]; then printf '%s\n' '{"workspaces":[{"id":"other"}]}';
-    else printf '%s\n' '{"workspaces":[{"id":"aaaaaaaa-0000-0000-0000-000000000000"},{"id":"other"}]}'; fi ;;
+    if [ -e "$FM_FAKE_ENDPOINT_CLOSED" ]; then
+      if [ "$FM_FAKE_MALFORMED" = cmux ]; then printf '%s\n' '{"workspaces":[{}]}';
+      else printf '%s\n' '{"workspaces":[{"id":"other","title":"other"}]}'; fi
+    else printf '%s\n' '{"workspaces":[{"id":"aaaaaaaa-0000-0000-0000-000000000000","title":"task"},{"id":"other","title":"other"}]}'; fi ;;
   "close-workspace --workspace aaaaaaaa-0000-0000-0000-000000000000") : > "$FM_FAKE_ENDPOINT_CLOSED" ;;
 esac
 SH
@@ -825,6 +828,7 @@ EOF
   printf '9301\t%s\n' "$case_dir/wt" > "$case_dir/bridge-cwd.tsv"
   : > "$case_dir/bridge-kills.log"
   export FM_FAKE_ENDPOINT_CLOSED="$case_dir/endpoint-closed"
+  export FM_FAKE_MALFORMED="$malformed"
   export FM_FAKE_SCOPED_TITLE="${scoped_title:-}"
   export FM_BRIDGE_PS_FILE="$case_dir/bridge-ps.tsv"
   export FM_BRIDGE_CWD_FILE="$case_dir/bridge-cwd.tsv"
@@ -834,9 +838,17 @@ EOF
   run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
-  unset FM_FAKE_ENDPOINT_CLOSED FM_FAKE_SCOPED_TITLE FM_BRIDGE_PS_FILE FM_BRIDGE_CWD_FILE FM_BRIDGE_KILL_LOG FM_BRIDGE_TERM_GRACE_SECS
+  unset FM_FAKE_ENDPOINT_CLOSED FM_FAKE_MALFORMED FM_FAKE_SCOPED_TITLE FM_BRIDGE_PS_FILE FM_BRIDGE_CWD_FILE FM_BRIDGE_KILL_LOG FM_BRIDGE_TERM_GRACE_SECS
 
   expect_code 0 "$rc" "browser-bridge-$backend: teardown should succeed; stderr: $(cat "$case_dir/stderr")"
+  if [ -n "$malformed" ]; then
+    [ ! -s "$case_dir/bridge-kills.log" ] \
+      || fail "browser-bridge-$backend: malformed inventory must not trigger the bridge sweep"
+    assert_contains "$(cat "$case_dir/stderr")" "unconfirmed; skipping browser bridge sweep" \
+      "browser-bridge-$backend: malformed inventory must remain unconfirmed"
+    pass "teardown rejects malformed $backend shutdown inventory"
+    return
+  fi
   for expected in "TERM 9301" "KILL 9301"; do
     grep -Fx "$expected" "$case_dir/bridge-kills.log" >/dev/null \
       || fail "browser-bridge-$backend: missing $expected; stderr: $(cat "$case_dir/stderr")"
@@ -3946,7 +3958,9 @@ test_release_shared_record_refuses_without_a_sharing_record() {
 test_local_only_fork_remote_allows
 test_teardown_retires_its_browser_bridge_family
 test_teardown_retires_browser_bridge_on_structurally_confirmed_backend zellij
+test_teardown_retires_browser_bridge_on_structurally_confirmed_backend zellij zellij
 test_teardown_retires_browser_bridge_on_structurally_confirmed_backend cmux
+test_teardown_retires_browser_bridge_on_structurally_confirmed_backend cmux cmux
 test_teardown_retires_browser_bridge_on_structurally_confirmed_backend orca
 test_teardown_closes_the_backlog_item_itself
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator

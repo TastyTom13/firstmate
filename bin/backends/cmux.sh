@@ -622,7 +622,10 @@ fm_backend_cmux_endpoint_confirmed_gone() {  # <target> [expected-label]
     wss=$(fm_backend_cmux_cli workspace list --json --id-format uuids --window "$wid" 2>/dev/null) || return 1
     printf '%s' "$wss" | jq -e --arg id "$FM_BACKEND_CMUX_WORKSPACE" --arg title "${expected_title:-}" '
       (.workspaces | type == "array")
-      and ([.workspaces[]? | select(.id == $id or ($title != "" and .title == $title))] | length == 0)
+      and all(.workspaces[]; type == "object"
+        and (.id | type == "string" and length > 0)
+        and (has("title") and (.title | type == "string")))
+      and ([.workspaces[] | select(.id == $id or ($title != "" and .title == $title))] | length == 0)
     ' >/dev/null 2>&1 || return 1
   done < <(printf '%s' "$wins" | jq -r '.[] | .id' 2>/dev/null)
   return 0
