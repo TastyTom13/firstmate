@@ -119,6 +119,7 @@ forge_home() {
 #!/usr/bin/env bash
 set -eu
 case "$*" in
+  'auth token') printf 'fixture-token\n' ;;
   'pr view '*headRefOid,reviewDecision*)
     jq -n --arg head "$(cat "$FORGE/head")" '{headRefOid:$head,reviewDecision:"APPROVED"}' ;;
   'pr view '*headRefOid*) cat "$FORGE/head" ;;
@@ -715,6 +716,49 @@ SH
   pass 'a closed issue is rechecked after a day and resumes polling when reopened'
 }
 
+test_gh_token_is_resolved_once_per_poll() {
+  local home
+  home=$(new_home gh-token-cache)
+  forge_home "$home"
+  cat > "$home/fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+set -eu
+if [ "$1 $2" = 'auth token' ]; then
+  printf 'fixture-token\n'
+  printf 'auth-token GH_TOKEN=%s\n' "${GH_TOKEN:+present}" >> "$FORGE/token-env.log"
+  exit 0
+fi
+printf 'forge-read GH_TOKEN=%s\n' "${GH_TOKEN:+present}" >> "$FORGE/token-env.log"
+case "$*" in
+  'pr view '*headRefOid,reviewDecision*)
+    jq -n --arg head "$(cat "$FORGE/head")" '{headRefOid:$head,reviewDecision:"APPROVED"}' ;;
+  'api repos/o/r/pulls/8')
+    jq -n --arg head "$(cat "$FORGE/head")" '{state:"open",user:{login:"author"},head:{sha:$head},draft:false,mergeable:true,merged_at:null}' ;;
+  'api repos/o/r/issues/'*'/comments?'*) jq -s . "$FORGE/comments.json" ;;
+  'api repos/o/r/pulls/8/reviews?'*) jq -s . "$FORGE/reviews.json" ;;
+  'api repos/o/r/pulls/8/comments?'*) jq -s . "$FORGE/inline.json" ;;
+  'api repos/o/r/commits/'*'/check-runs?'*) printf '[{"check_runs":[]}]\n' ;;
+  'api repos/o/r/commits/'*'/statuses?'*) printf '[[]]\n' ;;
+  'api repos/o/r') printf '{"permissions":{"push":false}}\n' ;;
+  *) printf 'unexpected gh fixture call: %s\n' "$*" >&2; exit 1 ;;
+esac
+SH
+  chmod +x "$home/fakebin/gh"
+  : > "$home/forge/token-env.log"
+  env -u GH_TOKEN -u GITHUB_TOKEN \
+    PATH="$home/fakebin:$PATH" FORGE="$home/forge" FM_HOME="$home" FM_ROOT_OVERRIDE="$home/root" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_CONTRIBUTIONS_NOW="$NOW" FM_CONTRIBUTIONS_RETRY_DELAY=0 \
+    "$ROOT/bin/fm-contributions.sh" poll >/dev/null || fail 'contribution poll failed while caching the gh token'
+  [ "$(grep -c '^auth-token GH_TOKEN=$' "$home/forge/token-env.log")" = 1 ] \
+    || fail 'contribution poll did not resolve the keyring token exactly once'
+  ! grep -q '^forge-read GH_TOKEN=$' "$home/forge/token-env.log" \
+    || fail 'a contribution forge read ran without GH_TOKEN'
+  [ "$(grep -c '^forge-read GH_TOKEN=present$' "$home/forge/token-env.log")" -gt 1 ] \
+    || fail 'fixture did not exercise multiple authenticated contribution reads'
+  pass 'contribution polling resolves the keyring token once and exports it only in memory'
+}
+
 test_newly_terminal_record_settles_after_one_confirming_observation() {
   local home out
   home=$(new_home newly-terminal)
@@ -755,7 +799,7 @@ SH
 }
 
 failures=0
-for test_name in test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_persists_through_retry_and_wakes test_transient_failure_recovers_on_retry test_shared_url_observed_once test_settled_terminal_record_is_not_reobserved test_closed_issue_reopens_on_slow_recheck test_newly_terminal_record_settles_after_one_confirming_observation; do
+for test_name in test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_persists_through_retry_and_wakes test_transient_failure_recovers_on_retry test_shared_url_observed_once test_settled_terminal_record_is_not_reobserved test_closed_issue_reopens_on_slow_recheck test_gh_token_is_resolved_once_per_poll test_newly_terminal_record_settles_after_one_confirming_observation; do
   ( "$test_name" ) || failures=$((failures + 1))
 done
 [ "$failures" -eq 0 ] || fail "$failures contribution regressions"

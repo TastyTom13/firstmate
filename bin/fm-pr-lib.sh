@@ -16,6 +16,9 @@
 # after its durable wake is appended.
 # The receipt binds the terminal observation to the canonical registration and
 # lets a restart finish fixed-path removal without executing state-file bytes.
+# fm_gh_token_export resolves gh's credential once into this process tree so
+# repeated firstmate-owned reads avoid repeated keyring access without writing
+# the token to a file or output stream.
 
 FM_PR_PROVIDER=
 FM_PR_URL=
@@ -93,6 +96,27 @@ FM_PR_RETIRE_RECEIPT_IDENTITY=
 FM_PR_RECORD_STATE=
 FM_PR_RECORD_MERGED=
 FM_PR_POLL_RETIREMENT_REJECTED=
+
+fm_gh_token_export() {
+  local token
+  if [ -n "${GH_TOKEN:-}" ]; then
+    return 0
+  fi
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    GH_TOKEN=$GITHUB_TOKEN
+    export GH_TOKEN
+    return 0
+  fi
+  command -v gh >/dev/null 2>&1 || return 1
+  token=$(GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh auth token 2>/dev/null) || return 1
+  [ -n "$token" ] || return 1
+  case "$token" in
+    *$'\n'*) return 1 ;;
+  esac
+  GH_TOKEN=$token
+  export GH_TOKEN
+  token=
+}
 
 fm_task_id_path_safe() {
   local id=${1-}

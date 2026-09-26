@@ -135,6 +135,13 @@ SH
   cat > "$fakebin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FM_TEST_GH_LOG"
+if [ -n "${FM_TEST_GH_TOKEN_LOG:-}" ]; then
+  printf '%s GH_TOKEN=%s\n' "${1:-}-${2:-}" "${GH_TOKEN:+present}" >> "$FM_TEST_GH_TOKEN_LOG"
+fi
+if [ "${1:-} ${2:-}" = 'auth token' ]; then
+  printf 'fixture-token\n'
+  exit 0
+fi
 case "${1:-} ${2:-}" in
   "api graphql")
     printf '%s\n' \
@@ -717,6 +724,32 @@ run_poll() {
   FM_TEST_GH_LOG="$dir/gh.log" FM_TEST_GLAB_LOG="$dir/glab.log" \
     PATH="$dir/fakebin:$BASE_PATH" \
     bash "$dir/home/state/task-a.check.sh"
+}
+
+test_gh_token_environment_reaches_pr_reads() {
+  local dir token_log
+  dir=$(make_case gh-token-environment)
+  token_log="$dir/token-env.log"
+  write_task_meta "$dir"
+  : > "$token_log"
+  FM_TEST_GH_TOKEN_LOG="$token_log" run_check_entry "$dir" task-a https://github.com/o/r/pull/1 >/dev/null \
+    || fail 'PR registration failed while caching the gh token'
+  [ "$(grep -c '^auth-token GH_TOKEN=$' "$token_log")" = 1 ] \
+    || fail 'PR registration did not resolve the keyring token exactly once'
+  grep -q '^pr-view GH_TOKEN=present$' "$token_log" \
+    || fail 'PR registration did not pass GH_TOKEN to its forge read'
+
+  : > "$token_log"
+  add_stop_custom_check "$dir"
+  rm -f "$dir/home/state/.last-check"
+  FM_TEST_GH_TOKEN_LOG="$token_log" FM_TEST_GH_STATE=OPEN \
+    run_watcher_bounded "$dir/home" "$dir/fakebin" >/dev/null \
+    || fail 'watcher failed while caching the gh token for its PR poll'
+  [ "$(grep -c '^auth-token GH_TOKEN=$' "$token_log")" = 1 ] \
+    || fail 'watcher did not resolve the keyring token exactly once'
+  grep -q '^pr-view GH_TOKEN=present$' "$token_log" \
+    || fail 'watcher did not pass GH_TOKEN to its PR merge poll'
+  pass 'PR registration and watcher merge polling resolve once and pass GH_TOKEN in memory'
 }
 
 test_static_poll_contract() {
@@ -2775,6 +2808,7 @@ test_gitlab_merged_poll_retires
 test_invalid_entrypoints_have_zero_side_effects
 test_valid_recording_and_merge_derivation
 test_rejected_metacharacter_bytes_are_inert
+test_gh_token_environment_reaches_pr_reads
 test_static_poll_contract
 test_atomic_interruption_leaves_no_partial_artifact
 test_concurrent_watcher_sees_only_complete_publication

@@ -2146,6 +2146,10 @@ while :; do
   if [ "$(age_of "$STATE/.last-check")" -ge "$CHECK_INTERVAL" ]; then
     rejected_checks=
     contribution_check_output=
+    # Every authenticated check is firstmate-owned. Resolve once before any of
+    # them starts so contributions and PR polls inherit the same memory-only
+    # credential rather than each consulting the keyring.
+    fm_gh_token_export >/dev/null 2>&1 || true
     for c in "$STATE"/*.check.sh; do
       [ -e "$c" ] || continue
       is_pr_poll=0
