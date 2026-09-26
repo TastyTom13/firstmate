@@ -459,6 +459,7 @@ Choose the minimum additions for the authentication method actually in use:
 | Git over SSH with a key file | No credential variable when normal SSH configuration selects the key; file permissions and any passphrase handling still apply. |
 | Git over HTTPS with a credential helper | Whatever the configured helper requires; a GitHub CLI helper using an environment token needs its selected `GH_TOKEN` or `GITHUB_TOKEN`. |
 
+When GitHub CLI uses its stored login, the contribution observer, PR registration, and watcher-owned GitHub polls resolve it once per process and keep the resulting token only in Firstmate-owned GitHub call environments; no token is written to a file or output.
 Verify the selected provider login and Git transport after opting in; Firstmate does not infer credentials from model names or install a secret manager.
 Raw launch commands run under noninteractive POSIX `sh` with this option and must use compatible syntax.
 The filter runs at the worker command boundary, after the terminal daemon and pane shell have started; it does not scrub either of those processes.
