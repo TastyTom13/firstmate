@@ -1,0 +1,5 @@
+Live product validation: bin/fm-contributions.sh poll
+Scenario: poll an owned GitHub PR from an isolated FM_HOME with no GH_TOKEN/GITHUB_TOKEN supplied.
+Command: FM_HOME=.live-contribution-validation FM_ROOT_OVERRIDE="$PWD" FM_STATE_OVERRIDE=.live-contribution-validation/state FM_DATA_OVERRIDE=.live-contribution-validation/data FM_CONTRIBUTIONS_BUDGET=20 FM_CONTRIBUTIONS_RETRY_DELAY=0 bin/fm-contributions.sh poll
+Result: exit 0 in 7 seconds; the durable record for https://github.com/cli/cli/pull/1 has checked_at=2026-09-26T00:00:00Z, error=null, and an object observation.
+Token leak check over the isolated runtime directory: none. Temporary .live-contribution-validation was removed afterward.

@@ -1,0 +1,6 @@
+Live product validation: bin/fm-pr-check.sh
+Scenario: register a GitHub PR in an isolated FM_HOME with no GH_TOKEN/GITHUB_TOKEN supplied.
+Command: FM_HOME=.live-gh-token-validation FM_ROOT_OVERRIDE="$PWD" FM_STATE_OVERRIDE=.live-gh-token-validation/state FM_DATA_OVERRIDE=.live-gh-token-validation/data bin/fm-pr-check.sh live-gh-token https://github.com/cli/cli/pull/1
+Result: exit 0 in 1 second; stdout was `armed: state/live-gh-token.check.sh`.
+Durable result: pr=https://github.com/cli/cli/pull/1 and pr_head=e9a3253762e768badaa1d4a5b3d267416d1e42f4 were recorded; the authenticated poll check was created.
+No token value was emitted in stdout, stderr, or durable metadata. Temporary .live-gh-token-validation was removed afterward.
