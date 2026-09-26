@@ -2068,6 +2068,11 @@ resurface_after_downtime() {
   wake "check: rearm-resurface"
 }
 
+WATCHER_GH_TOKEN=
+fm_gh_token_export >/dev/null 2>&1 || true
+WATCHER_GH_TOKEN=${GH_TOKEN:-}
+unset GH_TOKEN GITHUB_TOKEN
+
 while :; do
   # Self-eviction: if the singleton lock no longer names this process, a second
   # watcher has taken over (e.g. a transient duplicate from a racy arm). Stand
@@ -2146,10 +2151,6 @@ while :; do
   if [ "$(age_of "$STATE/.last-check")" -ge "$CHECK_INTERVAL" ]; then
     rejected_checks=
     contribution_check_output=
-    # Every authenticated check is firstmate-owned. Resolve once before any of
-    # them starts so contributions and PR polls inherit the same memory-only
-    # credential rather than each consulting the keyring.
-    fm_gh_token_export >/dev/null 2>&1 || true
     for c in "$STATE"/*.check.sh; do
       [ -e "$c" ] || continue
       is_pr_poll=0
@@ -2180,12 +2181,22 @@ while :; do
             triage_log "PR poll for $id changed before its validated check; skipping the stale snapshot"
             continue
           fi
-          run_check_capture "$SCRIPT_DIR/fm-pr-poll.sh" --validated \
-            "$provider" "$url" "$host" "$path" "$number" || exit 1
+          if [ -n "$WATCHER_GH_TOKEN" ]; then
+            GH_TOKEN="$WATCHER_GH_TOKEN" run_check_capture "$SCRIPT_DIR/fm-pr-poll.sh" --validated \
+              "$provider" "$url" "$host" "$path" "$number" || exit 1
+          else
+            run_check_capture "$SCRIPT_DIR/fm-pr-poll.sh" --validated \
+              "$provider" "$url" "$host" "$path" "$number" || exit 1
+          fi
           out=$FM_CHECK_RESULT
         elif fm_custom_check_snapshot_prepare "$STATE" "$id"; then
           custom_snapshot=$FM_CUSTOM_CHECK_SNAPSHOT
-          run_check_capture "$custom_snapshot" || exit 1
+          if [ "$(basename "$c")" = contributions.check.sh ] \
+            && [ -n "$WATCHER_GH_TOKEN" ]; then
+            GH_TOKEN="$WATCHER_GH_TOKEN" run_check_capture "$custom_snapshot" || exit 1
+          else
+            run_check_capture "$custom_snapshot" || exit 1
+          fi
           out=$FM_CHECK_RESULT
           fm_custom_check_snapshot_cleanup
         else

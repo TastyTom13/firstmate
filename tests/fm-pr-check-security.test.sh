@@ -749,6 +749,10 @@ test_gh_token_environment_reaches_pr_reads() {
     || fail 'watcher did not resolve the keyring token exactly once'
   grep -q '^pr-view GH_TOKEN=present$' "$token_log" \
     || fail 'watcher did not pass GH_TOKEN to its PR merge poll'
+  ! grep -q '^custom GH_TOKEN=present' "$token_log" \
+    || fail 'watcher exposed GH_TOKEN to a custom check'
+  ! grep -q '^custom .*GITHUB_TOKEN=present$' "$token_log" \
+    || fail 'watcher exposed GITHUB_TOKEN to a custom check'
   pass 'PR registration and watcher merge polling resolve once and pass GH_TOKEN in memory'
 }
 
@@ -1482,7 +1486,13 @@ seed_canonical_poll() {
 add_stop_custom_check() {
   local dir=$1 state
   state="$dir/home/state"
-  printf '#!/usr/bin/env bash\nprintf "stop-cycle\\n"\n' > "$state/z-stop.check.sh"
+  cat > "$state/z-stop.check.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'stop-cycle\n'
+if [ -n "${FM_TEST_GH_TOKEN_LOG:-}" ]; then
+  printf 'custom GH_TOKEN=%s GITHUB_TOKEN=%s\n' "${GH_TOKEN:+present}" "${GITHUB_TOKEN:+present}" >> "$FM_TEST_GH_TOKEN_LOG"
+fi
+SH
   chmod 0700 "$state/z-stop.check.sh"
   FM_HOME="$dir/home" "$REGISTER" z-stop >/dev/null \
     || fail "could not register stop-cycle custom check"
