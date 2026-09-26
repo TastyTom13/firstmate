@@ -2069,9 +2069,14 @@ resurface_after_downtime() {
 }
 
 WATCHER_GH_TOKEN=
-fm_gh_token_export >/dev/null 2>&1 || true
-WATCHER_GH_TOKEN=${GH_TOKEN:-}
-unset GH_TOKEN GITHUB_TOKEN
+WATCHER_GH_TOKEN_RESOLVED=0
+watcher_gh_token_load() {
+  [ "$WATCHER_GH_TOKEN_RESOLVED" -eq 0 ] || return 0
+  WATCHER_GH_TOKEN_RESOLVED=1
+  fm_gh_token_export >/dev/null 2>&1 || true
+  WATCHER_GH_TOKEN=${GH_TOKEN:-}
+  unset GH_TOKEN GITHUB_TOKEN
+}
 
 while :; do
   # Self-eviction: if the singleton lock no longer names this process, a second
@@ -2181,6 +2186,7 @@ while :; do
             triage_log "PR poll for $id changed before its validated check; skipping the stale snapshot"
             continue
           fi
+          watcher_gh_token_load
           if [ -n "$WATCHER_GH_TOKEN" ]; then
             GH_TOKEN="$WATCHER_GH_TOKEN" run_check_capture "$SCRIPT_DIR/fm-pr-poll.sh" --validated \
               "$provider" "$url" "$host" "$path" "$number" || exit 1
@@ -2191,6 +2197,9 @@ while :; do
           out=$FM_CHECK_RESULT
         elif fm_custom_check_snapshot_prepare "$STATE" "$id"; then
           custom_snapshot=$FM_CUSTOM_CHECK_SNAPSHOT
+          if [ "$(basename "$c")" = contributions.check.sh ]; then
+            watcher_gh_token_load
+          fi
           if [ "$(basename "$c")" = contributions.check.sh ] \
             && [ -n "$WATCHER_GH_TOKEN" ]; then
             GH_TOKEN="$WATCHER_GH_TOKEN" run_check_capture "$custom_snapshot" || exit 1
