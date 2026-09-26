@@ -113,6 +113,20 @@ x-codex-secondary-reset-after-seconds: 0
   pass "a window the account does not have is dropped, not shown as fully free"
 }
 
+test_a_codex_cli_team_credential_uses_the_same_header_reader() {
+  local home out
+  home=$(make_home codex-team "$FULL_HEADERS")
+  jq -n '{auth_mode:"chatgpt", tokens:{access_token:"team-access-token",
+    account_id:"team-account", id_token:"fixture", refresh_token:"fixture"}}' > "$home/auth.json"
+  out=$(run_reader "$home" --json) || fail "the reader failed on a Codex CLI credential"
+  printf '%s' "$out" | jq -e '
+    .status == "known" and .limiting.percentRemaining == 45
+  ' >/dev/null || fail "the Codex CLI credential was not read: $out"
+  grep -q 'team-access-token' "$home/curl-stdin.txt" \
+    || fail "the Codex CLI access token did not reach the request"
+  pass "a Codex CLI Team credential uses the same header reader"
+}
+
 test_the_token_never_rides_the_command_line() {
   local home
   home=$(make_home token-safety "$FULL_HEADERS")
@@ -292,6 +306,7 @@ x-codex-secondary-used-percent: 55
 test_it_reports_remaining_allowance_per_window
 test_the_headline_is_the_tightest_window
 test_a_window_the_account_does_not_have_is_not_reported_as_free
+test_a_codex_cli_team_credential_uses_the_same_header_reader
 test_the_token_never_rides_the_command_line
 test_a_missing_credential_is_reported_not_guessed
 test_an_expired_token_is_named_before_the_request_is_made

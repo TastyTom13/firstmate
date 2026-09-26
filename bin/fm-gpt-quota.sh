@@ -36,8 +36,9 @@
 # the pool marked unreadable.
 #
 # FM_GPT_QUOTA_AUTH     credential file (default ~/.pi/agent/auth.json), read
-#                       for its `openai-codex` oauth entry. Token material is
-#                       never printed and never passed in argv.
+#                       as either a Pi `openai-codex` oauth entry or a Codex
+#                       CLI `tokens` entry. Token material is never printed and
+#                       never passed in argv.
 # FM_GPT_QUOTA_MODEL    model used to pass the backend's model gate (default
 #                       gpt-5.5). No completion is ever generated.
 # FM_GPT_QUOTA_BASE_URL Codex base URL (default https://chatgpt.com/backend-api).
@@ -154,13 +155,14 @@ read_quota() {
       "sign in to the ChatGPT account with the agent that owns that file"
     return
   }
-  if ! jq -e '.["openai-codex"].access | type == "string" and length > 0' "$AUTH_FILE" >/dev/null 2>&1; then
-    unavailable auth_required "$AUTH_FILE has no openai-codex access token" \
+  if ! jq -e '((.["openai-codex"].access // .tokens.access_token) | type == "string" and length > 0)' \
+    "$AUTH_FILE" >/dev/null 2>&1; then
+    unavailable auth_required "$AUTH_FILE has no supported ChatGPT access token" \
       "sign in to the ChatGPT account with the agent that owns that file"
     return
   fi
-  access=$(jq -r '.["openai-codex"].access' "$AUTH_FILE")
-  account=$(jq -r '.["openai-codex"].accountId // ""' "$AUTH_FILE")
+  access=$(jq -r '.["openai-codex"].access // .tokens.access_token' "$AUTH_FILE")
+  account=$(jq -r '.["openai-codex"].accountId // .tokens.account_id // ""' "$AUTH_FILE")
   expires=$(jq -r '.["openai-codex"].expires // 0' "$AUTH_FILE")
   [ -n "$account" ] || {
     unavailable auth_required "$AUTH_FILE has no openai-codex accountId" \
