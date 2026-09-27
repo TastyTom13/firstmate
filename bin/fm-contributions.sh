@@ -179,6 +179,7 @@ write_record() { # task record-json-file
 
 forge() {
   local remaining bounded=0 rc=0
+  fm_gh_token_export || true
   remaining=$((DEADLINE - $(date +%s)))
   # The budget, not the forge, refused this read.
   [ "$remaining" -gt 0 ] || { BUDGET_EXHAUSTED=1; return 1; }
