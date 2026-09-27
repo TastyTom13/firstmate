@@ -53,6 +53,23 @@ keys = [
   "MODAL_INFERENCE_TOKEN",
 ]
 
+# The quota overview reads this protected root-level mirror without contacting the vault during its 15-minute refresh.
+# Materialize it with:
+# bin/fm-env-sync.sh apply --project quota-pools
+[quota-pools]
+path = "."
+file = ".env.quota-pools"
+keys = [
+  "GROQ_API_KEY",
+  "CEREBRAS_API_KEY",
+  "CLOUDFLARE_API_KEY",
+  "OPENROUTER_API_KEY",
+  "GEMINI_API_KEY",
+  "GEMINI_API_KEY2",
+  "GEMINI_API_KEY3",
+  "GEMINI_API_KEY4",
+]
+
 # Bull reads a direnv file, so its lines carry an `export ` prefix.
 [bull]
 path = "projects/bull"

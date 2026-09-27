@@ -2,21 +2,22 @@
 
 Audience: maintainer verification.
 
-This record supports `bin/fm-gpt-quota.sh` and, through it, the ChatGPT pool of the bearings usage gauge (`bin/fm-quota-pools.sh`).
+This record supports `bin/fm-gpt-quota.sh` and, through it, the ChatGPT pool readings of the bearings usage gauge (`bin/fm-quota-pools.sh`).
 It records the vendor behaviour the reader depends on, so a change on OpenAI's side is re-established here rather than guessed at.
 Task chronology and incident evidence stay in private reports or PR evidence.
 
 ## Why a firstmate-owned reader exists at all
 
 `quota-axi` reads each provider's local usage records.
-A home that talks to OpenAI through an OAuth ChatGPT account with no `codex` CLI installed has no such record, so `quota-axi` reports `codex,all,error,Codex quota unavailable,none` and can report nothing better.
-Verified 2026-08-31 against quota-axi 0.1.34 on a home whose only OpenAI credential is the `openai-codex` OAuth entry in `~/.pi/agent/auth.json`.
+A home that talks to OpenAI through an OAuth ChatGPT account may have no local usage record, so `quota-axi` can report `Codex quota unavailable` and can report nothing better.
+The reader accepts either Pi's `openai-codex` OAuth entry in `~/.pi/agent/auth.json` or Codex CLI's `tokens` entry in `~/.codex/auth.json`, allowing separate account files to feed the same response-header reader.
+Verified 2026-08-31 against quota-axi 0.1.34 on a home whose only OpenAI credential was the `openai-codex` OAuth entry in `~/.pi/agent/auth.json`.
 
 ## The account's quota is on the response, not behind an endpoint
 
 Verified 2026-08-31 against `https://chatgpt.com/backend-api`.
 
-Three candidate sources were probed with the stored OAuth access token and `chatgpt-account-id` header:
+The supported credential sources use the stored access token and `chatgpt-account-id` header; the endpoint behavior below was probed with the Pi OAuth credential:
 
 - `GET /backend-api/codex/usage`, `GET /backend-api/me`, `GET /backend-api/accounts/check/v4-2023-04-27`, and `GET /backend-api/codex/rate_limits` each returned HTTP 403 with an HTML body.
   The same credential returned HTTP 200 and `{"items": [], "cursor": null}` from `GET /backend-api/wham/tasks` in the same run, so the 403s are those routes refusing this client, not a bad credential.
@@ -71,7 +72,8 @@ Plan naming is therefore not a reliable signal of which windows exist; the windo
 bin/fm-gpt-quota.sh --json
 ```
 
-A `status: "known"` reading with a non-empty `windows` array confirms every fact above that the reader depends on.
+A `status: "known"` reading with a non-empty `windows` array confirms every endpoint fact above that the reader depends on.
+The same command reads either supported credential-file shape; the Codex CLI shape is covered by `tests/fm-gpt-quota.test.sh` without network access.
 A `status: "unavailable"` reading names which one broke: `no_headers` means the probe model or the header contract changed, `auth_required` or `auth_expired` means the credential did, and `unreachable` means the network did.
 
 `tests/fm-gpt-quota.test.sh` pins the reader's own logic against recorded headers with no network, so it cannot detect a vendor change; only the command above can.
