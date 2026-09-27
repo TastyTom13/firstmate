@@ -758,6 +758,106 @@ SH
   pass "teardown retires only its browser bridge, MCP, and Chrome family"
 }
 
+test_teardown_retires_browser_bridge_on_structurally_confirmed_backend() {
+  local backend=$1 malformed=${2:-} case_dir rc target extra_meta expected scoped_title
+  case_dir=$(make_case "browser-bridge-$backend${malformed:+-malformed}")
+  write_meta "$case_dir" local-only ship
+  case "$backend" in
+    zellij)
+      target=firstmate:7
+      extra_meta=$'backend=zellij\nzellij_session=firstmate\nzellij_tab_id=3\nzellij_pane_id=7'
+      cat > "$case_dir/fakebin/zellij" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  "list-sessions --short --no-formatting") printf '%s\n' firstmate ;;
+  *"action list-panes --json"*)
+    if [ -e "$FM_FAKE_ENDPOINT_CLOSED" ]; then
+      if [ "$FM_FAKE_MALFORMED" = zellij ]; then printf '%s\n' '[{"id":7}]'; else printf '%s\n' '[]'; fi
+    else printf '%s\n' '[{"id":7,"tab_id":3,"is_plugin":false}]'; fi ;;
+  *"action list-tabs --json"*)
+    if [ -e "$FM_FAKE_ENDPOINT_CLOSED" ]; then printf '%s\n' '[]';
+    else printf '%s\n' '[{"tab_id":3,"name":"fm-task-x1"}]'; fi ;;
+  *"action close-tab-by-id 3"*) : > "$FM_FAKE_ENDPOINT_CLOSED" ;;
+esac
+SH
+      ;;
+    cmux)
+      target=aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111
+      extra_meta=$'backend=cmux\ncmux_workspace_id=aaaaaaaa-0000-0000-0000-000000000000\ncmux_surface_id=bbbbbbbb-1111-1111-1111-111111111111'
+      scoped_title=$(FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$case_dir" bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_scoped_title fm-task-x1' "$ROOT")
+      cat > "$case_dir/fakebin/cmux" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  "workspace list --json --id-format uuids")
+    if [ -e "$FM_FAKE_ENDPOINT_CLOSED" ]; then printf '%s\n' '{"workspaces":[]}';
+    else printf '%s\n' "{\"workspaces\":[{\"id\":\"aaaaaaaa-0000-0000-0000-000000000000\",\"title\":\"$FM_FAKE_SCOPED_TITLE\"}]}"; fi ;;
+  "list-panes --workspace aaaaaaaa-0000-0000-0000-000000000000 --json --id-format uuids")
+    printf '%s\n' '{"panes":[{"surface_ids":["bbbbbbbb-1111-1111-1111-111111111111"]}]}' ;;
+  "list-windows --json --id-format uuids") printf '%s\n' '[{"id":"win-1"}]' ;;
+  "workspace list --json --id-format uuids --window win-1")
+    if [ -e "$FM_FAKE_ENDPOINT_CLOSED" ]; then
+      if [ "$FM_FAKE_MALFORMED" = cmux ]; then printf '%s\n' '{"workspaces":[{}]}';
+      else printf '%s\n' '{"workspaces":[{"id":"other","title":"other"}]}'; fi
+    else printf '%s\n' '{"workspaces":[{"id":"aaaaaaaa-0000-0000-0000-000000000000","title":"task"},{"id":"other","title":"other"}]}'; fi ;;
+  "close-workspace --workspace aaaaaaaa-0000-0000-0000-000000000000") : > "$FM_FAKE_ENDPOINT_CLOSED" ;;
+esac
+SH
+      ;;
+    orca)
+      target=fm-task-x1
+      extra_meta=$'backend=orca\nterminal=term-123\norca_worktree_id=wt-123'
+      cat > "$case_dir/fakebin/orca" <<SH
+#!/usr/bin/env bash
+case "\$*" in
+  "worktree show --worktree id:wt-123 --json") printf '%s\\n' '{"ok":true,"result":{"worktree":{"id":"wt-123","path":"$case_dir/wt"}}}' ;;
+  "terminal close --terminal term-123 --json") : > "\$FM_FAKE_ENDPOINT_CLOSED"; printf '%s\\n' '{"ok":true,"result":{}}' ;;
+  "worktree rm --worktree id:wt-123 --force --json") printf '%s\\n' '{"ok":true,"result":{}}' ;;
+  "terminal read --terminal term-123 --limit 1 --json") printf '%s\\n' '{"ok":false,"error":{"code":"terminal_not_found","message":"terminal not found"}}'; exit 1 ;;
+esac
+SH
+      ;;
+    *) fail "unknown bridge backend fixture $backend" ;;
+  esac
+  chmod +x "$case_dir/fakebin/$backend"
+  sed -i.bak '/^window=/d' "$case_dir/state/task-x1.meta"
+  rm -f "$case_dir/state/task-x1.meta.bak"
+  printf 'window=%s\n%s\n' "$target" "$extra_meta" >> "$case_dir/state/task-x1.meta"
+  cat > "$case_dir/bridge-ps.tsv" <<EOF
+9301	1	00:10:00	node /opt/chrome-devtools-axi-bridge.js
+EOF
+  printf '9301\t%s\n' "$case_dir/wt" > "$case_dir/bridge-cwd.tsv"
+  : > "$case_dir/bridge-kills.log"
+  export FM_FAKE_ENDPOINT_CLOSED="$case_dir/endpoint-closed"
+  export FM_FAKE_MALFORMED="$malformed"
+  export FM_FAKE_SCOPED_TITLE="${scoped_title:-}"
+  export FM_BRIDGE_PS_FILE="$case_dir/bridge-ps.tsv"
+  export FM_BRIDGE_CWD_FILE="$case_dir/bridge-cwd.tsv"
+  export FM_BRIDGE_KILL_LOG="$case_dir/bridge-kills.log"
+  export FM_BRIDGE_TERM_GRACE_SECS=0
+  set +e
+  run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  unset FM_FAKE_ENDPOINT_CLOSED FM_FAKE_MALFORMED FM_FAKE_SCOPED_TITLE FM_BRIDGE_PS_FILE FM_BRIDGE_CWD_FILE FM_BRIDGE_KILL_LOG FM_BRIDGE_TERM_GRACE_SECS
+
+  expect_code 0 "$rc" "browser-bridge-$backend: teardown should succeed; stderr: $(cat "$case_dir/stderr")"
+  if [ -n "$malformed" ]; then
+    [ ! -s "$case_dir/bridge-kills.log" ] \
+      || fail "browser-bridge-$backend: malformed inventory must not trigger the bridge sweep"
+    assert_contains "$(cat "$case_dir/stderr")" "unconfirmed; skipping browser bridge sweep" \
+      "browser-bridge-$backend: malformed inventory must remain unconfirmed"
+    pass "teardown rejects malformed $backend shutdown inventory"
+    return
+  fi
+  for expected in "TERM 9301" "KILL 9301"; do
+    grep -Fx "$expected" "$case_dir/bridge-kills.log" >/dev/null \
+      || fail "browser-bridge-$backend: missing $expected; stderr: $(cat "$case_dir/stderr")"
+  done
+  assert_not_contains "$(cat "$case_dir/stderr")" "skipping browser bridge sweep" \
+    "browser-bridge-$backend: confirmed shutdown still skipped the sweep"
+  pass "teardown retires its browser bridge after $backend confirms the endpoint is gone"
+}
+
 test_teardown_closes_the_backlog_item_itself() {
   local case_dir out
   case_dir=$(make_case tasks-axi-close)
@@ -3857,6 +3957,11 @@ test_release_shared_record_refuses_without_a_sharing_record() {
 
 test_local_only_fork_remote_allows
 test_teardown_retires_its_browser_bridge_family
+test_teardown_retires_browser_bridge_on_structurally_confirmed_backend zellij
+test_teardown_retires_browser_bridge_on_structurally_confirmed_backend zellij zellij
+test_teardown_retires_browser_bridge_on_structurally_confirmed_backend cmux
+test_teardown_retires_browser_bridge_on_structurally_confirmed_backend cmux cmux
+test_teardown_retires_browser_bridge_on_structurally_confirmed_backend orca
 test_teardown_closes_the_backlog_item_itself
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator
 test_local_only_truly_unpushed_refuses

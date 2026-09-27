@@ -2387,10 +2387,11 @@ release_shared_record_as_reassigned() {
   TEARDOWN_SLOT_REASSIGNED_HOME=
 }
 
-# Endpoint shutdown confirmation for the browser bridge sweep (Fix 4): only a
-# recovery-grade dead or missing read of the recorded endpoint proves the
-# worker is gone. Backends without that classifier answer no, so their bridge
-# is reported rather than signaled.
+# Endpoint shutdown confirmation for the browser bridge sweep (Fix 4): tmux
+# and Herdr use their recovery-grade process classifiers. The other supported
+# task backends require a successful structural absence read, or Orca's typed
+# not-found response, for the exact endpoint just closed. An unreadable or
+# unknown endpoint never licenses signaling a bridge.
 backend_endpoint_shutdown_confirmed() {
   local state
   case "$BACKEND" in
@@ -2400,6 +2401,9 @@ backend_endpoint_shutdown_confirmed() {
         dead|missing) return 0 ;;
         *) return 1 ;;
       esac
+      ;;
+    zellij|orca|cmux)
+      fm_backend_endpoint_confirmed_gone "$BACKEND" "$T" "fm-$ID" 2>/dev/null
       ;;
     *) return 1 ;;
   esac

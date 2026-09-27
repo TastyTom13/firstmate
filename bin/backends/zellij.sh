@@ -588,6 +588,24 @@ fm_backend_zellij_send_text_submit() {  # <target> <text> <retries> <enter-sleep
 # pane id when possible via fm_backend_zellij_tab_for_pane; teardown also
 # passes the recorded tab id and expected tab label for already-empty ghost
 # tabs. Any tab id is verified against the expected label when one is provided.
+fm_backend_zellij_endpoint_confirmed_gone() {  # <target>
+  local target=$1 sessions panes
+  fm_backend_zellij_parse_target "$target" || return 1
+  sessions=$(zellij list-sessions --short --no-formatting 2>/dev/null) || return 1
+  if ! printf '%s\n' "$sessions" | grep -qxF "$FM_BACKEND_ZELLIJ_SESSION"; then
+    return 0
+  fi
+  panes=$(fm_backend_zellij_cli "$FM_BACKEND_ZELLIJ_SESSION" action list-panes --json 2>/dev/null) || return 1
+  printf '%s' "$panes" | jq -e --argjson p "$FM_BACKEND_ZELLIJ_PANE" '
+    type == "array"
+    and all(.[]; type == "object"
+      and (.id | type == "number")
+      and (.tab_id | type == "number")
+      and (.is_plugin | type == "boolean"))
+    and ([.[] | select(.id == $p and .is_plugin == false)] | length == 0)
+  ' >/dev/null 2>&1
+}
+
 fm_backend_zellij_kill() {  # <target> [tab_id] [expected_label]
   fm_backend_zellij_parse_target "$1" || return 0
   fm_backend_zellij_session_exists "$FM_BACKEND_ZELLIJ_SESSION" || return 0
