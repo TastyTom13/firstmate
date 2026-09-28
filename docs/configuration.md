@@ -674,6 +674,36 @@ Each GitHub read is hard-bounded, and the script keeps its probe budget below `F
 `state/.hp-runner-check` retains the consecutive-poll streak and report suppression state.
 Run `bin/fm-hp-runner-check.sh disarm` to unregister the generated check and remove that poll record.
 
+## Memory pressure check (config/memory-check)
+
+[`bin/fm-memory-check.sh`](../bin/fm-memory-check.sh) is an optional registered check that warns before the host runs out of memory, so firstmate can stop dispatching and tell the captain before the machine stalls.
+It reads free memory from `vm_stat` as free plus speculative pages times the printed page size, and the system-wide free percentage from `memory_pressure`.
+When free memory is below the gigabyte threshold, or the free percentage is below the percentage threshold, for the configured number of consecutive polls, it prints one line.
+That line names the free gigabytes, the free percentage, and the five processes with the most resident memory, so the wake is actionable without a second command.
+The default thresholds are 6 GB free, 12 percent free, and 2 consecutive polls.
+A poll at or above both thresholds breaks the streak, and an unchanged low-memory episode is reported once until such a clear poll starts a new episode.
+A host without `vm_stat` or `memory_pressure`, a timed-out or unreadable reading, or a configuration failure is also reported once, because it leaves the detector blind.
+The check only measures and wakes; it never stops processes or services and never pauses dispatch.
+
+The optional local, gitignored `config/memory-check` file accepts these exact keys:
+
+```sh
+FREE_GB_THRESHOLD=6
+FREE_PERCENT_THRESHOLD=12
+CONSECUTIVE_POLLS=2
+```
+
+`FREE_GB_THRESHOLD` must be a whole number from 1 to 1000, `FREE_PERCENT_THRESHOLD` a whole number from 0 to 100, and `CONSECUTIVE_POLLS` a whole number from 1 to 100.
+Blank lines and lines beginning with `#` are ignored.
+Unknown keys, duplicates, and malformed values are reported instead of silently falling back.
+This file is not inherited by secondmate homes.
+
+Arm the check once in the home with `bin/fm-memory-check.sh arm`.
+That command atomically writes `state/memory.check.sh` with mode `0700` and binds its bytes with `bin/fm-check-register.sh`, so the existing watcher polls it on `FM_CHECK_INTERVAL` and turns its single report line into a `check:` wake.
+Each probe is hard-bounded, and the script keeps its probe budget below `FM_CHECK_TIMEOUT`.
+`state/.memory-check` retains the consecutive-poll streak and report suppression state.
+Run `bin/fm-memory-check.sh disarm` to unregister the generated check and remove that poll record.
+
 ## Watched tool updates (config/watched-tools.json)
 
 `config/watched-tools.json` is an optional local, gitignored list of the tools this home depends on.
