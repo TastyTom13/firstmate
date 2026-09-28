@@ -682,7 +682,7 @@ When free memory is below the gigabyte threshold, or the free percentage is belo
 That line names the free gigabytes, the free percentage, and the five processes with the most resident memory, so the wake is actionable without a second command.
 The default thresholds are 6 GB free, 12 percent free, and 2 consecutive polls.
 A poll at or above both thresholds breaks the streak, and an unchanged low-memory episode is reported once until such a clear poll starts a new episode.
-A host without `vm_stat` or `memory_pressure`, a timed-out or unreadable reading, or a configuration failure is also reported once, because it leaves the detector blind.
+A host without `vm_stat` or `memory_pressure`, a timed-out, unreadable, or out-of-range reading, or a configuration failure is also reported once, because it leaves the detector blind.
 The check only measures and wakes; it never stops processes or services and never pauses dispatch.
 
 The optional local, gitignored `config/memory-check` file accepts these exact keys:
