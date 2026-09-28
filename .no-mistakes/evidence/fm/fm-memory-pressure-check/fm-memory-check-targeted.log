@@ -1,0 +1,9 @@
+ok - low free memory reports once after two consecutive polls and then stays silent
+ok - a low free percentage alone reports
+ok - a clear poll resets both the streak and the reported episode
+ok - config/memory-check overrides the thresholds
+ok - config validation reports unknown keys, duplicates, and malformed values once
+ok - a missing vm_stat or memory_pressure reports a blind detector once
+ok - invalid and arithmetic-overflowing host readings are rejected
+ok - a hung probe is stopped before the watcher check timeout
+ok - arm writes a mode-0700 registered shim that keeps its home, and disarm removes it
