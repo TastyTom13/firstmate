@@ -20,7 +20,7 @@ make_home() {
   cat > "$home/fakebin/vm_stat" <<'SH'
 #!/usr/bin/env bash
 [ -z "${FM_TEST_VM_SLEEP:-}" ] || sleep "$FM_TEST_VM_SLEEP"
-printf 'Mach Virtual Memory Statistics: (page size of 16384 bytes)\n'
+printf 'Mach Virtual Memory Statistics: (page size of %s bytes)\n' "${FM_TEST_PAGE_SIZE:-16384}"
 printf 'Pages free:                               %s.\n' "${FM_TEST_FREE_PAGES:?}"
 printf 'Pages active:                             1398998.\n'
 printf 'Pages speculative:                        %s.\n' "${FM_TEST_SPEC_PAGES:-0}"
@@ -168,6 +168,24 @@ test_missing_tool_reports_blind_once() {
   pass "a missing vm_stat or memory_pressure reports a blind detector once"
 }
 
+test_invalid_host_readings_are_rejected() {
+  local home out
+  for case_name in page-size percent; do
+    home=$(make_home "invalid-$case_name")
+    out="$home/out"
+    if [ "$case_name" = page-size ]; then
+      FM_TEST_PAGE_SIZE=0 FM_TEST_FREE_PAGES=$LOW_PAGES FM_TEST_FREE_PERCENT=40 run_check "$home" "$out"
+    else
+      FM_TEST_FREE_PAGES=$LOW_PAGES FM_TEST_FREE_PERCENT=101 run_check "$home" "$out"
+    fi
+    assert_contains "$(cat "$out")" "memory readings were out of range" \
+      "invalid $case_name was not rejected"
+    [ "$(wc -l < "$out" | tr -d '[:space:]')" = 1 ] || \
+      fail "invalid $case_name produced an unexpected report: $(cat "$out")"
+  done
+  pass "invalid page size and free percentage readings are rejected"
+}
+
 # A hung probe cannot consume the watcher's own check deadline.
 test_slow_probe_finishes_inside_the_watcher_bound() {
   local home out started elapsed
@@ -221,5 +239,6 @@ test_clear_poll_resets_streak_and_episode
 test_config_overrides_thresholds
 test_config_validation_rejects_bad_input
 test_missing_tool_reports_blind_once
+test_invalid_host_readings_are_rejected
 test_slow_probe_finishes_inside_the_watcher_bound
 test_arm_writes_registers_and_runs_the_shim

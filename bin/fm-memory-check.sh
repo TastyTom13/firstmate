@@ -334,7 +334,8 @@ action_check() {
     return 0
     ;;
   esac
-  if [ "${#page_size}" -gt 9 ] || [ "${#free_pages}" -gt 12 ] || [ "${#spec_pages}" -gt 12 ] || [ "${#percent}" -gt 3 ]; then
+  if [ "${#page_size}" -gt 9 ] || [ "${#free_pages}" -gt 12 ] || [ "${#spec_pages}" -gt 12 ] || [ "${#percent}" -gt 3 ] \
+    || [ "$page_size" -le 0 ] || [ "$percent" -gt 100 ]; then
     report_problem 'memory check cannot measure: memory readings were out of range'
     return 0
   fi
