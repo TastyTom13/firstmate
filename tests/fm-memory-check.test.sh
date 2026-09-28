@@ -52,7 +52,7 @@ run_check() {
   local status=0
   env FM_HOME="$home" PATH="$home/fakebin:$PATH" \
     FM_TEST_FREE_PAGES="${FM_TEST_FREE_PAGES:?}" FM_TEST_FREE_PERCENT="${FM_TEST_FREE_PERCENT:?}" \
-    "$@" "$CHECK" check >"$out" 2>"$out.err" || status=$?
+    FM_TEST_PAGE_SIZE="${FM_TEST_PAGE_SIZE:-}" "$@" "$CHECK" check >"$out" 2>"$out.err" || status=$?
   expect_code 0 "$status" "check exit"
   [ ! -s "$out.err" ] || fail "check wrote stderr: $(cat "$out.err")"
 }
@@ -174,7 +174,7 @@ test_invalid_host_readings_are_rejected() {
     home=$(make_home "invalid-$case_name")
     out="$home/out"
     if [ "$case_name" = page-size ]; then
-      FM_TEST_PAGE_SIZE=0 FM_TEST_FREE_PAGES=$LOW_PAGES FM_TEST_FREE_PERCENT=40 run_check "$home" "$out"
+      FM_TEST_FREE_PAGES=$LOW_PAGES FM_TEST_FREE_PERCENT=40 run_check "$home" "$out" FM_TEST_PAGE_SIZE=0
     else
       FM_TEST_FREE_PAGES=$LOW_PAGES FM_TEST_FREE_PERCENT=101 run_check "$home" "$out"
     fi
@@ -183,7 +183,17 @@ test_invalid_host_readings_are_rejected() {
     [ "$(wc -l < "$out" | tr -d '[:space:]')" = 1 ] || \
       fail "invalid $case_name produced an unexpected report: $(cat "$out")"
   done
-  pass "invalid page size and free percentage readings are rejected"
+
+  home=$(make_home invalid-overflow)
+  out="$home/out"
+  FM_TEST_FREE_PAGES=999999999999 FM_TEST_FREE_PERCENT=40 \
+    run_check "$home" "$out" FM_TEST_PAGE_SIZE=999999999
+  assert_contains "$(cat "$out")" "memory readings were out of range" \
+    "an arithmetic-overflowing reading was not rejected"
+  FM_TEST_FREE_PAGES=999999999999 FM_TEST_FREE_PERCENT=40 \
+    run_check "$home" "$out" FM_TEST_PAGE_SIZE=999999999
+  [ ! -s "$out" ] || fail "an unchanged overflow problem was reported again: $(cat "$out")"
+  pass "invalid and arithmetic-overflowing host readings are rejected"
 }
 
 # A hung probe cannot consume the watcher's own check deadline.

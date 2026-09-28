@@ -339,7 +339,12 @@ action_check() {
     report_problem 'memory check cannot measure: memory readings were out of range'
     return 0
   fi
-  free_bytes=$(( (free_pages + spec_pages) * page_size ))
+  total_pages=$((free_pages + spec_pages))
+  if [ "$total_pages" -gt 0 ] && [ "$page_size" -gt $((9223372036854775807 / total_pages)) ]; then
+    report_problem 'memory check cannot measure: memory readings were out of range'
+    return 0
+  fi
+  free_bytes=$((total_pages * page_size))
 
   if [ "$free_bytes" -ge $((FREE_GB_THRESHOLD * GIB)) ] && [ "$percent" -ge "$FREE_PERCENT_THRESHOLD" ]; then
     record_write 0 0 '' || printf 'memory check failed: cannot write its poll record\n'
