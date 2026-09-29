@@ -89,10 +89,11 @@
 # it was before the flag existed.
 # --visual marks any visual task and requires --surface <decks|scout|website|email>.
 # The generated ship or scout brief then carries a "Visual work contract" with
-# that surface's point-of-view document (decks, scout, and website resolve
-# inside the target project given as the second argument; email lives under
-# FM_HOME; a missing file prints a warning and the brief tells the worker to
-# create it, never a refusal), design-system and flow use, copy voice,
+# that surface's point-of-view document (decks, scout, and website are rendered
+# as a path in the worker's own worktree; the scaffold checks
+# FM_HOME/projects/<repo-name> only to warn when it is missing; email lives
+# under FM_HOME; a missing file prints a warning and the brief tells the worker
+# to create it in its worktree, never a refusal), design-system and flow use, copy voice,
 # and editor-pass evidence. It is refused on secondmate scaffolds, while a bare
 # --surface is refused rather than ignored. Omitted, the brief is byte-identical
 # to what it was before the flag existed. The visual-work skill owns firstmate's
@@ -548,14 +549,24 @@ EOF
 fi
 
 # Decks, scout, and website point-of-view documents live inside the target
-# project; only email lives under the firstmate home. A missing document is
-# warned about, not refused, because the first task on a surface creates it.
+# project. The brief names the path relative to the worker's own worktree root,
+# so reading follows the worker's base branch and a created file lands in its
+# commit. The scaffold checks the project's primary checkout under
+# FM_HOME/projects/<repo-name> only to decide whether to warn. Email lives under
+# the firstmate home. A missing document is warned about, not refused, because
+# the first task on a surface creates it.
 if [ "$VISUAL" -eq 1 ]; then
-  [ -z "$VISUAL_POV_REL" ] || VISUAL_POV="${POS[1]%/}/$VISUAL_POV_REL"
-  if [ ! -f "$VISUAL_POV" ]; then
-    echo "warning: the $SURFACE point-of-view document does not exist yet at $VISUAL_POV; the brief tells the worker to create it from the ratified point-of-view report before designing" >&2
+  VISUAL_POV_CHECK=$VISUAL_POV
+  VISUAL_POV_WHERE=
+  if [ -n "$VISUAL_POV_REL" ]; then
+    VISUAL_POV=$VISUAL_POV_REL
+    VISUAL_POV_CHECK="$FM_HOME/projects/${POS[1]}/$VISUAL_POV_REL"
+    VISUAL_POV_WHERE=" in your worktree"
+  fi
+  if [ ! -f "$VISUAL_POV_CHECK" ]; then
+    echo "warning: the $SURFACE point-of-view document does not exist yet (checked $VISUAL_POV_CHECK); the brief tells the worker to create it from the ratified point-of-view report before designing" >&2
     VISUAL_POV_MISSING="
-This document does not exist yet. Before designing, create it at that path from the ratified point-of-view report (\`$FM_HOME/data/design-point-of-view-documents/report.md\`), then follow it."
+This document does not exist yet. Before designing, create it at that path$VISUAL_POV_WHERE from the ratified point-of-view report (\`$FM_HOME/data/design-point-of-view-documents/report.md\`), then follow it."
   fi
 fi
 
@@ -568,7 +579,7 @@ if [ "$VISUAL" -eq 1 ]; then
 
 
 # Visual work contract
-Before any design decision, read and follow \`$VISUAL_POV\`, the point of view and quality bar for the \`$SURFACE\` surface, and read \`$FM_ROOT/.agents/skills/visual-work/SKILL.md\`.$VISUAL_POV_MISSING
+Before any design decision, read and follow \`$VISUAL_POV\`$VISUAL_POV_WHERE, the point of view and quality bar for the \`$SURFACE\` surface, and read \`$FM_ROOT/.agents/skills/visual-work/SKILL.md\`.$VISUAL_POV_MISSING
 Apply this direction: carry the point of view; one deliberate better-than-the-pattern idea is welcome, named as such.
 Use the project's design-system templates, interaction patterns, and flows wherever they exist, not only its colours and fonts.
 Look for \`BRAND.md\`, \`docs/design-system/\`, \`design-system/\`, and the existing templates, components, and user-flow definitions nearest this surface.

@@ -18,15 +18,15 @@ Visual work deliberately spends more time on intent, interaction quality, and ar
 Scaffold visual ship or scout work with `bin/fm-brief.sh --visual --surface <surface>` in addition to its ordinary mode or scout arguments.
 The supported surface and point-of-view document pairs are:
 
-| Surface | Point-of-view and quality-bar document |
+| Surface | Point-of-view and quality-bar document (in the worker's worktree) |
 | --- | --- |
-| `decks` | `<project>/docs/design/point-of-view.md` |
-| `scout` | `<project>/docs/design-system/point-of-view.md` |
-| `website` | `<project>/sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md` |
+| `decks` | `docs/design/point-of-view.md` |
+| `scout` | `docs/design-system/point-of-view.md` |
+| `website` | `sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md` |
 | `email` | `$FM_HOME/data/standards/mindshake-outbound-point-of-view.md` |
 
-`<project>` is the target project directory passed as the scaffold's second argument, and email lives under the firstmate home.
-When the bound document does not exist, the scaffold warns with the expected path and the brief tells the worker to create it from the ratified point-of-view report before designing.
+The decks, scout, and website paths are rendered relative to the worker's own worktree root, so reading follows its base branch and a created file lands in its commit. The scaffold's second argument is the repo name, and it checks the primary checkout at `$FM_HOME/projects/<repo-name>` only to decide whether to warn. Email lives under the firstmate home.
+When the bound document does not exist there, the scaffold warns naming the primary-checkout path it checked and the brief tells the worker to create it from the ratified point-of-view report before designing.
 
 Do not substitute `--design` for `--visual`.
 The former adds generic front-end defaults, while the latter binds the surface point of view and the editor pass.
