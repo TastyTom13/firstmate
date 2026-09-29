@@ -356,9 +356,9 @@ if [ "$VISUAL" -eq 1 ]; then
     exit 1
   }
   case "$SURFACE" in
-    decks) VISUAL_POV='docs/design/point-of-view.md' ;;
-    scout) VISUAL_POV='docs/design-system/point-of-view.md' ;;
-    website) VISUAL_POV='sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md' ;;
+    decks) VISUAL_POV="$FM_HOME/docs/design/point-of-view.md" ;;
+    scout) VISUAL_POV="$FM_HOME/docs/design-system/point-of-view.md" ;;
+    website) VISUAL_POV="$FM_HOME/sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md" ;;
     email) VISUAL_POV="$FM_HOME/data/standards/mindshake-outbound-point-of-view.md" ;;
     *) echo "error: --surface must be one of decks, scout, website, email (got '$SURFACE')" >&2; exit 1 ;;
   esac

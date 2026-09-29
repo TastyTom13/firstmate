@@ -1514,6 +1514,7 @@ test_visual_work_contract_is_surface_bound_and_opt_in() {
   while IFS='|' read -r surface pov; do
     [ -n "$surface" ] || continue
     home="$TMP_ROOT/visual-$surface"
+    pov="$home/$pov"
     mkdir -p "$home/data"
     FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
       "$ROOT/bin/fm-brief.sh" "visual-$surface" some-proj --mode no-mistakes --visual --surface "$surface" >/dev/null \
@@ -1547,7 +1548,7 @@ test_visual_work_contract_is_surface_bound_and_opt_in() {
 decks|docs/design/point-of-view.md
 scout|docs/design-system/point-of-view.md
 website|sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md
-email|$TMP_ROOT/visual-email/data/standards/mindshake-outbound-point-of-view.md
+email|data/standards/mindshake-outbound-point-of-view.md
 ROWS
 
   for kind in scout direct-PR local-only; do
