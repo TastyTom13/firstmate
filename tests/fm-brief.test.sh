@@ -895,6 +895,7 @@ test_scout_lavish_line_follows_presentation_floor() {
   local base label version expect case_dir fakebin brief n=0
   local hosting='you may host the Lavish review loop yourself'
   local text_only='deliver your findings as a text report without Lavish'
+  local durable='never under your session scratchpad or /tmp, because a restart wipes those'
   base=$(fm_test_base_path_sans "${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}" lavish-axi)
   while IFS='^' read -r label version expect; do
     [ -n "$label" ] || continue
@@ -910,9 +911,13 @@ test_scout_lavish_line_follows_presentation_floor() {
     if [ "$expect" = hosting ]; then
       assert_grep "$hosting" "$brief" "$label: scout brief did not offer the Lavish review loop"
       assert_no_grep "$text_only" "$brief" "$label: scout brief withheld Lavish from a compatible build"
+      assert_grep "Write any Lavish artifact under \`$case_dir/home/data/scout-lavish/\`" "$brief" \
+        "$label: scout brief did not direct the board to the task's durable data directory"
+      assert_grep "$durable" "$brief" "$label: scout brief did not say why the board must be durable"
     else
       assert_grep "$text_only" "$brief" "$label: scout brief did not ask for a text report"
       assert_no_grep "$hosting" "$brief" "$label: scout brief offered a below-floor Lavish"
+      assert_no_grep "$durable" "$brief" "$label: scout brief placed a board it did not offer"
     fi
   done <<'ROWS'
 lavish-axi at the floor^0.1.46^hosting
@@ -920,7 +925,7 @@ lavish-axi above the floor^0.2.0^hosting
 lavish-axi just below the floor^0.1.45^text
 absent lavish-axi^absent^text
 ROWS
-  pass "fm-brief.sh: scout Lavish hosting follows the bootstrap lavish-axi floor"
+  pass "fm-brief.sh: scout Lavish hosting follows the bootstrap lavish-axi floor and names a durable board path"
 }
 
 # Scout and secondmate paths still scaffold well-formed briefs.

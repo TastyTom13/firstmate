@@ -14,8 +14,8 @@
 #
 # The captain-ended state is reached through the same server route the browser's
 # End session button calls, so no browser is needed and nothing here depends on
-# a human. The artifact is a scratch page in a temporary directory, and the
-# session it opens is ended again before the guard returns.
+# a human. The artifact is a scratch page in a registered durable test directory,
+# and the session it opens is ended again before the guard returns.
 #
 # Standard CI has no lavish-axi, so this reports a capability skip there. The
 # portable counterpart in tests/fm-bearings-board.test.sh pins the build's logic
@@ -36,8 +36,8 @@ note() { printf '# %s\n' "$1"; }
 LAB=''
 cleanup() {
   [ -z "$LAB" ] || {
-    [ ! -f "$LAB/.lavish/bearings-board.html" ] \
-      || lavish-axi end "$LAB/.lavish/bearings-board.html" >/dev/null 2>&1 || true
+    [ ! -f "$LAB/data/.lavish/bearings-board.html" ] \
+      || lavish-axi end "$LAB/data/.lavish/bearings-board.html" >/dev/null 2>&1 || true
     rm -rf "$LAB"
   }
 }
@@ -47,8 +47,7 @@ trap cleanup EXIT
 VERSION=$(lavish-axi --version 2>/dev/null | tr -d '[:space:]')
 note "lavish-axi ${VERSION:-version-unknown}"
 
-LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-bearings-lavish-live.XXXXXX") || fail "cannot create the guard lab"
-LAB=$(cd -P -- "$LAB" && pwd -P)
+LAB=$(fm_test_tmproot fm-bearings-lavish-live) || fail "cannot create the guard lab"
 mkdir -p "$LAB/state" "$LAB/data"
 
 cat > "$LAB/payload.json" <<'JSON'
@@ -78,7 +77,7 @@ run_board() {
     "$ROOT/bin/fm-bearings-board.sh" "$@"
 }
 
-BOARD="$LAB/.lavish/bearings-board.html"
+BOARD="$LAB/data/.lavish/bearings-board.html"
 run_board build "$LAB/payload.json" >/dev/null 2>&1 || fail "the guard board did not build"
 [ -f "$BOARD" ] || fail "the guard board was not published"
 

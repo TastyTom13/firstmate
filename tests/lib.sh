@@ -191,6 +191,17 @@ fm_test_tmproot() {
   local prefix=${1:-fm-test} root tmp_base
   tmp_base=${TMPDIR:-/tmp}
   tmp_base=${tmp_base%/}
+  tmp_base=$(cd -P -- "$tmp_base" && pwd -P) || return 1
+  case "$tmp_base" in
+    /tmp|/tmp/*|/private/tmp|/private/tmp/*|*/*scratchpad*/*)
+      tmp_base=${HOME:?HOME is required for durable test fixtures}
+      tmp_base=${tmp_base%/}
+      tmp_base=$(cd -P -- "$tmp_base" && pwd -P) || return 1
+      case "$tmp_base" in
+        /tmp|/tmp/*|/private/tmp|/private/tmp/*|*/*scratchpad*/*) return 1 ;;
+      esac
+      ;;
+  esac
   root=$(mktemp -d "$tmp_base/${prefix}.XXXXXX") || return 1
   root=$(cd -P -- "$root" && pwd -P) || return 1
   if ! printf '%s\n%s\n' "$$" "$FM_TEST_OWNER_IDENTITY" > "$root/.fm-test-fixture" ||

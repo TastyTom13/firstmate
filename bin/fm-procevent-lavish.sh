@@ -13,6 +13,10 @@
 #   fm-procevent-lavish.sh retire <artifact.html>
 #   fm-procevent-lavish.sh poll <artifact.html>
 #
+# arm        Refuses an artifact whose real path lies under /tmp, /private/tmp,
+#            or any directory whose name contains "scratchpad", because a
+#            restart wipes those and kills the board's link; write the board
+#            under the task's durable $FM_HOME/data/<task-id>/ directory instead.
 # classify   Print the lifecycle state a handler should act on: feedback, ended,
 #            waiting, missing, or unknown.
 # read       Print a structured presentation of one already-captured result so a
@@ -124,7 +128,7 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 . "$SCRIPT_DIR/fm-procevent-lib.sh"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
-usage() { sed -n '2,111p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,117p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2; }
 
 # Canonical identity is physical, not the path string: Lavish itself keys a
 # session on the realpath of the artifact, so two names for one file are one
@@ -152,6 +156,10 @@ cmd_arm() {
   id=$(cmd_source_id "$artifact") || exit 1
   real=$(perl -MCwd=realpath -e '$p = realpath($ARGV[0]); defined($p) or exit 1; print "$p\n"' "$artifact" 2>/dev/null) \
     || die "cannot resolve the artifact path: $artifact"
+  case "$real" in
+    /tmp/*|/private/tmp/*|*/*scratchpad*/*)
+      die "refusing a volatile artifact path a restart wipes: $real; write the board under $FM_HOME/data/<task-id>/ instead" ;;
+  esac
   # This adapter's own listener command, which runs the plain blocking form with
   # no --timeout-ms so completion is a server event, and absorbs only the exact
   # transient interruption. Registering raw poll output is what let that

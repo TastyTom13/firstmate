@@ -69,7 +69,7 @@ render_board() {  # <home> <underway-json> <charted-json> [charted_more] [charte
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
-  node "$HARNESS" "$home/.lavish/bearings-board.html" \
+  node "$HARNESS" "$home/data/.lavish/bearings-board.html" \
     || fail "the built board could not be rendered"
 }
 
@@ -88,7 +88,7 @@ render_pools() {  # <home> <pools-json|->
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
-  node "$HARNESS" "$home/.lavish/bearings-board.html" \
+  node "$HARNESS" "$home/data/.lavish/bearings-board.html" \
     || fail "the built board could not be rendered"
 }
 
@@ -108,7 +108,7 @@ render_submits() {  # <home>
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
-  FM_BOARD_DRIVE_SUBMITS=1 node "$HARNESS" "$home/.lavish/bearings-board.html" \
+  FM_BOARD_DRIVE_SUBMITS=1 node "$HARNESS" "$home/data/.lavish/bearings-board.html" \
     || fail "the built board could not be rendered"
 }
 
@@ -241,7 +241,7 @@ render_usage() {  # <home> <usage-json|->
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
-  node "$HARNESS" "$home/.lavish/bearings-board.html" \
+  node "$HARNESS" "$home/data/.lavish/bearings-board.html" \
     || fail "the built board could not be rendered"
 }
 
@@ -313,7 +313,7 @@ render_ideas() {  # <home> <parked-ideas-json|-> [idea-typed-into-the-box...]
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
-  node "$HARNESS" "$home/.lavish/bearings-board.html" "$@" \
+  node "$HARNESS" "$home/data/.lavish/bearings-board.html" "$@" \
     || fail "the built board could not be rendered"
 }
 
@@ -360,7 +360,7 @@ test_an_unmarked_row_keeps_the_title_its_backlog_row_has() {
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
-  out=$(node "$HARNESS" "$home/.lavish/bearings-board.html") \
+  out=$(node "$HARNESS" "$home/data/.lavish/bearings-board.html") \
     || fail "the built board could not be rendered"
   printf '%s' "$out" | jq -e '
     .error == "" and .charted[0].title == "Idea: capture box for the board"
@@ -537,7 +537,7 @@ test_a_promoted_idea_row_drops_the_prefix_too() {
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
-  out=$(node "$HARNESS" "$home/.lavish/bearings-board.html") \
+  out=$(node "$HARNESS" "$home/data/.lavish/bearings-board.html") \
     || fail "the built board could not be rendered"
   printf '%s' "$out" | jq -e '
     .error == "" and .charted[0].title == "batch the merges" and .charted[0].pickable == true

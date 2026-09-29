@@ -182,9 +182,10 @@ run_arm() {
   "$TMUX" -L "$SOCKET" new-session -d -s "$SESSION" -x 200 -y 50 \
     "FM_HOME='$HOME_DIR' FM_STATE_OVERRIDE='$HOME_DIR/state' FM_CONFIG_OVERRIDE='$HOME_DIR/config' \
      FM_ROOT_OVERRIDE='$ROOT' LAB_PROJECT='$PROJECT' '$LAB/launch.sh' ${pi_args[*]@Q}"
-  # The lab project path in Pi's own status line is the readiness signal: it
-  # appears only once the TUI has drawn, unlike any prompt character.
-  wait_for_pane_text "$PROJECT" 240 \
+  # Pi's startup banner is the readiness signal: it appears only once the TUI
+  # has drawn, while the status line may abbreviate the lab path differently
+  # between Pi versions.
+  wait_for_pane_text "escape interrupt" 240 \
     || { "$TMUX" -L "$SOCKET" capture-pane -p -t "$SESSION" >&2; fail "Pi $PI_VERSION never drew its TUI in the $label arm"; }
   sleep 2
 
