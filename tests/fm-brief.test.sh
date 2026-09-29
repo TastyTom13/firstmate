@@ -220,6 +220,7 @@ test_ship_modes_generate_clean_briefs() {
     if [ "$mode" = no-mistakes ]; then
       assert_grep "# Waiting on the pipeline" "$brief" "$id: no-mistakes brief missing the pipeline wait rule"
       assert_grep "no-mistakes axi run --wait 25m" "$brief" "$id: wait rule missing the long blocking call"
+      assert_grep "paused: awaiting pipeline <step> on <branch or PR>" "$brief" "$id: wait rule missing the paused declaration"
     else
       assert_no_grep "# Waiting on the pipeline" "$brief" "$id: non-no-mistakes brief must not carry the pipeline wait rule"
     fi

@@ -882,6 +882,7 @@ if [ "$MODE" = no-mistakes ]; then
 - Never check more often than every 15 minutes.
 - Never attach a change monitor or watch tool to `no-mistakes axi status` output: its timers change every second, so every tick wakes you for nothing.
 - The pipeline never advances past a gate on its own, so a long wait loses nothing.
+- Before each long wait, append `paused: awaiting pipeline <step> on <branch or PR>` to the status file, and append a new line only when the step changes.
 EOF
   WAIT_RULE=${WAIT_RULE%$'\n'}
   DOD="$DOD$WAIT_RULE"
