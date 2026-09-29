@@ -93,7 +93,7 @@
 # as a path in the worker's own worktree; the scaffold checks
 # FM_HOME/projects/<repo-name> only to warn when it is missing; email lives
 # under FM_HOME; a missing file prints a warning and the brief tells the worker
-# to create it in its worktree, never a refusal), design-system and flow use, copy voice,
+# to create it only if absent from its worktree, never a refusal), design-system and flow use, copy voice,
 # and editor-pass evidence. It is refused on secondmate scaffolds, while a bare
 # --surface is refused rather than ignored. Omitted, the brief is byte-identical
 # to what it was before the flag existed. The visual-work skill owns firstmate's
@@ -550,8 +550,7 @@ fi
 
 # Decks, scout, and website point-of-view documents live inside the target
 # project. The brief names the path relative to the worker's own worktree root,
-# so reading follows the worker's base branch and a created file lands in its
-# commit. The scaffold checks the project's primary checkout under
+# so reading follows the worker's base branch. The scaffold checks the project's primary checkout under
 # FM_HOME/projects/<repo-name> only to decide whether to warn. Email lives under
 # the firstmate home. A missing document is warned about, not refused, because
 # the first task on a surface creates it.
@@ -565,8 +564,13 @@ if [ "$VISUAL" -eq 1 ]; then
   fi
   if [ ! -f "$VISUAL_POV_CHECK" ]; then
     echo "warning: the $SURFACE point-of-view document does not exist yet (checked $VISUAL_POV_CHECK); the brief tells the worker to create it from the ratified point-of-view report before designing" >&2
-    VISUAL_POV_MISSING="
-This document does not exist yet. Before designing, create it at that path$VISUAL_POV_WHERE from the ratified point-of-view report (\`$FM_HOME/data/design-point-of-view-documents/report.md\`), then follow it."
+    if [ -n "$VISUAL_POV_REL" ]; then
+      VISUAL_POV_MISSING="
+At scaffold time this document was not found in the primary checkout. In your worktree, read \`$VISUAL_POV\` if it exists, and only if it is absent there create it from the ratified point-of-view report (\`$FM_HOME/data/design-point-of-view-documents/report.md\`) before designing; never overwrite an existing one."
+    else
+      VISUAL_POV_MISSING="
+This document does not exist yet. Before designing, create it at that path from the ratified point-of-view report (\`$FM_HOME/data/design-point-of-view-documents/report.md\`), then follow it."
+    fi
   fi
 fi
 

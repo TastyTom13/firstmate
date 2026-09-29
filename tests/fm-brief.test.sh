@@ -1575,8 +1575,12 @@ ROWS
         assert_grep "create it at that path from the ratified point-of-view report" "$home/data/visual-missing-$surface/brief.md" \
           "$surface: brief did not tell the worker to create the missing document" ;;
       *) assert_contains "$out" "(checked $home/projects/$proj/" "$surface: warning did not name the primary-checkout path checked"
-        assert_grep "create it at that path in your worktree from the ratified point-of-view report" "$home/data/visual-missing-$surface/brief.md" \
-          "$surface: brief did not tell the worker to create the missing document in its worktree" ;;
+        assert_grep "At scaffold time this document was not found in the primary checkout. In your worktree, read " "$home/data/visual-missing-$surface/brief.md" \
+          "$surface: brief did not frame the scaffold check as advisory"
+        assert_grep "only if it is absent there create it from the ratified point-of-view report" "$home/data/visual-missing-$surface/brief.md" \
+          "$surface: brief did not limit creation to a document absent from the worktree"
+        assert_grep "never overwrite an existing one" "$home/data/visual-missing-$surface/brief.md" \
+          "$surface: brief did not forbid overwriting an existing document" ;;
     esac
   done
 
