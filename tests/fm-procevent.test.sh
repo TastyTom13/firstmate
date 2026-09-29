@@ -901,6 +901,52 @@ for invalid_delay in 0 61 invalid; do
 done
 pass "arm rejects malformed and out-of-range retry delays before registration"
 
+# A board armed from a path a restart wipes goes dead with a live-looking link,
+# so arm refuses /tmp, /private/tmp, and scratchpad paths unless explicitly
+# overridden. tests/lib.sh exports that override for fixtures, so strip it here.
+HVOLATILE="$TMP_ROOT/hvolatile"; new_home "$HVOLATILE"
+fm_test_track_procevent_home "$HVOLATILE"
+VOLATILE_TMP=$(mktemp -d /tmp/fm-lavish-volatile.XXXXXX)
+printf '%s\n' "$VOLATILE_TMP" >> "$FM_TEST_CLEANUP_REGISTRY"
+mkdir -p "$TMP_ROOT/session/scratchpad"
+for volatile_art in "$VOLATILE_TMP/board.html" "$TMP_ROOT/session/scratchpad/board.html"; do
+  printf '<h1>volatile</h1>\n' > "$volatile_art"
+  volatile_id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$volatile_art")
+  volatile_status=0
+  volatile_out=$(env -u FM_LAVISH_ALLOW_VOLATILE PATH="$LAVISH_SCRIPTED_BIN:$PATH" FM_HOME="$HVOLATILE" \
+    "$ROOT/bin/fm-procevent-lavish.sh" arm "$volatile_art" 2>&1) || volatile_status=$?
+  [ "$volatile_status" -ne 0 ] || fail "arm accepted a volatile artifact path: $volatile_art"
+  assert_contains "$volatile_out" "refusing a volatile artifact path a restart wipes" \
+    "arm explains the volatile-path refusal"
+  assert_contains "$volatile_out" "$HVOLATILE/data/<task-id>/" \
+    "arm names the durable board location"
+  assert_absent "$HVOLATILE/state/procevent/$volatile_id.source" \
+    "arm publishes no source registration for a volatile path"
+  PATH="$LAVISH_SCRIPTED_BIN:$PATH" FM_HOME="$HVOLATILE" \
+    FM_LAVISH_ALLOW_VOLATILE=1 "$ROOT/bin/fm-procevent-lavish.sh" arm "$volatile_art" >/dev/null \
+    || fail "FM_LAVISH_ALLOW_VOLATILE=1 did not arm the volatile path: $volatile_art"
+  assert_present "$HVOLATILE/state/procevent/$volatile_id.source" \
+    "the override arms the volatile path"
+  PATH="$LAVISH_SCRIPTED_BIN:$PATH" FM_HOME="$HVOLATILE" \
+    "$ROOT/bin/fm-procevent-lavish.sh" retire "$volatile_art" >/dev/null
+done
+# A durable path arms with no override. Only provable where the fixture root is
+# itself outside /tmp (macOS's per-user TMPDIR); a /tmp-rooted run skips it.
+case "$(cd -P -- "$TMP_ROOT" && pwd -P)" in
+  /tmp/*|/private/tmp/*|*/*scratchpad*/*) ;;
+  *)
+    mkdir -p "$HVOLATILE/data/board-task"
+    DURABLE_ART="$HVOLATILE/data/board-task/board.html"
+    printf '<h1>durable</h1>\n' > "$DURABLE_ART"
+    env -u FM_LAVISH_ALLOW_VOLATILE PATH="$LAVISH_SCRIPTED_BIN:$PATH" FM_HOME="$HVOLATILE" \
+      "$ROOT/bin/fm-procevent-lavish.sh" arm "$DURABLE_ART" >/dev/null \
+      || fail "arm refused a durable data/<task-id>/ artifact path"
+    PATH="$LAVISH_SCRIPTED_BIN:$PATH" FM_HOME="$HVOLATILE" \
+      "$ROOT/bin/fm-procevent-lavish.sh" retire "$DURABLE_ART" >/dev/null
+    ;;
+esac
+pass "arm refuses volatile artifact paths unless FM_LAVISH_ALLOW_VOLATILE=1"
+
 # Shell-safe cleanup must preserve a valid TMPDIR containing an apostrophe.
 QUOTED_TMPDIR="$TMP_ROOT/poll's-stage"
 mkdir -p "$QUOTED_TMPDIR"

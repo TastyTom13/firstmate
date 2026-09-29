@@ -47,6 +47,11 @@ umask 022
 # strips this to verify real refusal.
 export FM_GATE_REFUSE_BYPASS=1
 
+# Test fixtures live under TMPDIR, which is /tmp on Linux CI, so let
+# bin/fm-procevent-lavish.sh arm accept them. tests/fm-procevent.test.sh strips
+# this to verify the real volatile-path refusal.
+export FM_LAVISH_ALLOW_VOLATILE=1
+
 # Clear the task-worker marker bin/fm-spawn.sh exports into ship and scout
 # panes. This suite builds git-init fixture repositories whose primary checkout
 # it runs a copied bin/fm-test-run.sh in, and that runner refuses the primary
