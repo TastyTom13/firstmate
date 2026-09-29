@@ -871,23 +871,6 @@ esac
 RULE1=$(fm_ship_rule_one "$MODE" "$ID") || exit 1
 DOD=$(fm_dod_block "$MODE" "$ID" "$META_FILE" "$BASE") || exit 1
 
-# Pipeline wait rule, no-mistakes ships only. Without it workers improvise polling
-# loops, and every poll is a model turn that burns the fleet's token pool.
-if [ "$MODE" = no-mistakes ]; then
-  IFS= read -r -d '' WAIT_RULE <<'EOF' || true
-
-# Waiting on the pipeline
-- Wait with one long blocking call: `no-mistakes axi run --wait 25m`, or the longest wait your harness allows.
-- If the harness cuts the call off, `sleep 900` before the next `no-mistakes axi status`.
-- Never check more often than every 15 minutes.
-- Never attach a change monitor or watch tool to `no-mistakes axi status` output: its timers change every second, so every tick wakes you for nothing.
-- The pipeline never advances past a gate on its own, so a long wait loses nothing.
-- Before each long wait, append `paused: awaiting pipeline <step> on <branch or PR>` to the status file, and append a new line only when the step changes.
-EOF
-  WAIT_RULE=${WAIT_RULE%$'\n'}
-  DOD="$DOD$WAIT_RULE"
-fi
-
 # Evidence rules 8 and 9 (scout report fm-scout-loop-throughput-review 7.1, F-a
 # and F-b). Both name the PR body as the place the proof is cited, so local-only,
 # which raises no PR, carries neither. Rule 10 is the UI screenshot pre-flight and
