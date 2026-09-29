@@ -1,0 +1,15 @@
+ok - fm-brief.sh: investigation and visual-review completions load the shared decision policy
+ok - fm-brief: scout and secondmate code paths still scaffold well-formed briefs
+ok - fm-brief.sh: scout Lavish hosting follows the bootstrap lavish-axi floor and names a durable board path
+ok - fm-brief.sh: ship and scout carry the CONTEXT pointer, Toolkit, and Reporting rules
+ok - fm-brief.sh: --env-file is opt-in, absolute, self-explaining, and refused on charters
+ok - fm-brief.sh: the merge wait is declared exactly where a PR is raised
+ok - fm-brief.sh: the Built-by PR-body line reads this task's own recorded harness/model/effort
+ok - fm-brief.sh: fable-prompting Task subsections, charter Intent slot, Working discipline lines, cd caution, and ship verification step render for every scaffold
+ok - fm-brief.sh: acceptance-numbering and red-then-green rules render only for PR-raising ship briefs
+ok - fm-brief.sh: the screenshot pre-flight renders only for --ui tasks
+ok - fm-brief.sh: --help documents the --ui screenshot pre-flight
+ok - fm-brief.sh: ship and scout briefs name the unwanted and wanted turn ends plus the time sentence
+ok - fm-brief.sh: --pasted-file marks the captain's paste under Captain's intent and is otherwise byte-identical
+ok - fm-brief.sh: --design adds only the front-end design block
+ok - fm-brief.sh: --help documents --pasted-file and --design

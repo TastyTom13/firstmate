@@ -1,0 +1,8 @@
+== /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.zYc29LMxSQ/data/wait-direct-PR-a1/
+0
+== /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.zYc29LMxSQ/data/wait-local-only-a1/
+0
+== /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.zYc29LMxSQ/data/wait-no-mistakes-a1/
+1
+== /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.zYc29LMxSQ/data/wait-scout-a1/
+0
