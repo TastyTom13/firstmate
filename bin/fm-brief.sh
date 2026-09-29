@@ -14,8 +14,8 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--base <branch>] [--ui] [--design] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
-#        fm-brief.sh <task-id> <repo-name> --scout [--design] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--base <branch>] [--ui] [--design] [--visual --surface <decks|scout|website|email>] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
+#        fm-brief.sh <task-id> <repo-name> --scout [--design] [--visual --surface <decks|scout|website|email>] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -87,6 +87,13 @@
 # a general "avoid a generic look" only swaps one default for another). It is
 # refused on secondmate scaffolds. Omitted, the brief is byte-identical to what
 # it was before the flag existed.
+# --visual marks any visual task and requires --surface <decks|scout|website|email>.
+# The generated ship or scout brief then carries a "Visual work contract" with
+# that surface's point-of-view document, design-system and flow use, copy voice,
+# and editor-pass evidence. It is refused on secondmate scaffolds, while a bare
+# --surface is refused rather than ignored. Omitted, the brief is byte-identical
+# to what it was before the flag existed. The visual-work skill owns firstmate's
+# intake procedure and bin/fm-brief.sh owns the rendered worker contract.
 # --pasted-file <path> takes a file holding text the captain pasted in from
 # somewhere else (an email, a web page, another tool's output). Its text is
 # placed under `## Captain's intent`, after the {TASK} slot Firstmate still
@@ -225,6 +232,9 @@ HERDR_LAB=0
 NO_PROJECTS=0
 UI=0
 DESIGN=0
+VISUAL=0
+SURFACE=
+SURFACE_SET=0
 PASTED_FILE=
 PASTED_FILE_SET=0
 MODE=
@@ -245,6 +255,7 @@ for a in "$@"; do
       base) BASE=$a; BASE_SET=1 ;;
       env-file) ENV_FILE=$a; ENV_FILE_SET=1 ;;
       pasted-file) PASTED_FILE=$a; PASTED_FILE_SET=1 ;;
+      surface) SURFACE=$a; SURFACE_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
     want_value=
@@ -256,6 +267,9 @@ for a in "$@"; do
     --herdr-lab) HERDR_LAB=1 ;;
     --ui) UI=1 ;;
     --design) DESIGN=1 ;;
+    --visual) VISUAL=1 ;;
+    --surface) want_value=surface ;;
+    --surface=*) SURFACE=${a#--surface=}; SURFACE_SET=1 ;;
     --pasted-file) want_value=pasted-file ;;
     --pasted-file=*) PASTED_FILE=${a#--pasted-file=}; PASTED_FILE_SET=1 ;;
     --no-projects) NO_PROJECTS=1 ;;
@@ -328,6 +342,28 @@ ID=${POS[0]}
 
 if [ "$KIND" = secondmate ] && [ "$HERDR_LAB" -eq 1 ]; then
   echo "error: --herdr-lab applies only to crewmate ship or scout briefs" >&2
+  exit 1
+fi
+
+VISUAL_POV=
+if [ "$VISUAL" -eq 1 ]; then
+  [ "$KIND" != secondmate ] || {
+    echo "error: --visual applies only to crewmate ship or scout briefs" >&2
+    exit 1
+  }
+  [ "$SURFACE_SET" -eq 1 ] || {
+    echo "error: --visual requires --surface <decks|scout|website|email>" >&2
+    exit 1
+  }
+  case "$SURFACE" in
+    decks) VISUAL_POV='docs/design/point-of-view.md' ;;
+    scout) VISUAL_POV='docs/design-system/point-of-view.md' ;;
+    website) VISUAL_POV='sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md' ;;
+    email) VISUAL_POV="$FM_HOME/data/standards/mindshake-outbound-point-of-view.md" ;;
+    *) echo "error: --surface must be one of decks, scout, website, email (got '$SURFACE')" >&2; exit 1 ;;
+  esac
+elif [ "$SURFACE_SET" -eq 1 ]; then
+  echo "error: --surface applies only with --visual" >&2
   exit 1
 fi
 
@@ -504,6 +540,28 @@ If the project has a `BRAND.md` or a design system, follow it; where it speaks, 
 Otherwise, do not use a cream or off-white background, italic accent words in headlines, numbered "01/02/03" section labels, monospace labels, or pill-shaped buttons.
 EOF
   DESIGN_SECTION=${DESIGN_SECTION%$'\n'}
+fi
+
+# Visual work contract (--visual only). The visual-work skill owns firstmate's
+# intake procedure; this generated block is the concrete worker contract for the
+# selected surface. Empty by default so non-visual briefs retain their bytes.
+VISUAL_SECTION=
+if [ "$VISUAL" -eq 1 ]; then
+  IFS= read -r -d '' VISUAL_SECTION <<EOF || true
+
+
+# Visual work contract
+Before any design decision, read and follow \`$VISUAL_POV\`, the point of view and quality bar for the \`$SURFACE\` surface, and read \`$FM_ROOT/.agents/skills/visual-work/SKILL.md\`.
+Apply this direction: carry the point of view; one deliberate better-than-the-pattern idea is welcome, named as such.
+Use the project's design-system templates, interaction patterns, and flows wherever they exist, not only its colours and fonts.
+Look for \`BRAND.md\`, \`docs/design-system/\`, \`design-system/\`, and the existing templates, components, and user-flow definitions nearest this surface.
+Do not invent a component when the design system already has one.
+Where you write copy, use the copywriting skill and keep the voice professional, warm, human and direct, in the captain's own voice and never AI-sounding.
+Before the done line, complete an editor pass: walk the finished surface end to end as its user in a real browser.
+Record the walk in the PR body for PR work, the report for scout work, or the ready-branch summary for local-only work, and name the one surprising detail you added and why.
+Reviewers apply this rejection rule: "satisfies every rule and still dead is a reject".
+EOF
+  VISUAL_SECTION=${VISUAL_SECTION%$'\n'}
 fi
 
 # Untrusted content guard: shared by ship and scout so the two cannot drift.
@@ -773,7 +831,7 @@ $UNTRUSTED_CONTENT_SECTION
 
 $WORKING_DISCIPLINE_SECTION
 
-$TURN_ENDS_SECTION$DESIGN_SECTION
+$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION
 
 $TOOLKIT_SECTION
 
@@ -894,7 +952,7 @@ $UNTRUSTED_CONTENT_SECTION
 
 $WORKING_DISCIPLINE_SECTION
 
-$TURN_ENDS_SECTION$DESIGN_SECTION
+$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION
 
 $TOOLKIT_SECTION
 
