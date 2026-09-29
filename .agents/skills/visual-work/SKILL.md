@@ -20,10 +20,10 @@ The supported surface and point-of-view document pairs are:
 
 | Surface | Point-of-view and quality-bar document |
 | --- | --- |
-| `decks` | `docs/design/point-of-view.md` |
-| `scout` | `docs/design-system/point-of-view.md` |
-| `website` | `sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md` |
-| `email` | `data/standards/mindshake-outbound-point-of-view.md` under the active firstmate home |
+| `decks` | `$FM_HOME/docs/design/point-of-view.md` |
+| `scout` | `$FM_HOME/docs/design-system/point-of-view.md` |
+| `website` | `$FM_HOME/sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md` |
+| `email` | `$FM_HOME/data/standards/mindshake-outbound-point-of-view.md` |
 
 Do not substitute `--design` for `--visual`.
 The former adds generic front-end defaults, while the latter binds the surface point of view and the editor pass.
