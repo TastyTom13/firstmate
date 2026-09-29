@@ -20,10 +20,13 @@ The supported surface and point-of-view document pairs are:
 
 | Surface | Point-of-view and quality-bar document |
 | --- | --- |
-| `decks` | `$FM_HOME/docs/design/point-of-view.md` |
-| `scout` | `$FM_HOME/docs/design-system/point-of-view.md` |
-| `website` | `$FM_HOME/sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md` |
+| `decks` | `<project>/docs/design/point-of-view.md` |
+| `scout` | `<project>/docs/design-system/point-of-view.md` |
+| `website` | `<project>/sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md` |
 | `email` | `$FM_HOME/data/standards/mindshake-outbound-point-of-view.md` |
+
+`<project>` is the target project directory passed as the scaffold's second argument, and email lives under the firstmate home.
+When the bound document does not exist, the scaffold warns with the expected path and the brief tells the worker to create it from the ratified point-of-view report before designing.
 
 Do not substitute `--design` for `--visual`.
 The former adds generic front-end defaults, while the latter binds the surface point of view and the editor pass.

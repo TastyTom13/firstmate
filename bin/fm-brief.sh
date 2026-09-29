@@ -89,7 +89,10 @@
 # it was before the flag existed.
 # --visual marks any visual task and requires --surface <decks|scout|website|email>.
 # The generated ship or scout brief then carries a "Visual work contract" with
-# that surface's point-of-view document, design-system and flow use, copy voice,
+# that surface's point-of-view document (decks, scout, and website resolve
+# inside the target project given as the second argument; email lives under
+# FM_HOME; a missing file prints a warning and the brief tells the worker to
+# create it, never a refusal), design-system and flow use, copy voice,
 # and editor-pass evidence. It is refused on secondmate scaffolds, while a bare
 # --surface is refused rather than ignored. Omitted, the brief is byte-identical
 # to what it was before the flag existed. The visual-work skill owns firstmate's
@@ -346,6 +349,8 @@ if [ "$KIND" = secondmate ] && [ "$HERDR_LAB" -eq 1 ]; then
 fi
 
 VISUAL_POV=
+VISUAL_POV_REL=
+VISUAL_POV_MISSING=
 if [ "$VISUAL" -eq 1 ]; then
   [ "$KIND" != secondmate ] || {
     echo "error: --visual applies only to crewmate ship or scout briefs" >&2
@@ -356,9 +361,9 @@ if [ "$VISUAL" -eq 1 ]; then
     exit 1
   }
   case "$SURFACE" in
-    decks) VISUAL_POV="$FM_HOME/docs/design/point-of-view.md" ;;
-    scout) VISUAL_POV="$FM_HOME/docs/design-system/point-of-view.md" ;;
-    website) VISUAL_POV="$FM_HOME/sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md" ;;
+    decks) VISUAL_POV_REL="docs/design/point-of-view.md" ;;
+    scout) VISUAL_POV_REL="docs/design-system/point-of-view.md" ;;
+    website) VISUAL_POV_REL="sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md" ;;
     email) VISUAL_POV="$FM_HOME/data/standards/mindshake-outbound-point-of-view.md" ;;
     *) echo "error: --surface must be one of decks, scout, website, email (got '$SURFACE')" >&2; exit 1 ;;
   esac
@@ -542,6 +547,18 @@ EOF
   DESIGN_SECTION=${DESIGN_SECTION%$'\n'}
 fi
 
+# Decks, scout, and website point-of-view documents live inside the target
+# project; only email lives under the firstmate home. A missing document is
+# warned about, not refused, because the first task on a surface creates it.
+if [ "$VISUAL" -eq 1 ]; then
+  [ -z "$VISUAL_POV_REL" ] || VISUAL_POV="${POS[1]%/}/$VISUAL_POV_REL"
+  if [ ! -f "$VISUAL_POV" ]; then
+    echo "warning: the $SURFACE point-of-view document does not exist yet at $VISUAL_POV; the brief tells the worker to create it from the ratified point-of-view report before designing" >&2
+    VISUAL_POV_MISSING="
+This document does not exist yet. Before designing, create it at that path from the ratified point-of-view report (\`$FM_HOME/data/design-point-of-view-documents/report.md\`), then follow it."
+  fi
+fi
+
 # Visual work contract (--visual only). The visual-work skill owns firstmate's
 # intake procedure; this generated block is the concrete worker contract for the
 # selected surface. Empty by default so non-visual briefs retain their bytes.
@@ -551,7 +568,7 @@ if [ "$VISUAL" -eq 1 ]; then
 
 
 # Visual work contract
-Before any design decision, read and follow \`$VISUAL_POV\`, the point of view and quality bar for the \`$SURFACE\` surface, and read \`$FM_ROOT/.agents/skills/visual-work/SKILL.md\`.
+Before any design decision, read and follow \`$VISUAL_POV\`, the point of view and quality bar for the \`$SURFACE\` surface, and read \`$FM_ROOT/.agents/skills/visual-work/SKILL.md\`.$VISUAL_POV_MISSING
 Apply this direction: carry the point of view; one deliberate better-than-the-pattern idea is welcome, named as such.
 Use the project's design-system templates, interaction patterns, and flows wherever they exist, not only its colours and fonts.
 Look for \`BRAND.md\`, \`docs/design-system/\`, \`design-system/\`, and the existing templates, components, and user-flow definitions nearest this surface.
