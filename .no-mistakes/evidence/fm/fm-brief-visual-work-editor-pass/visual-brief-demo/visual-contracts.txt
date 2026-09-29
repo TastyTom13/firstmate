@@ -1,0 +1,32 @@
+
+=== decks ===
+# Visual work contract
+Before any design decision, read and follow `/Users/tomas/.no-mistakes/evidence/01M3PSB8QZ9YNVA70DVPNN7QE7/visual-brief-demo/docs/design/point-of-view.md`, the point of view and quality bar for the `decks` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3PSB8QZ9YNVA70DVPNN7QE7/.agents/skills/visual-work/SKILL.md`.
+Use the project's design-system templates, interaction patterns, and flows wherever they exist, not only its colours and fonts.
+Before the done line, complete an editor pass: walk the finished surface end to end as its user in a real browser.
+Record the walk in the PR body for PR work, the report for scout work, or the ready-branch summary for local-only work, and name the one surprising detail you added and why.
+Reviewers apply this rejection rule: "satisfies every rule and still dead is a reject".
+
+=== scout ===
+# Visual work contract
+Before any design decision, read and follow `/Users/tomas/.no-mistakes/evidence/01M3PSB8QZ9YNVA70DVPNN7QE7/visual-brief-demo/docs/design-system/point-of-view.md`, the point of view and quality bar for the `scout` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3PSB8QZ9YNVA70DVPNN7QE7/.agents/skills/visual-work/SKILL.md`.
+Use the project's design-system templates, interaction patterns, and flows wherever they exist, not only its colours and fonts.
+Before the done line, complete an editor pass: walk the finished surface end to end as its user in a real browser.
+Record the walk in the PR body for PR work, the report for scout work, or the ready-branch summary for local-only work, and name the one surprising detail you added and why.
+Reviewers apply this rejection rule: "satisfies every rule and still dead is a reject".
+
+=== website ===
+# Visual work contract
+Before any design decision, read and follow `/Users/tomas/.no-mistakes/evidence/01M3PSB8QZ9YNVA70DVPNN7QE7/visual-brief-demo/sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md`, the point of view and quality bar for the `website` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3PSB8QZ9YNVA70DVPNN7QE7/.agents/skills/visual-work/SKILL.md`.
+Use the project's design-system templates, interaction patterns, and flows wherever they exist, not only its colours and fonts.
+Before the done line, complete an editor pass: walk the finished surface end to end as its user in a real browser.
+Record the walk in the PR body for PR work, the report for scout work, or the ready-branch summary for local-only work, and name the one surprising detail you added and why.
+Reviewers apply this rejection rule: "satisfies every rule and still dead is a reject".
+
+=== email ===
+# Visual work contract
+Before any design decision, read and follow `/Users/tomas/.no-mistakes/evidence/01M3PSB8QZ9YNVA70DVPNN7QE7/visual-brief-demo/data/standards/mindshake-outbound-point-of-view.md`, the point of view and quality bar for the `email` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3PSB8QZ9YNVA70DVPNN7QE7/.agents/skills/visual-work/SKILL.md`.
+Use the project's design-system templates, interaction patterns, and flows wherever they exist, not only its colours and fonts.
+Before the done line, complete an editor pass: walk the finished surface end to end as its user in a real browser.
+Record the walk in the PR body for PR work, the report for scout work, or the ready-branch summary for local-only work, and name the one surprising detail you added and why.
+Reviewers apply this rejection rule: "satisfies every rule and still dead is a reject".
