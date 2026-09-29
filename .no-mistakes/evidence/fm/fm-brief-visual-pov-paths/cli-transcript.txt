@@ -1,0 +1,34 @@
+### A: scout POV exists in primary checkout (bare repo name 'scout'), no warning expected
+rc=0 (stderr above)
+85:Before any design decision, read and follow `docs/design-system/point-of-view.md` in your worktree, the point of view and quality bar for the `scout` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3QP5RVATWZ0YPHX4RTCH82H/.agents/skills/visual-work/SKILL.md`.
+118:Before reporting done, read and follow `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3QP5RVATWZ0YPHX4RTCH82H/.agents/skills/captain-hold-lifecycle/SKILL.md` and pass its shared completion gate for the report and any visual review.
+
+### B: decks, doc-creator has no POV -> warning + advisory wording
+warning: the decks point-of-view document does not exist yet (checked /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.944TmcJU3x/home/projects/doc-creator/docs/design/point-of-view.md); the brief tells the worker to create it from the ratified point-of-view report before designing
+rc=0
+96:Before any design decision, read and follow `docs/design/point-of-view.md` in your worktree, the point of view and quality bar for the `decks` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3QP5RVATWZ0YPHX4RTCH82H/.agents/skills/visual-work/SKILL.md`.
+97:At scaffold time this document was not found in the primary checkout. In your worktree, read `docs/design/point-of-view.md` if it exists, and only if it is absent there create it from the ratified point-of-view report (`/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.944TmcJU3x/home/data/design-point-of-view-documents/report.md`) before designing; never overwrite an existing one.
+
+### C: website on forge missing
+warning: the website point-of-view document does not exist yet (checked /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.944TmcJU3x/home/projects/forge/sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md); the brief tells the worker to create it from the ratified point-of-view report before designing
+rc=0
+96:Before any design decision, read and follow `sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md` in your worktree, the point of view and quality bar for the `website` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3QP5RVATWZ0YPHX4RTCH82H/.agents/skills/visual-work/SKILL.md`.
+97:At scaffold time this document was not found in the primary checkout. In your worktree, read `sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md` if it exists, and only if it is absent there create it from the ratified point-of-view report (`/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.944TmcJU3x/home/data/design-point-of-view-documents/report.md`) before designing; never overwrite an existing one.
+
+### D: email absolute under FM_HOME, missing
+warning: the email point-of-view document does not exist yet (checked /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.944TmcJU3x/home/data/standards/mindshake-outbound-point-of-view.md); the brief tells the worker to create it from the ratified point-of-view report before designing
+rc=0
+96:Before any design decision, read and follow `/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.944TmcJU3x/home/data/standards/mindshake-outbound-point-of-view.md`, the point of view and quality bar for the `email` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3QP5RVATWZ0YPHX4RTCH82H/.agents/skills/visual-work/SKILL.md`.
+97:This document does not exist yet. Before designing, create it at that path from the ratified point-of-view report (`/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.944TmcJU3x/home/data/design-point-of-view-documents/report.md`), then follow it.
+
+### E: no absolute primary-checkout path leaked into brief
+/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.944TmcJU3x/home/data/a1/brief.md:0
+/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.944TmcJU3x/home/data/b1/brief.md:0
+/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.944TmcJU3x/home/data/c1/brief.md:0
+/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.944TmcJU3x/home/data/d1/brief.md:0
+
+### F: non-visual brief has no visual section
+0
+### G: --surface without --visual
+error: --surface applies only with --visual
+rc=1

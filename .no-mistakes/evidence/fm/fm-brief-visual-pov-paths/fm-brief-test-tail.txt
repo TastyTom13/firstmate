@@ -1,0 +1,15 @@
+ok - fm-brief.sh: the Built-by PR-body line reads this task's own recorded harness/model/effort
+ok - fm-brief.sh: fable-prompting Task subsections, charter Intent slot, Working discipline lines, cd caution, and ship verification step render for every scaffold
+ok - fm-brief.sh: acceptance-numbering and red-then-green rules render only for PR-raising ship briefs
+ok - fm-brief.sh: the screenshot pre-flight renders only for --ui tasks
+ok - fm-brief.sh: --help documents the --ui screenshot pre-flight
+ok - fm-brief.sh: ship and scout briefs name the unwanted and wanted turn ends plus the time sentence
+ok - fm-brief.sh: --pasted-file marks the captain's paste under Captain's intent and is otherwise byte-identical
+ok - fm-brief.sh: --design adds only the front-end design block
+warning: the decks point-of-view document does not exist yet (checked /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-brief.XCwbE2/visual-kind-scout/projects/some-proj/docs/design/point-of-view.md); the brief tells the worker to create it from the ratified point-of-view report before designing
+warning: the decks point-of-view document does not exist yet (checked /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-brief.XCwbE2/visual-kind-direct-PR/projects/some-proj/docs/design/point-of-view.md); the brief tells the worker to create it from the ratified point-of-view report before designing
+warning: the decks point-of-view document does not exist yet (checked /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-brief.XCwbE2/visual-kind-local-only/projects/some-proj/docs/design/point-of-view.md); the brief tells the worker to create it from the ratified point-of-view report before designing
+warning: the decks point-of-view document does not exist yet (checked /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-brief.XCwbE2/visual-flagged/projects/some-proj/docs/design/point-of-view.md); the brief tells the worker to create it from the ratified point-of-view report before designing
+ok - fm-brief.sh: --visual is surface-bound, shared by ship/scout, and byte-neutral when absent
+ok - fm-brief.sh: --help documents the visual-work flag and surface selector
+ok - fm-brief.sh: --help documents --pasted-file and --design
