@@ -17,7 +17,6 @@
 #            or any directory whose name contains "scratchpad", because a
 #            restart wipes those and kills the board's link; write the board
 #            under the task's durable $FM_HOME/data/<task-id>/ directory instead.
-#            FM_LAVISH_ALLOW_VOLATILE=1 deliberately arms such a path anyway.
 # classify   Print the lifecycle state a handler should act on: feedback, ended,
 #            waiting, missing, or unknown.
 # read       Print a structured presentation of one already-captured result so a
@@ -157,12 +156,10 @@ cmd_arm() {
   id=$(cmd_source_id "$artifact") || exit 1
   real=$(perl -MCwd=realpath -e '$p = realpath($ARGV[0]); defined($p) or exit 1; print "$p\n"' "$artifact" 2>/dev/null) \
     || die "cannot resolve the artifact path: $artifact"
-  if [ "${FM_LAVISH_ALLOW_VOLATILE:-}" != 1 ]; then
-    case "$real" in
-      /tmp/*|/private/tmp/*|*/*scratchpad*/*)
-        die "refusing a volatile artifact path a restart wipes: $real; write the board under $FM_HOME/data/<task-id>/ instead (FM_LAVISH_ALLOW_VOLATILE=1 overrides)" ;;
-    esac
-  fi
+  case "$real" in
+    /tmp/*|/private/tmp/*|*/*scratchpad*/*)
+      die "refusing a volatile artifact path a restart wipes: $real; write the board under $FM_HOME/data/<task-id>/ instead" ;;
+  esac
   # This adapter's own listener command, which runs the plain blocking form with
   # no --timeout-ms so completion is a server event, and absorbs only the exact
   # transient interruption. Registering raw poll output is what let that

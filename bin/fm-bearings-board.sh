@@ -139,9 +139,9 @@
 # first; a row with no comparable date keeps its payload order after every dated
 # row. Anything else in that field refuses rather than sorting on garbage.
 #
-# The board path is stable - $FM_HOME/.lavish/bearings-board.html - so a
-# re-invocation rebuilds the same file in place, which keeps the same Lavish
-# session URL and the same canonical process-event source id. Injection escapes
+# The board path is stable and durable - $FM_HOME/data/.lavish/bearings-board.html
+# - so a re-invocation rebuilds the same file in place, which keeps the same
+# Lavish session URL and the same canonical process-event source id. Injection escapes
 # every `<` in the compact JSON as the \u003c string escape, so a payload string
 # containing "</script>" can never terminate the data block early.
 #
@@ -169,7 +169,7 @@ fail() {
   exit 1
 }
 
-board_path() { printf '%s/.lavish/bearings-board.html\n' "$FM_HOME"; }
+board_path() { printf '%s/data/.lavish/bearings-board.html\n' "$FM_HOME"; }
 
 validate_payload() {  # <data.json>
   jq -e --arg schema "$BOARD_SCHEMA" '

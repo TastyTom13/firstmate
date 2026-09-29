@@ -187,7 +187,7 @@ extract_payload() {  # <board-path>
 test_path_is_stable_and_home_scoped() {
   local home
   home=$(make_home path)
-  [ "$(run_board "$home" path)" = "$home/.lavish/bearings-board.html" ] \
+  [ "$(run_board "$home" path)" = "$home/data/.lavish/bearings-board.html" ] \
     || fail "the board path is not the stable home-scoped location"
   pass "path prints the stable home-scoped board location"
 }
@@ -195,7 +195,7 @@ test_path_is_stable_and_home_scoped() {
 test_build_refuses_malformed_payloads_before_touching_the_board() {
   local home data board rc out
   home=$(make_home refusal)
-  board="$home/.lavish/bearings-board.html"
+  board="$home/data/.lavish/bearings-board.html"
   data="$home/payload.json"
 
   printf 'not json\n' > "$data"
@@ -309,7 +309,7 @@ test_build_injects_binds_then_arms() {
   local home data board out sid
   home=$(make_home build)
   data="$home/payload.json"
-  board="$home/.lavish/bearings-board.html"
+  board="$home/data/.lavish/bearings-board.html"
   write_valid_payload "$data"
 
   out=$(run_board "$home" build "$data") || fail "a valid payload did not build"
@@ -355,7 +355,7 @@ test_registration_cannot_consume_before_any_origin_binding() {
   origin=order-proof-review
   key=captain-choice
   hold="$origin-decision-$key"
-  board="$home/.lavish/bearings-board.html"
+  board="$home/data/.lavish/bearings-board.html"
 
   cp "$ROOT/.tasks.toml" "$home/.tasks.toml"
   cat > "$home/data/backlog.md" <<'EOF'
@@ -450,7 +450,7 @@ SH
   rc=$?
   set -e
   [ "$rc" -ne 0 ] || fail "build continued after Lavish session establishment failed"
-  sid=$(run_lavish_source_id "$home" "$home/.lavish/bearings-board.html")
+  sid=$(run_lavish_source_id "$home" "$home/data/.lavish/bearings-board.html")
   ! run_decisions "$home" binding "$sid" >/dev/null 2>&1 \
     || fail "build bound the board before its Lavish session existed"
   ! run_procevent "$home" list | awk 'NR > 1 { print $1 }' | grep -Fxq "$sid" \
@@ -470,7 +470,7 @@ test_rebuild_is_idempotent_and_does_not_double_arm() {
   local home data board out records
   home=$(make_home rearm)
   data="$home/payload.json"
-  board="$home/.lavish/bearings-board.html"
+  board="$home/data/.lavish/bearings-board.html"
   write_valid_payload "$data"
   run_board "$home" build "$data" >/dev/null || fail "the first build failed"
 
@@ -496,7 +496,7 @@ test_build_refuses_a_template_without_exactly_one_slot() {
   set -e
   [ "$rc" -ne 0 ] || fail "a template with no data slot was accepted"
   assert_contains "$out" "data slot" "the slot refusal did not say why: $out"
-  assert_absent "$home/.lavish/bearings-board.html" "a refused template still produced a board"
+  assert_absent "$home/data/.lavish/bearings-board.html" "a refused template still produced a board"
   pass "build refuses a template without exactly one data slot"
 }
 
@@ -512,7 +512,7 @@ test_charted_kind_is_optional_and_accepts_both_values() {
       ] | .charted_warning_more = 2' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
   run_board "$home" build "$data" >/dev/null \
     || fail "an omitted, queued, and warning charted kind was refused"
-  extract_payload "$home/.lavish/bearings-board.html" | jq -e '
+  extract_payload "$home/data/.lavish/bearings-board.html" | jq -e '
     ([.charted[] | .kind // "queued"]) == ["queued", "queued", "warning"]
       and .charted_warning_more == 2
   ' >/dev/null || fail "the built board did not carry the charted kinds and omitted-warning count it was given"
@@ -529,7 +529,7 @@ test_pools_are_optional_and_validated_when_present() {
   write_valid_payload "$data"
   run_board "$home" build "$data" >/dev/null \
     || fail "a payload without pools was refused"
-  extract_payload "$home/.lavish/bearings-board.html" | jq -e 'has("pools") | not' >/dev/null \
+  extract_payload "$home/data/.lavish/bearings-board.html" | jq -e 'has("pools") | not' >/dev/null \
     || fail "the board invented a pools field the payload never carried"
 
   write_valid_payload "$data"
@@ -539,7 +539,7 @@ test_pools_are_optional_and_validated_when_present() {
                  "window":"","resets_at":null,"estimate":false,"note":"no credential"}]' \
     "$data" > "$data.tmp" && mv "$data.tmp" "$data"
   run_board "$home" build "$data" >/dev/null || fail "a well-formed pools array was refused"
-  extract_payload "$home/.lavish/bearings-board.html" | jq -e '
+  extract_payload "$home/data/.lavish/bearings-board.html" | jq -e '
     (.pools | length) == 2 and .pools[1].percent_remaining == null
   ' >/dev/null || fail "the built board did not carry the pools it was given"
 
@@ -573,7 +573,7 @@ test_parked_ideas_are_optional_and_validated_when_present() {
   write_valid_payload "$data"
   run_board "$home" build "$data" >/dev/null \
     || fail "a payload without parked_ideas was refused"
-  extract_payload "$home/.lavish/bearings-board.html" | jq -e 'has("parked_ideas") | not' >/dev/null \
+  extract_payload "$home/data/.lavish/bearings-board.html" | jq -e 'has("parked_ideas") | not' >/dev/null \
     || fail "the board invented a parked_ideas field the payload never carried"
 
   write_valid_payload "$data"
@@ -582,7 +582,7 @@ test_parked_ideas_are_optional_and_validated_when_present() {
         {"id":"idea-def456","title":"General fleet idea, no project yet","repo":null}
       ]' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
   run_board "$home" build "$data" >/dev/null || fail "a well-formed parked_ideas array was refused"
-  extract_payload "$home/.lavish/bearings-board.html" | jq -e '
+  extract_payload "$home/data/.lavish/bearings-board.html" | jq -e '
     (.parked_ideas | length) == 2 and .parked_ideas[1].repo == null
   ' >/dev/null || fail "the built board did not carry the parked ideas it was given"
 
@@ -608,7 +608,7 @@ test_build_reopens_a_session_the_captain_ended() {
   local home data board out sid claim old_pid old_token new_pid new_token
   home=$(make_home ended-session)
   data="$home/payload.json"
-  board="$home/.lavish/bearings-board.html"
+  board="$home/data/.lavish/bearings-board.html"
   write_valid_payload "$data"
   run_board "$home" build "$data" >/dev/null || fail "the first build failed"
   sid=$(run_lavish_source_id "$home" "$board")
@@ -648,7 +648,7 @@ test_build_reopens_when_an_opened_session_ends_before_listing() {
   local home data out board sid
   home=$(make_home establish-list-race)
   data="$home/payload.json"
-  board="$home/.lavish/bearings-board.html"
+  board="$home/data/.lavish/bearings-board.html"
   write_valid_payload "$data"
   : > "$home/lavish-state/end-before-next-list"
   out=$(run_board "$home" build "$data") || fail "the raced session build failed: $out"
@@ -675,7 +675,7 @@ test_build_refuses_to_arm_when_the_session_stays_ended() {
   set -e
   [ "$rc" -ne 0 ] || fail "build armed a poll on a session that stayed ended: $out"
   assert_contains "$out" "ended session" "the refusal did not say why: $out"
-  sid=$(run_lavish_source_id "$home" "$home/.lavish/bearings-board.html")
+  sid=$(run_lavish_source_id "$home" "$home/data/.lavish/bearings-board.html")
   ! run_decisions "$home" binding "$sid" >/dev/null 2>&1 \
     || fail "build bound the board to a session that stayed ended"
   ! run_procevent "$home" list | awk 'NR > 1 { print $1 }' | grep -Fxq "$sid" \
@@ -687,7 +687,7 @@ test_build_starts_a_listener_for_an_already_armed_board() {
   local home data board out sid claim
   home=$(make_home relisten)
   data="$home/payload.json"
-  board="$home/.lavish/bearings-board.html"
+  board="$home/data/.lavish/bearings-board.html"
   write_valid_payload "$data"
   run_board "$home" build "$data" >/dev/null || fail "the first build failed"
   sid=$(run_lavish_source_id "$home" "$board")
@@ -713,7 +713,7 @@ test_build_drops_decision_cards_whose_subject_already_landed() {
   local home data board out
   home=$(make_home landed-cards)
   data="$home/payload.json"
-  board="$home/.lavish/bearings-board.html"
+  board="$home/data/.lavish/bearings-board.html"
   write_valid_payload "$data"
   jq '.captains_call = [
         {"key":"landed-by-task","type":"decision","repo":"sample","title":"Already shipped",
@@ -753,7 +753,7 @@ test_build_keeps_a_decision_absent_from_the_main_backlog() {
   local home data board out
   home=$(make_home remote-decision-card)
   data="$home/payload.json"
-  board="$home/.lavish/bearings-board.html"
+  board="$home/data/.lavish/bearings-board.html"
   cp "$ROOT/.tasks.toml" "$home/.tasks.toml"
   cat > "$home/data/backlog.md" <<'EOF'
 ## In flight
@@ -787,7 +787,7 @@ test_build_fails_when_reconcile_cannot_establish_a_listener() {
   data="$home/payload.json"
   write_valid_payload "$data"
   run_board "$home" build "$data" >/dev/null || fail "could not establish the listener fixture"
-  sid=$(run_lavish_source_id "$home" "$home/.lavish/bearings-board.html")
+  sid=$(run_lavish_source_id "$home" "$home/data/.lavish/bearings-board.html")
   cat > "$home/fakebin/ps" <<'SH'
 #!/usr/bin/env bash
 exit 1
@@ -810,7 +810,7 @@ test_every_decision_card_carries_the_reconcile_choice() {
   local home data board
   home=$(make_home reconcile-option)
   data="$home/payload.json"
-  board="$home/.lavish/bearings-board.html"
+  board="$home/data/.lavish/bearings-board.html"
   write_valid_payload "$data"
   run_board "$home" build "$data" >/dev/null || fail "the reconcile-option build failed"
   extract_payload "$board" | jq -e '
@@ -839,7 +839,7 @@ test_build_refuses_a_payload_that_occupies_the_reconcile_value() {
   rc=$?
   set -e
   [ "$rc" -ne 0 ] || fail "a payload occupying the reserved reconcile value was accepted"
-  assert_absent "$home/.lavish/bearings-board.html" "a refused payload still produced a board"
+  assert_absent "$home/data/.lavish/bearings-board.html" "a refused payload still produced a board"
   pass "build refuses a payload that occupies the reserved reconcile value"
 }
 
@@ -855,7 +855,7 @@ test_build_refuses_a_nondecision_reconcile_value() {
   rc=$?
   set -e
   [ "$rc" -ne 0 ] || fail "a merge card occupying the reconcile value was accepted"
-  assert_absent "$home/.lavish/bearings-board.html" "a refused merge card still produced a board"
+  assert_absent "$home/data/.lavish/bearings-board.html" "a refused merge card still produced a board"
   pass "build reserves reconcile across non-decision cards"
 }
 

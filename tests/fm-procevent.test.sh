@@ -632,7 +632,8 @@ else
 fi
 SH
 chmod +x "$LAVISH_BIN/lavish-axi"
-REVIEW_ART="$TMP_ROOT/review.html"
+REVIEW_ART="$HLT/data/review.html"
+mkdir -p "$HLT/data"
 printf '<h1>review</h1>\n' > "$REVIEW_ART"
 lavish_id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$REVIEW_ART")
 fm_test_track_procevent_home "$HLT"
@@ -672,7 +673,8 @@ cat > "$EMPTY_BIN/lavish-axi" <<'SH'
 printf 'session:\n  file: /quiet.html\n  status: ended\n  ended_by: user\n'
 SH
 chmod +x "$EMPTY_BIN/lavish-axi"
-QUIET_ART="$TMP_ROOT/quiet-board.html"
+QUIET_ART="$HEMPTY/data/quiet-board.html"
+mkdir -p "$HEMPTY/data"
 printf '<h1>quiet</h1>\n' > "$QUIET_ART"
 quiet_id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$QUIET_ART")
 fm_test_track_procevent_home "$HEMPTY"
@@ -718,7 +720,8 @@ cat > "$ANSWER_BIN/lavish-axi" <<'SH'
 printf 'session:\n  file: /answered.html\n  status: feedback\n  session_ended: true\n  ended_by: user\nprompts[1]{tag,text,prompt}:\n  "choice","Option B","Context data: {\\"question\\":\\"noop-check-routing\\",\\"answer\\":\\"b\\"}"\n'
 SH
 chmod +x "$ANSWER_BIN/lavish-axi"
-ANSWER_ART="$TMP_ROOT/answered-board.html"
+ANSWER_ART="$HANSWER/data/answered-board.html"
+mkdir -p "$HANSWER/data"
 printf '<h1>answered</h1>\n' > "$ANSWER_ART"
 answer_id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$ANSWER_ART")
 fm_test_track_procevent_home "$HANSWER"
@@ -798,7 +801,8 @@ export FM_LAVISH_POLL_RETRY_DELAY=1
 # Two interruptions, then the captain's real feedback: the retries are silent and
 # only the feedback becomes a captured result and a check wake.
 HRETRY="$TMP_ROOT/hretry"; new_home "$HRETRY"
-RETRY_ART="$TMP_ROOT/retry-board.html"
+RETRY_ART="$HRETRY/data/retry-board.html"
+mkdir -p "$HRETRY/data"
 printf '<h1>retry</h1>\n' > "$RETRY_ART"
 retry_id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$RETRY_ART")
 fm_test_track_procevent_home "$HRETRY"
@@ -822,7 +826,8 @@ pass "a transient Lavish poll interruption is retried quietly and never announce
 # Exhaustion is news: after the bounded retries the same exact response is
 # captured and announced normally rather than being swallowed forever.
 HEXH="$TMP_ROOT/hexh"; new_home "$HEXH"
-EXH_ART="$TMP_ROOT/exhaust-board.html"
+EXH_ART="$HEXH/data/exhaust-board.html"
+mkdir -p "$HEXH/data"
 printf '<h1>exhaust</h1>\n' > "$EXH_ART"
 exh_id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$EXH_ART")
 fm_test_track_procevent_home "$HEXH"
@@ -845,7 +850,8 @@ pass "an interruption that outlives the bounded retries is captured and announce
 # A different SERVER_ERROR is a genuine error, never a retry: no fail-open drift
 # from the one exact transient response this adapter owns.
 HOTHER="$TMP_ROOT/hother"; new_home "$HOTHER"
-OTHER_ART="$TMP_ROOT/other-board.html"
+OTHER_ART="$HOTHER/data/other-board.html"
+mkdir -p "$HOTHER/data"
 printf '<h1>other</h1>\n' > "$OTHER_ART"
 other_id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$OTHER_ART")
 fm_test_track_procevent_home "$HOTHER"
@@ -865,7 +871,8 @@ unset FM_LAVISH_POLL_RETRY_DELAY
 # A whitespace variant is not the exact transient response and must surface on
 # the first poll instead of drifting into the quiet retry policy.
 HNEAR="$TMP_ROOT/hnear"; new_home "$HNEAR"
-NEAR_ART="$TMP_ROOT/near-board.html"
+NEAR_ART="$HNEAR/data/near-board.html"
+mkdir -p "$HNEAR/data"
 printf '<h1>near</h1>\n' > "$NEAR_ART"
 near_id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$NEAR_ART")
 fm_test_track_procevent_home "$HNEAR"
@@ -902,8 +909,7 @@ done
 pass "arm rejects malformed and out-of-range retry delays before registration"
 
 # A board armed from a path a restart wipes goes dead with a live-looking link,
-# so arm refuses /tmp, /private/tmp, and scratchpad paths unless explicitly
-# overridden. tests/lib.sh exports that override for fixtures, so strip it here.
+# so arm refuses /tmp, /private/tmp, and scratchpad paths outright.
 HVOLATILE="$TMP_ROOT/hvolatile"; new_home "$HVOLATILE"
 fm_test_track_procevent_home "$HVOLATILE"
 VOLATILE_TMP=$(mktemp -d /tmp/fm-lavish-volatile.XXXXXX)
@@ -913,7 +919,7 @@ for volatile_art in "$VOLATILE_TMP/board.html" "$TMP_ROOT/session/scratchpad/boa
   printf '<h1>volatile</h1>\n' > "$volatile_art"
   volatile_id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$volatile_art")
   volatile_status=0
-  volatile_out=$(env -u FM_LAVISH_ALLOW_VOLATILE PATH="$LAVISH_SCRIPTED_BIN:$PATH" FM_HOME="$HVOLATILE" \
+  volatile_out=$(PATH="$LAVISH_SCRIPTED_BIN:$PATH" FM_HOME="$HVOLATILE" \
     "$ROOT/bin/fm-procevent-lavish.sh" arm "$volatile_art" 2>&1) || volatile_status=$?
   [ "$volatile_status" -ne 0 ] || fail "arm accepted a volatile artifact path: $volatile_art"
   assert_contains "$volatile_out" "refusing a volatile artifact path a restart wipes" \
@@ -922,30 +928,8 @@ for volatile_art in "$VOLATILE_TMP/board.html" "$TMP_ROOT/session/scratchpad/boa
     "arm names the durable board location"
   assert_absent "$HVOLATILE/state/procevent/$volatile_id.source" \
     "arm publishes no source registration for a volatile path"
-  PATH="$LAVISH_SCRIPTED_BIN:$PATH" FM_HOME="$HVOLATILE" \
-    FM_LAVISH_ALLOW_VOLATILE=1 "$ROOT/bin/fm-procevent-lavish.sh" arm "$volatile_art" >/dev/null \
-    || fail "FM_LAVISH_ALLOW_VOLATILE=1 did not arm the volatile path: $volatile_art"
-  assert_present "$HVOLATILE/state/procevent/$volatile_id.source" \
-    "the override arms the volatile path"
-  PATH="$LAVISH_SCRIPTED_BIN:$PATH" FM_HOME="$HVOLATILE" \
-    "$ROOT/bin/fm-procevent-lavish.sh" retire "$volatile_art" >/dev/null
 done
-# A durable path arms with no override. Only provable where the fixture root is
-# itself outside /tmp (macOS's per-user TMPDIR); a /tmp-rooted run skips it.
-case "$(cd -P -- "$TMP_ROOT" && pwd -P)" in
-  /tmp/*|/private/tmp/*|*/*scratchpad*/*) ;;
-  *)
-    mkdir -p "$HVOLATILE/data/board-task"
-    DURABLE_ART="$HVOLATILE/data/board-task/board.html"
-    printf '<h1>durable</h1>\n' > "$DURABLE_ART"
-    env -u FM_LAVISH_ALLOW_VOLATILE PATH="$LAVISH_SCRIPTED_BIN:$PATH" FM_HOME="$HVOLATILE" \
-      "$ROOT/bin/fm-procevent-lavish.sh" arm "$DURABLE_ART" >/dev/null \
-      || fail "arm refused a durable data/<task-id>/ artifact path"
-    PATH="$LAVISH_SCRIPTED_BIN:$PATH" FM_HOME="$HVOLATILE" \
-      "$ROOT/bin/fm-procevent-lavish.sh" retire "$DURABLE_ART" >/dev/null
-    ;;
-esac
-pass "arm refuses volatile artifact paths unless FM_LAVISH_ALLOW_VOLATILE=1"
+pass "arm refuses volatile artifact paths outright"
 
 # Shell-safe cleanup must preserve a valid TMPDIR containing an apostrophe.
 QUOTED_TMPDIR="$TMP_ROOT/poll's-stage"
@@ -959,7 +943,8 @@ quoted_staged=("$QUOTED_TMPDIR"/fm-lavish-poll.*)
 pass "poll cleanup safely handles an apostrophe-containing TMPDIR"
 
 HSTREAM="$TMP_ROOT/hstream"; new_home "$HSTREAM"
-STREAM_ART="$TMP_ROOT/stream-board.html"
+mkdir -p "$HSTREAM/data"
+STREAM_ART="$HSTREAM/data/stream-board.html"
 STREAM_TMPDIR="$TMP_ROOT/stream-stage"
 LAVISH_STREAM_READY="$TMP_ROOT/stream-ready"
 LAVISH_STREAM_RELEASE="$TMP_ROOT/stream-release"

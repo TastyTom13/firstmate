@@ -36,8 +36,8 @@ note() { printf '# %s\n' "$1"; }
 LAB=''
 cleanup() {
   [ -z "$LAB" ] || {
-    [ ! -f "$LAB/.lavish/bearings-board.html" ] \
-      || lavish-axi end "$LAB/.lavish/bearings-board.html" >/dev/null 2>&1 || true
+    [ ! -f "$LAB/data/.lavish/bearings-board.html" ] \
+      || lavish-axi end "$LAB/data/.lavish/bearings-board.html" >/dev/null 2>&1 || true
     rm -rf "$LAB"
   }
 }
@@ -78,7 +78,7 @@ run_board() {
     "$ROOT/bin/fm-bearings-board.sh" "$@"
 }
 
-BOARD="$LAB/.lavish/bearings-board.html"
+BOARD="$LAB/data/.lavish/bearings-board.html"
 run_board build "$LAB/payload.json" >/dev/null 2>&1 || fail "the guard board did not build"
 [ -f "$BOARD" ] || fail "the guard board was not published"
 

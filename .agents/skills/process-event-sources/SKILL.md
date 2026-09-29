@@ -33,7 +33,7 @@ For a Lavish review artifact firstmate owns (a live investigating scout should h
 bin/fm-procevent-lavish.sh arm <artifact.html>
 ```
 
-Write the artifact under the task's durable `data/<task-id>/` directory, never the session scratchpad or `/tmp`, because a restart wipes those and kills the board's link; `arm` refuses such a volatile path unless `FM_LAVISH_ALLOW_VOLATILE=1` is set.
+Write the artifact under the task's durable `data/<task-id>/` directory, never the session scratchpad or `/tmp`, because a restart wipes those and kills the board's link; `arm` refuses such a volatile path outright.
 
 Registering a source is not the same fact as listening to it: arming records the source, and a separate runner still has to pick it up.
 After arming by hand, confirm `bin/fm-procevent.sh list` reports that source as `live`, and run `bin/fm-procevent.sh reconcile` when it does not.
