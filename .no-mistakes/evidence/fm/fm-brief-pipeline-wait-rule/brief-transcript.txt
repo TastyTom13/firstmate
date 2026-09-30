@@ -1,0 +1,19 @@
+== no-mistakes: wait section ==
+# Waiting on the pipeline
+- Keep the drive call's `--wait` at or under your harness's command limit: the default `8m` fits a ten-minute cap, and a longer value gets the call killed.
+- When a call returns with the run still going, wait with one call that fits the same limit, such as `sleep 540`, before the next `no-mistakes axi status`.
+- Every check costs you a model turn, so never check more often than that.
+- Never attach a change monitor or watch tool to `no-mistakes axi status` output: its timers change every second, so every tick wakes you for nothing.
+- The pipeline never advances past a gate on its own, so a long wait loses nothing.
+- Before each wait, append `paused: awaiting pipeline <step> on <branch or PR>` to the status file, and append a new line only when the step changes.
+
+== direct-PR count ==
+0
+== local-only count ==
+0
+== override verb (holding) ==
+152:- Before each wait, append `holding: awaiting pipeline <step> on <branch or PR>` to the status file, and append a new line only when the step changes.
+== unterminated heredoc marker (EOF) count ==
+0
+== default verb ==
+152:- Before each wait, append `paused: awaiting pipeline <step> on <branch or PR>` to the status file, and append a new line only when the step changes.
