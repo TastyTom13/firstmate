@@ -357,7 +357,7 @@ settle_final() { # canonical-url task... : copy the URL's final observation to e
 }
 
 poll() {
-  local task url old kind error observed terminal_before remaining
+  local task url old kind error observed
   local -a row
   acquire
   get_input
