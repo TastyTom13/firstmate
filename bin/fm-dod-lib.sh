@@ -345,6 +345,14 @@ Where a harness's own command limit is not established, assume it bounds command
 A killed or timed-out call is never evidence the daemon died: the daemon accepts your response immediately and runs the round in the background, so the call was only ever waiting for a read while the run kept working.
 Reattach and keep going rather than reporting the pipeline blocked; rule 7 owns the checks that decide when a pipeline block is real.
 
+# Waiting on the pipeline
+- Keep the drive call's \`--wait\` at or under your harness's command limit: the default \`8m\` fits a ten-minute cap, and a longer value gets the call killed.
+- When a call returns with the run still going, wait with one call that fits the same limit, such as \`sleep 540\`, before the next \`no-mistakes axi status\`.
+- Every check costs you a model turn, so never check more often than that.
+- Never attach a change monitor or watch tool to \`no-mistakes axi status\` output: its timers change every second, so every tick wakes you for nothing.
+- The pipeline never advances past a gate on its own, so a long wait loses nothing.
+- Before each wait, append \`$paused: awaiting pipeline <step> on <branch or PR>\` to the status file, and append a new line only when the step changes.
+
 Three firstmate-specific rules layer on top of that guidance:
 - ask-user findings are never yours to answer: escalate to firstmate using rule 6's ask-user format and stop.
   Firstmate applies \`ask-user-authority\` and obtains any required captain decision.
