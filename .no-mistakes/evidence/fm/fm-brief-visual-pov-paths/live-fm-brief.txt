@@ -1,0 +1,36 @@
+### S1 scout, doc exists in primary (bare name 'scout'), run from unrelated cwd
+(eval):7: no such file or directory: bin/../2
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/data/s1/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+84:# Visual work contract
+85-Before any design decision, read and follow `docs/design-system/point-of-view.md` in your worktree, the point of view and quality bar for the `scout` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3QP5RVATWZ0YPHX4RTCH82H/.agents/skills/visual-work/SKILL.md`.
+0
+### S2 decks, doc missing (doc-creator)
+warning: the decks point-of-view document does not exist yet (checked /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/projects/doc-creator/docs/design/point-of-view.md); the brief tells the worker to create it from the ratified point-of-view report before designing
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/data/s2/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+# Visual work contract
+Before any design decision, read and follow `docs/design/point-of-view.md` in your worktree, the point of view and quality bar for the `decks` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3QP5RVATWZ0YPHX4RTCH82H/.agents/skills/visual-work/SKILL.md`.
+At scaffold time this document was not found in the primary checkout. In your worktree, read `docs/design/point-of-view.md` if it exists, and only if it is absent there create it from the ratified point-of-view report (`/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/data/design-point-of-view-documents/report.md`) before designing; never overwrite an existing one.
+### S3 website, project dir missing entirely
+warning: the website point-of-view document does not exist yet (checked /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/projects/forge/sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md); the brief tells the worker to create it from the ratified point-of-view report before designing
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/data/s3/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+# Visual work contract
+Before any design decision, read and follow `sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md` in your worktree, the point of view and quality bar for the `website` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3QP5RVATWZ0YPHX4RTCH82H/.agents/skills/visual-work/SKILL.md`.
+At scaffold time this document was not found in the primary checkout. In your worktree, read `sites/tomasmeulenberg/design-concepts/POINT-OF-VIEW.md` if it exists, and only if it is absent there create it from the ratified point-of-view report (`/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/data/design-point-of-view-documents/report.md`) before designing; never overwrite an existing one.
+### S4 email stays absolute
+warning: the email point-of-view document does not exist yet (checked /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/data/standards/mindshake-outbound-point-of-view.md); the brief tells the worker to create it from the ratified point-of-view report before designing
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/data/s4/brief.md (ship, mode=local-only; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+# Visual work contract
+Before any design decision, read and follow `/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/data/standards/mindshake-outbound-point-of-view.md`, the point of view and quality bar for the `email` surface, and read `/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M3QP5RVATWZ0YPHX4RTCH82H/.agents/skills/visual-work/SKILL.md`.
+This document does not exist yet. Before designing, create it at that path from the ratified point-of-view report (`/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/data/design-point-of-view-documents/report.md`), then follow it.
+### S5 non-visual brief has no POV
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.IoPsxBfy1W/home/data/s5/brief.md (ship, mode=local-only; replace {TASK} and {FIRSTMATE_SPEC})
+0
+### S6 bad surface / missing --surface
+error: --surface must be one of decks, scout, website, email (got 'nope')
+rc=1
+error: --visual requires --surface <decks|scout|website|email>
+rc=1
