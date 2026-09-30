@@ -2510,9 +2510,11 @@ test_nonterminal_stale_paused_absorbed_then_resurfaced() {
 }
 
 # Own background work is a declared wait using the same existing paused verb.
-# This intentionally keeps the first-sight alert, then uses the long cadence.
+# Fork behaviour (a declared pause outranks the run-step and a live pane): the
+# declaration is absorbed on first sight with no stale alert, because the paused
+# status line itself already surfaced, then it uses the long cadence.
 # The backend/current-state fixtures are not live-harness evidence.
-test_own_work_wait_keeps_first_alert_then_long_cadence() {
+test_own_work_wait_absorbs_then_long_cadence() {
   local wait_kind dir state fakebin out capture_file statusf window key sig pid round
   for wait_kind in background-shell pipeline-run foreground-command; do
     dir=$(make_case "own-work-$wait_kind"); state="$dir/state"; fakebin="$dir/fakebin"
@@ -2533,9 +2535,11 @@ test_own_work_wait_keeps_first_alert_then_long_cadence() {
       FM_FAKE_CREW_STATE='state: paused · source: status-log · waiting for own work' \
       watch_bg "$state" "$fakebin" "$out" env FM_PAUSE_RESURFACE_SECS=999
     pid=$!
-    wait_for_exit "$pid" 100 || { reap "$pid"; fail "$wait_kind lost its first-sight alert"; }
-    grep -Fx "stale: $window" "$out" >/dev/null || fail "$wait_kind did not surface as a plain stale"
-    ack_stopped_cycle "$state" || fail "could not acknowledge $wait_kind first alert"
+    wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "$wait_kind alerted on first sight: $(cat "$out")"; }
+    [ ! -s "$out" ] || { reap "$pid"; fail "$wait_kind printed a first-sight alert"; }
+    [ ! -s "$state/.wake-queue" ] || { reap "$pid"; fail "$wait_kind queued a first-sight alert"; }
+    reap "$pid"
+    ack_stopped_cycle "$state" || fail "could not acknowledge $wait_kind first-sight stop"
 
     # Cross the ordinary wedge threshold twice without aging the declaration
     # past the long pause cadence. Neither re-arm may add a second alert.
@@ -2585,7 +2589,7 @@ test_own_work_wait_keeps_first_alert_then_long_cadence() {
   wait_for_exit "$pid" 100 || { reap "$pid"; fail "undeclared idle worker no longer alarms"; }
   grep -Fx "stale: $window" "$out" >/dev/null || fail "undeclared idle worker did not surface"
   grep -F "stale: $window" "$state/.wake-queue" >/dev/null || fail "undeclared idle worker's wake was not queued"
-  pass "own-work waits keep one first alert, then bounded rechecks without wedges; undeclared idle still alarms"
+  pass "own-work waits are absorbed, then rechecked on the bounded cadence without wedges; undeclared idle still alarms"
 }
 
 # A crew can leave a stable backend endpoint after its agent exits, and
@@ -6799,7 +6803,7 @@ test_afk_busy_declared_pause_ticking_pane_hands_off_once
 test_nonterminal_stale_not_working_surfaced
 test_nonterminal_stale_paused_absorbed_then_resurfaced
 test_declared_wait_is_bounded_for_exited_and_live_agents
-test_own_work_wait_keeps_first_alert_then_long_cadence
+test_own_work_wait_absorbs_then_long_cadence
 test_absorbed_replacement_wait_does_not_inherit_the_old_throttle
 test_live_declared_wait_churn_honors_the_resurface_throttle
 test_live_paused_until_controls_recheck_time

@@ -581,11 +581,21 @@ TEARDOWN_SHARED_WORKTREE_SIBLING=
 if TEARDOWN_SHARED_WORKTREE_SIBLING_FOUND=$(teardown_shared_worktree_sibling "$TEARDOWN_META_WORKTREE"); then
   TEARDOWN_SHARED_WORKTREE_SIBLING=$TEARDOWN_SHARED_WORKTREE_SIBLING_FOUND
 fi
+# A pool slot whose owner claim names another task was reassigned, so this
+# teardown is already records-only and touches nothing under the slot; the
+# shared record is then no hazard, the same exception the exclusive-slot record
+# scan (require_exclusive_worktree_slot_record) makes.
+TEARDOWN_SHARED_WORKTREE_CLAIMED_ELSEWHERE=0
+if [ -n "$TEARDOWN_SHARED_WORKTREE_SIBLING" ]; then
+  fm_treehouse_slot_owner_state "$TEARDOWN_META_WORKTREE" "$ID"
+  [ "$FM_TREEHOUSE_SLOT_OWNER" != other ] || TEARDOWN_SHARED_WORKTREE_CLAIMED_ELSEWHERE=1
+fi
 if [ "$RELEASE_SHARED_RECORD" = 1 ] && [ "$TEARDOWN_META_KIND" = secondmate ]; then
   echo "REFUSED: --release-shared-record does not apply to secondmate $ID; a secondmate home is retired whole." >&2
   exit 1
 fi
-if [ -n "$TEARDOWN_SHARED_WORKTREE_SIBLING" ] && [ "$RELEASE_SHARED_RECORD" != 1 ]; then
+if [ -n "$TEARDOWN_SHARED_WORKTREE_SIBLING" ] && [ "$RELEASE_SHARED_RECORD" != 1 ] \
+   && [ "$TEARDOWN_SHARED_WORKTREE_CLAIMED_ELSEWHERE" != 1 ]; then
   echo "REFUSED: task $ID records worktree $TEARDOWN_META_WORKTREE, which task $TEARDOWN_SHARED_WORKTREE_SIBLING also records." >&2
   echo "Returning or resetting that path would destroy the other task's work, so nothing was changed; --force does not authorize it either." >&2
   echo "If this record is the stale one, release only its own records with: bin/fm-teardown.sh $ID --release-shared-record" >&2

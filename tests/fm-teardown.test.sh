@@ -805,13 +805,13 @@ SH
       ;;
     orca)
       target=fm-task-x1
-      extra_meta=$'backend=orca\nterminal=term-123\norca_worktree_id=wt-123'
+      extra_meta=$'backend=orca\nterminal=term-123\norca_worktree_id=wt-123::'"$case_dir/wt"
       cat > "$case_dir/fakebin/orca" <<SH
 #!/usr/bin/env bash
 case "\$*" in
-  "worktree show --worktree id:wt-123 --json") printf '%s\\n' '{"ok":true,"result":{"worktree":{"id":"wt-123","path":"$case_dir/wt"}}}' ;;
+  "worktree show --worktree id:wt-123::$case_dir/wt --json") printf '%s\\n' '{"ok":true,"result":{"worktree":{"id":"wt-123::$case_dir/wt","path":"$case_dir/wt"}}}' ;;
   "terminal close --terminal term-123 --json") : > "\$FM_FAKE_ENDPOINT_CLOSED"; printf '%s\\n' '{"ok":true,"result":{}}' ;;
-  "worktree rm --worktree id:wt-123 --force --json") printf '%s\\n' '{"ok":true,"result":{}}' ;;
+  "worktree rm --worktree id:wt-123::$case_dir/wt --force --json") printf '%s\\n' '{"ok":true,"result":{}}' ;;
   "terminal read --terminal term-123 --limit 1 --json") printf '%s\\n' '{"ok":false,"error":{"code":"terminal_not_found","message":"terminal not found"}}'; exit 1 ;;
 esac
 SH

@@ -269,6 +269,8 @@ exec "$@"'
   printf '# Firstmate\n' > "$sm_home/AGENTS.md"
   printf '%s\n' "$id" > "$sm_home/.fm-secondmate-home"
   printf 'charter for %s\n' "$id" > "$sm_home/data/charter.md"
+  printf '%s\n' 'projects/' 'state/' 'data/' 'config/' '.no-mistakes/' > "$sm_home/.gitignore"
+  git -C "$sm_home" init -q -b main
 
   : > "$LAUNCH_LOG"
   out=$(FM_FREE_LANE_PREFLIGHT_TIMEOUT=3 FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" \

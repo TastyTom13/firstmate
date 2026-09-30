@@ -60,8 +60,8 @@
 # API failure leaves error evidence; an expired or absent observation is not
 # silence. FM_CONTRIBUTIONS_MAX_AGE (default 900 seconds) bounds freshness.
 # A URL whose last good observation is merged is final: it is never re-read,
-# stays fresh, and every owner's saved row converges on that observation, with a
-# stale error beside it cleared. A closed observation is final the same way for
+# stays fresh, and every owner's saved row converges on that observation, marked
+# settled, with a stale error beside it cleared. A closed observation is final the same way for
 # 24 hours, then re-read once a day so a reopened issue or pull request is seen;
 # a failing re-read of a closed record stays silent.
 # A genuine failure prints its unavailable line only when it starts an episode
@@ -346,11 +346,11 @@ settle_final() { # canonical-url task... : copy the URL's final observation to e
       [$saved[0][] | select(.task == $task) | .records[] | select(.url == $url)] | first' > "$TMP/old.json"
     if jq -e '. == null' "$TMP/old.json" >/dev/null; then
       jq -n --slurpfile final "$TMP/final.json" '
-        $final[0] + {error:null,pending:[],notified:[]}' > "$TMP/row.json"
+        $final[0] + {error:null,pending:[],notified:[],settled:true}' > "$TMP/row.json"
       write_record "$task" "$TMP/row.json"
     elif jq -e '(.observation.state | IN("merged","closed") | not) or .error != null' "$TMP/old.json" >/dev/null; then
       jq -n --slurpfile final "$TMP/final.json" --slurpfile old "$TMP/old.json" '
-        $old[0] + {observation:$final[0].observation,checked_at:$final[0].checked_at,error:null}' > "$TMP/row.json"
+        $old[0] + {observation:$final[0].observation,checked_at:$final[0].checked_at,error:null,settled:true}' > "$TMP/row.json"
       write_record "$task" "$TMP/row.json"
     fi
   done
@@ -423,7 +423,8 @@ poll() {
           | $old + {checked_at:$now,error:null,
             observation:($o + {absent_checks:((($old.observation.absent_checks // []) + [($old.observation.checks // [])[] | .name]) - [$o.checks[].name] | unique)}),
             seen:($events | map(.token)),
-            pending:(($old.pending // []) + [$events[] | select(.token as $t | ($old.seen // [] | index($t)) == null)] | unique_by(.token))}' > "$TMP/row.json"
+            pending:(($old.pending // []) + [$events[] | select(.token as $t | ($old.seen // [] | index($t)) == null)] | unique_by(.token)),
+            settled:($o.state == "merged" or $o.state == "closed")}' > "$TMP/row.json"
       else
         error='forge observation unavailable or changed during read'
         jq --arg now "$NOW" --arg error "$error" '.checked_at=$now | .error=$error' "$old" > "$TMP/row.json"
