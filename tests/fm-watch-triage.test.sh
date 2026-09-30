@@ -3254,7 +3254,11 @@ test_wedge_threshold_recheck_names_the_captain_for_a_held_lane() {
     || fail "an away-silenced hold counted $(cat "$state/.wedge-escalations-$key") wedge escalation(s)"
   grep -F 'never rechecked while the away-posture record exists' "$state/.watch-triage.log" >/dev/null \
     || fail "the away-silenced hold was not recorded in the triage log: $(cat "$state/.watch-triage.log")"
-  [ "$(cat "$state/.stale-since-$key")" = "$armed_timer" ] \
+  # Fork behaviour (a declared wait outranks the run-step, pause_state_class):
+  # the hold takes the declared-wait absorb, which retires the idle timer
+  # outright because its cadence runs from the declaration's age. Removed or
+  # untouched both leave the recheck owed in full; a restarted timer does not.
+  [ ! -e "$state/.stale-since-$key" ] || [ "$(cat "$state/.stale-since-$key")" = "$armed_timer" ] \
     || fail "an away-silenced hold restarted the idle timer, so part of the away window would be spent against the cadence the recheck owed on return uses"
 
   # And the recheck is owed in full the moment the captain is back: the absorb
