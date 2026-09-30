@@ -220,7 +220,7 @@ test_ship_modes_generate_clean_briefs() {
     if [ "$mode" = no-mistakes ]; then
       assert_grep "# Waiting on the pipeline" "$brief" "$id: no-mistakes brief missing the pipeline wait rule"
       assert_grep "Keep the drive call's \`--wait\` at or under your harness's command limit" "$brief" "$id: wait rule missing the harness-bounded wait"
-      assert_grep "\`${FM_CLASSIFY_PAUSED_VERB:-paused}: awaiting pipeline <step> on <branch or PR>\`" "$brief" "$id: wait rule missing the paused declaration"
+      assert_grep "\`${FM_CLASSIFY_PAUSED_VERB:-paused} [at=<epoch>]: awaiting pipeline <step> on <branch or PR>\`" "$brief" "$id: wait rule missing the paused declaration"
     else
       assert_no_grep "# Waiting on the pipeline" "$brief" "$id: non-no-mistakes brief must not carry the pipeline wait rule"
     fi
@@ -327,9 +327,11 @@ test_ship_base_branch_line_renders_only_when_given() {
       || fail "$mode: the delivery contract line did not survive the base line"
     grep -qx "Base branch: integration" "$brief" \
       || fail "$mode: the brief did not record the base branch"
+    # The delivery contract is followed by the machine-read Ship branch line, so
+    # the base branch line sits directly under that pair.
     [ "$(grep -n 'Base branch: integration' "$brief" | cut -d: -f1)" \
-      = "$(( $(grep -n "Delivery contract: mode=$mode" "$brief" | cut -d: -f1) + 1 ))" ] \
-      || fail "$mode: the base branch line is not next to the delivery contract line"
+      = "$(( $(grep -n "Delivery contract: mode=$mode" "$brief" | cut -d: -f1) + 2 ))" ] \
+      || fail "$mode: the base branch line is not under the delivery contract and ship branch lines"
     # shellcheck disable=SC2016  # backticks are literal brief text, not a command.
     assert_grep 'at a detached HEAD on a clean `integration` branch' "$brief" \
       "$mode: the setup section still claims the worker is on the default branch"
@@ -1223,12 +1225,12 @@ test_pr_wait_follow_up_only_where_a_pr_exists() {
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f1 some-proj --mode no-mistakes >/dev/null 2>&1
   brief="$home/data/brief-wait-f1/brief.md"
   # shellcheck disable=SC2016  # Literal backticks and braces must remain unexpanded.
-  assert_grep 'follow it with `paused: awaiting merge of PR {url}`' "$brief" \
+  assert_grep 'follow it with `paused [at=<epoch>]: awaiting merge of PR {url}`' "$brief" \
     "no-mistakes done line lost its declared merge wait"
 
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f2 some-proj --mode direct-PR >/dev/null 2>&1
   # shellcheck disable=SC2016  # Literal backticks and braces must remain unexpanded.
-  assert_grep 'follow it with `paused: awaiting merge of PR {url}`' "$home/data/brief-wait-f2/brief.md" \
+  assert_grep 'follow it with `paused [at=<epoch>]: awaiting merge of PR {url}`' "$home/data/brief-wait-f2/brief.md" \
     "direct-PR done line lost its declared merge wait"
 
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f3 some-proj --mode local-only >/dev/null 2>&1
@@ -1243,7 +1245,7 @@ test_pr_wait_follow_up_only_where_a_pr_exists() {
   FM_HOME="$home" FM_CLASSIFY_PAUSED_VERB=awaiting \
     "$ROOT/bin/fm-brief.sh" brief-wait-f5 some-proj --mode no-mistakes >/dev/null 2>&1
   # shellcheck disable=SC2016  # Literal backticks and braces must remain unexpanded.
-  assert_grep 'follow it with `awaiting: awaiting merge of PR {url}`' "$home/data/brief-wait-f5/brief.md" \
+  assert_grep 'follow it with `awaiting [at=<epoch>]: awaiting merge of PR {url}`' "$home/data/brief-wait-f5/brief.md" \
     "the merge-wait line ignored the configured declared-external-wait verb"
   pass "fm-brief.sh: the merge wait is declared exactly where a PR is raised"
 }
@@ -2032,8 +2034,10 @@ test_crewmate_scaffolds_forbid_pool_administration() {
   # One shared string, not two copies: the emitted rule must be byte-identical
   # across the ship and scout scaffolds so a later edit cannot fix one and miss
   # the other.
-  ship_rule=$(awk '/^7\. Never administer/,/^$/' "$home/data/brief-pool-no-mistakes/brief.md")
-  scout_rule=$(awk '/^7\. Never administer/,/^$/' "$brief")
+  # Rule 7 ends at a blank line or the next numbered rule: a ship brief that
+  # raises a PR carries evidence rules 8 and 9 directly after it.
+  ship_rule=$(awk '/^7\. Never administer/{p=1; print; next} p && (/^$/ || /^[0-9]+\. /){exit} p' "$home/data/brief-pool-no-mistakes/brief.md")
+  scout_rule=$(awk '/^7\. Never administer/{p=1; print; next} p && (/^$/ || /^[0-9]+\. /){exit} p' "$brief")
   [ -n "$ship_rule" ] || fail "ship brief emitted no shared-infrastructure rule to compare"
   [ "$ship_rule" = "$scout_rule" ] \
     || fail "ship and scout shared-infrastructure rules have drifted apart"

@@ -360,7 +360,7 @@ Reattach and keep going rather than reporting the pipeline blocked; rule 7 owns 
 - Every extra status read costs you a model turn and never reports the next gate, so never poll \`no-mistakes axi status\` between drive calls.
 - Never attach a change monitor or watch tool to \`no-mistakes axi status\` output: its timers change every second, so every tick wakes you for nothing.
 - The pipeline never advances past a gate on its own, so a long wait loses nothing.
-- Before each wait, append \`$paused: awaiting pipeline <step> on <branch or PR>\` to the status file, and append a new line only when the step changes.
+- Before each wait, append \`$paused [at=<epoch>]: awaiting pipeline <step> on <branch or PR>\` to the status file, and append a new line only when the step changes.
 
 Three firstmate-specific rules layer on top of that guidance:
 - ask-user findings are never yours to answer: escalate to firstmate using rule 6's ask-user format and stop.
