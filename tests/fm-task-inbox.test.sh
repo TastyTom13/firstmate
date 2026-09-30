@@ -387,6 +387,30 @@ test_ring_submits_its_own_stuck_doorbell() {
   pass "inbox: the ring submits its own stuck doorbell, skips other pending text, and retries a lost Enter once on both paths"
 }
 
+# A watcher re-ring carries a fresh elapsed note, so a stuck earlier ring in the
+# composer holds the same doorbell with an older note. That is still our own
+# doorbell and must be submitted, or every later re-ring skips behind it.
+test_ring_submits_its_own_stuck_doorbell_with_an_older_elapsed_note() {
+  local dir state rec older log composer drops rc
+  dir="$TMP_ROOT/ring-stuck-elapsed"
+  state="$dir/state"
+  mkdir -p "$state"
+  make_composer_stub "$dir"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "please continue")
+  older=$(inbox_lib "$state" fm_task_inbox_doorbell_line "$rec" 'elapsed 300s since the steer')
+  log="$dir/send.log"; composer="$dir/composer"; drops="$dir/drops"
+  : > "$log"; printf '%s' "$older" > "$composer"
+  rc=0
+  PATH="$dir/fakebin:$PATH" FM_SEND_LOG="$log" FM_FAKE_COMPOSER="$composer" \
+    FM_FAKE_DROP_ENTERS="$drops" inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1 \
+    'elapsed 900s since the steer' || rc=$?
+  [ "$rc" = 0 ] || fail "a stuck doorbell with an older elapsed note should be submitted, got rc $rc"
+  [ "$(cat "$log")" = "SUBMIT: $older" ] \
+    || fail "the stuck doorbell should be submitted once, not retyped:"$'\n'"$(cat "$log")"
+  [ ! -s "$composer" ] || fail "the stuck doorbell with an older elapsed note was left in the composer"
+  pass "inbox: a stuck doorbell with an older elapsed note is still our own and is submitted"
+}
+
 test_idempotent_write_dedups_exact_body() {
   local state r1 r2 r3 r4 count text
   state="$TMP_ROOT/idem/state"; mkdir -p "$state"
@@ -812,6 +836,7 @@ test_doorbell_is_a_shell_noop
 test_doorbell_rejects_terminal_controls
 test_ring_skips_dead_agent
 test_ring_submits_its_own_stuck_doorbell
+test_ring_submits_its_own_stuck_doorbell_with_an_older_elapsed_note
 test_idempotent_write_dedups_exact_body
 test_idempotent_write_follows_concurrent_ack
 test_handled_mv_dedups_by_sequence

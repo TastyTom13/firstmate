@@ -513,6 +513,8 @@ status_events_all_evidence_only() {  # <events-field>
     seen=1
   done
   [ "$seen" -eq 1 ]
+}
+
 # The status line that holds a crew in a declared wait, or nothing when it is in
 # none. Supervisors decide the wait from this line, never from the raw latest
 # event: a resolved line is also how firstmate answers a decision (fm-send

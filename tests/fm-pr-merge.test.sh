@@ -554,6 +554,19 @@ run_required_checks_case() {
 }
 
 # No list means no read and no new refusal: the merge runs exactly as before.
+# --help documents the script, including the per-project required-checks list,
+# and merges nothing.
+test_help_documents_required_checks() {
+  local out rc=0
+  out=$("$PR_MERGE" --help 2>&1) || rc=$?
+  [ "$rc" -eq 0 ] || fail "fm-pr-merge.sh --help exited $rc: $out"
+  printf '%s\n' "$out" | grep -F 'config/required-checks/<project>' >/dev/null \
+    || fail "fm-pr-merge.sh --help does not document config/required-checks: $out"
+  printf '%s\n' "$out" | grep -F -- '--expect-base' >/dev/null \
+    || fail "fm-pr-merge.sh --help does not document --expect-base: $out"
+  pass "fm-pr-merge.sh --help documents required checks and merges nothing"
+}
+
 test_required_checks_absent_list_changes_nothing() {
   local case_dir
   case_dir=$(make_case required-checks-absent)
@@ -4345,6 +4358,7 @@ test_away_record_cannot_change_between_the_authority_read_and_the_merge
 test_a_record_made_unreadable_before_the_merge_refuses_it
 test_merge_refuses_when_the_away_record_cannot_be_locked
 test_allow_red_refused_on_gitlab
+test_help_documents_required_checks
 test_required_checks_absent_list_changes_nothing
 test_required_checks_empty_list_changes_nothing
 test_required_checks_comment_only_list_changes_nothing
