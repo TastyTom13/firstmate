@@ -271,7 +271,8 @@ install_guard_scripts() {
   local dir=$1 f
   mkdir -p "$dir/bin" "$dir/state"
   for f in fm-turnend-guard.sh fm-context-budget.sh fm-primary-scope-lib.sh \
-           fm-supervision-lib.sh fm-wake-lib.sh fm-hook-host-lib.sh; do
+           fm-supervision-lib.sh fm-wake-lib.sh fm-hook-host-lib.sh \
+           fm-session-lock-lib.sh fm-cursor-lib.sh fm-path-lib.sh; do
     cp "$ROOT/bin/$f" "$dir/bin/$f"
   done
   chmod +x "$dir/bin/fm-turnend-guard.sh" "$dir/bin/fm-context-budget.sh"
