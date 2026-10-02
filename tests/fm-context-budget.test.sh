@@ -12,6 +12,9 @@
 # All hermetic over temp dirs; no real agent session is invoked.
 set -u
 
+unset FM_CONTEXT_WINDOW FM_CONTEXT_BUDGET FM_CONTEXT_NUDGE_SUGGEST FM_CONTEXT_NUDGE_NOW \
+  CLAUDE_CODE_AUTO_COMPACT_WINDOW
+
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
