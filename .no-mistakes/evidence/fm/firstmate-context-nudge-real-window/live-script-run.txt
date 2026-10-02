@@ -1,0 +1,31 @@
+== A default window 200000, budget clamped
+context 70k tokens, 35% of the 200k window (default), 35% of the 200k budget (budget 500k clamped to the window) - quiet
+context 90k tokens, 45% of the 200k window (default), 45% of the 200k budget (budget 500k clamped to the window) - suggest /stow at the next quiet moment
+context 130k tokens, 65% of the 200k window (default), 65% of the 200k budget (budget 500k clamped to the window) - suggest /stow now
+context 180k tokens, 90% of the 200k window (default), 90% of the 200k budget (budget 500k clamped to the window) - suggest /stow now
+== B window from CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000 budget default 500k
+context 150k tokens, 15% of the 1000k window (CLAUDE_CODE_AUTO_COMPACT_WINDOW), 30% of the 500k budget - quiet
+context 250k tokens, 25% of the 1000k window (CLAUDE_CODE_AUTO_COMPACT_WINDOW), 50% of the 500k budget - suggest /stow at the next quiet moment
+context 350k tokens, 35% of the 1000k window (CLAUDE_CODE_AUTO_COMPACT_WINDOW), 70% of the 500k budget - suggest /stow now
+== C FM_CONTEXT_WINDOW beats compact window
+context 250k tokens, 41% of the 600k window (FM_CONTEXT_WINDOW), 50% of the 500k budget - suggest /stow at the next quiet moment
+== D explicit budget 300000 window 1M
+context 100k tokens, 10% of the 1000k window (FM_CONTEXT_WINDOW), 33% of the 300k budget - quiet
+context 150k tokens, 15% of the 1000k window (FM_CONTEXT_WINDOW), 50% of the 300k budget - suggest /stow at the next quiet moment
+context 200k tokens, 20% of the 1000k window (FM_CONTEXT_WINDOW), 66% of the 300k budget - suggest /stow now
+== E token threshold overrides
+context 150k tokens, 15% of the 1000k window (FM_CONTEXT_WINDOW), 30% of the 500k budget - suggest /stow now
+== F invalid values fall back
+context 150k tokens, 30% of the 500k window (CLAUDE_CODE_AUTO_COMPACT_WINDOW), 30% of the 500k budget - quiet
+== G percent mode = percent of window
+15
+== H nudge throttle (window 1M, budget 500k, steps of 100k)
+cat: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.9EDc3RPzDe/state/.context-budget-nudged: No such file or directory
+rc=1 tokens=150000 record=
+cat: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/tmp.9EDc3RPzDe/state/.context-budget-nudged: No such file or directory
+rc=1 tokens=150000 record=
+context 250k tokens, 25% of the 1000k window (FM_CONTEXT_WINDOW), 50% of the 500k budget - suggest /stow at the next quiet moment
+rc=0 tokens=250000 record=s1 2 next
+rc=1 tokens=250000 record=s1 2 next
+context 350k tokens, 35% of the 1000k window (FM_CONTEXT_WINDOW), 70% of the 500k budget - suggest /stow now
+rc=0 tokens=350000 record=s1 3 now

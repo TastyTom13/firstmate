@@ -1,0 +1,21 @@
+ok - estimator: percentage comes from the newest usage record, not the first
+ok - estimator: widens past a usage-free tail to find the newest usage record
+ok - estimator: empty auto-detection projects stay silent
+ok - estimator: verdict bands are quiet under 40, next quiet moment to 60, now above 60
+ok - estimator: falls back to transcript bytes / 4 when no usage record is readable
+ok - estimator: an unreadable transcript prints nothing and exits 1
+ok - estimator: window comes from --window, FM_CONTEXT_WINDOW, the compaction window, then 200000
+ok - estimator: budget bands sit at 40 and 60 percent of the budget, overridable, clamped to the window
+ok - nudge: steps and the once-per-step throttle follow the budget
+ok - nudge: silent below 40 percent and records nothing
+ok - nudge: the 60-to-61 band upgrade is announced once
+ok - nudge: a downward band change permits the next upward crossing
+ok - nudge: announces at most once per 20 percent step and again on the next step
+ok - nudge: a different session id starts its own step count
+ok - nudge: an unwritable state directory stays silent
+ok - nudge: compaction steps the record down and the next real crossing announces again
+ok - hook: an idle Claude turn end prints the suggestion once per step
+ok - hook: no suggestion below 40 percent of the context window
+ok - hook: the nudge waits for a low-disruption moment and then lands
+ok - hook: persistent parent replies do not count as active task status
+ok - hook: only the Claude Stop path prints the suggestion
