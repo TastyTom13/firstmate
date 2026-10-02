@@ -518,8 +518,8 @@ That warning uses `bin/fm-supervision-instructions.sh --repair-line`, so it alwa
 
 ## Context budget nudge
 
-The Claude Stop path carries one advisory that is not about supervision: the context-budget suggestion to `/stow` and start fresh, or compact, once the session passes about 40 percent of its context.
-[`configuration.md`](configuration.md) "Context budget nudge" is the operator-facing owner of the bands, the throttle record, and the low-disruption definition, and `bin/fm-context-budget.sh` owns the estimate and the once-per-20-percent-step throttle.
+The Claude Stop path carries one advisory that is not about supervision: the context-budget suggestion to `/stow` and start fresh, or compact, once the session passes about 40 percent of its context budget.
+[`configuration.md`](configuration.md) "Context budget nudge" is the operator-facing owner of the bands, the throttle record, and the low-disruption definition, and `bin/fm-context-budget.sh` owns the estimate and the once-per-20-percent-budget-step throttle.
 This guard is the only surface that prints that line into a session, so no second printing owner may be added.
 It fires exclusively from the idle allow path, where `fm_supervision_status` reports no supervision need at all, which is why it can never pre-empt the Stop-owned auto-arm, shorten a Cursor park, or land inside a turn that is handling a wake.
 The remaining low-disruption conditions are checked in the guard itself: away mode off, an empty durable wake queue, no captain inbox note still waiting, no unacknowledged steering message, and no leftover task status record.
