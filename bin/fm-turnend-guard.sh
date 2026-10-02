@@ -192,10 +192,10 @@ budget_reset() {
 # --- context-budget nudge ----------------------------------------------------
 # Captain ruling 2026-09-09 (token-burn report R1): firstmate suggests /stow
 # plus a fresh session, or compaction, at a low-disruption moment once the
-# session passes about 40 percent of its context, rather than running until the
+# session passes about 40 percent of its context budget, rather than running until the
 # window is dropped whole. This guard is the ONE surface that prints that
 # suggestion into a session; bin/fm-context-budget.sh owns the estimate and the
-# once-per-20-percent-step throttle, and docs/configuration.md "Context budget
+# once-per-20-percent-budget-step throttle, and docs/configuration.md "Context budget
 # nudge" owns the operator-facing contract. Do not add a second printing owner.
 # The nudge fires only from the idle allow path below, where supervision is not
 # needed at all, so it can never pre-empt the Stop-owned auto-arm, shorten a
