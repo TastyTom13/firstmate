@@ -18,6 +18,8 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 CI_WORKFLOW="$ROOT/.github/workflows/ci.yml"
+TMP_ROOT=$(fm_test_tmproot fm-ci-workflow)
+trap fm_test_cleanup EXIT
 
 assert_present "$CI_WORKFLOW" ".github/workflows/ci.yml is missing"
 command -v ruby >/dev/null 2>&1 \
@@ -249,6 +251,77 @@ RUBY
   pass "CI matrices cover every executable serial lane and canonical lint root exactly once"
 }
 
+# An unpinned global install picks up each new Pi release the day it ships, so
+# one upstream change reddens every PR at once. Each step that installs the Pi
+# package is executed with its workflow, job, and step env against a fake npm
+# and a fake pi, so the assertions describe what the runner would install and
+# print, not how the step happens to be spelled.
+test_pi_package_install_is_pinned_and_logged() {
+  local dir steps step label line npm_log out pins pin version
+  local -a step_env
+  dir="$TMP_ROOT/pi-install"
+  steps="$dir/steps"
+  mkdir -p "$steps" "$dir/bin"
+  ruby -ryaml - "$CI_WORKFLOW" "$steps" <<'RUBY' || fail "could not extract the CI Pi install steps"
+doc = YAML.load_file(ARGV[0])
+count = 0
+doc.fetch("jobs").each do |job_id, job|
+  job.fetch("steps", []).each do |step|
+    run = step["run"].to_s
+    next unless run.include?("npm install") && run.include?("@earendil-works/pi-coding-agent")
+    raise "#{job_id}: Pi install step uses a GitHub expression the shell cannot resolve" if run.include?("${{")
+    env = (doc["env"] || {}).merge(job["env"] || {}).merge(step["env"] || {})
+    count += 1
+    base = File.join(ARGV[1], format("%02d", count))
+    File.write("#{base}.label", "#{job_id}: #{step["name"]}")
+    File.write("#{base}.sh", run)
+    File.write("#{base}.env", env.map { |k, v| "#{k}=#{v}\n" }.join)
+  end
+end
+RUBY
+  # The fake npm records what would be installed; the fake pi reports the
+  # recorded version unless FAKE_PI_VERSION simulates a different binary.
+  cat >"$dir/bin/npm" <<'SH'
+#!/usr/bin/env bash
+[ "$1" = install ] && printf '%s\n' "${@: -1}" >>"$FAKE_NPM_LOG"
+exit 0
+SH
+  cat >"$dir/bin/pi" <<'SH'
+#!/usr/bin/env bash
+[ "$1" = --version ] || exit 2
+spec=$(tail -n 1 "$FAKE_NPM_LOG")
+printf '%s\n' "${FAKE_PI_VERSION:-${spec##*@}}"
+SH
+  chmod +x "$dir/bin/npm" "$dir/bin/pi"
+
+  set -- "$steps"/*.sh
+  [ -e "$1" ] || fail "CI has no step that installs the Pi package; the Pi extension tests would gate-skip"
+  pins=
+  for step in "$@"; do
+    label=$(cat "${step%.sh}.label")
+    npm_log="${step%.sh}.npm"
+    step_env=()
+    while IFS= read -r line; do step_env+=("$line"); done <"${step%.sh}.env"
+    : >"$npm_log"
+    out=$(env -i HOME="$HOME" PATH="$dir/bin:/usr/bin:/bin" FAKE_NPM_LOG="$npm_log" \
+      ${step_env[@]+"${step_env[@]}"} bash -e "$step" 2>&1) \
+      || fail "$label failed against a matching Pi binary: $out"
+    version=$(tail -n 1 "$npm_log")
+    pin=${version#@earendil-works/pi-coding-agent@}
+    printf '%s\n' "$pin" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+      || fail "$label must install an exact Pi version, got '${version:-nothing}'"
+    assert_contains "$out" "$pin" "$label must print the Pi version it installed"
+    if env -i HOME="$HOME" PATH="$dir/bin:/usr/bin:/bin" FAKE_NPM_LOG="$npm_log" FAKE_PI_VERSION=0.0.0 \
+      ${step_env[@]+"${step_env[@]}"} bash -e "$step" >/dev/null 2>&1; then
+      fail "$label must fail when the installed pi reports a version other than the pin"
+    fi
+    pins="$pins$pin"$'\n'
+  done
+  [ "$(printf '%s' "$pins" | sort -u | wc -l | tr -d ' ')" = 1 ] \
+    || fail "every CI Pi install must use one pinned version, got: $(printf '%s' "$pins" | sort -u | tr '\n' ' ')"
+  pass "every CI Pi install ($#) pins Pi $pin exactly, prints it, and fails on a version mismatch"
+}
+
 test_ci_matrices_match_executable_partitions
 test_pr_pushes_supersede_within_one_pr
 test_separate_prs_do_not_cancel_each_other
@@ -258,3 +331,4 @@ test_every_job_belongs_to_exactly_one_timeout_tier
 test_fast_tier_shares_one_short_tripwire
 test_normal_tier_shares_one_budget
 test_heavy_tier_keeps_a_step_tripwire_under_a_job_backstop
+test_pi_package_install_is_pinned_and_logged
