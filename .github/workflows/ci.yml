@@ -22,6 +22,12 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The Pi package the Pi extension tests run against. It is pinned so a new Pi
+# release cannot silently redden every PR; bump it deliberately, after the Pi
+# extension tests pass locally against the new release.
+env:
+  FM_CI_PI_VERSION: "1.0.0"
+
 # Timeout policy: docs/fm-test-portable-shards.md "Timeouts" owns the three
 # tiers and their rationale; tests/fm-ci-workflow.test.sh guards this workflow.
 # Each job comment identifies the tier implemented by its executable value.
@@ -115,8 +121,11 @@ jobs:
       - name: Install the Pi package for the Pi extension tests
         run: |
           set -eu
-          npm install -g @earendil-works/pi-coding-agent
+          npm install -g "@earendil-works/pi-coding-agent@${FM_CI_PI_VERSION}"
           npm ls -g --depth 0 @earendil-works/pi-coding-agent
+          installed=$(pi --version)
+          echo "Pi package: pinned ${FM_CI_PI_VERSION}, installed ${installed}"
+          [ "$installed" = "$FM_CI_PI_VERSION" ]
       - name: Run portable parallel shard 1
         run: |
           set -eu
@@ -219,8 +228,11 @@ jobs:
       - name: Install the Pi package for the Pi extension tests
         run: |
           set -eu
-          npm install -g @earendil-works/pi-coding-agent
+          npm install -g "@earendil-works/pi-coding-agent@${FM_CI_PI_VERSION}"
           npm ls -g --depth 0 @earendil-works/pi-coding-agent
+          installed=$(pi --version)
+          echo "Pi package: pinned ${FM_CI_PI_VERSION}, installed ${installed}"
+          [ "$installed" = "$FM_CI_PI_VERSION" ]
       - name: Run portable serial shard ${{ matrix.shard }}
         env:
           # job-total rather than a literal, so shrinking or growing the matrix
