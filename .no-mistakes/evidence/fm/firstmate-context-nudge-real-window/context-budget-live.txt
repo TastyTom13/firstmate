@@ -1,0 +1,38 @@
+## A: defaults (window 200000, budget 500000 clamped)
+tokens=50000: context 50k tokens, 25% of the 200k window (default), 25% of the 200k budget (budget 500k clamped to the window) - quiet
+tokens=79999: context 80k tokens, 39% of the 200k window (default), 39% of the 200k budget (budget 500k clamped to the window) - quiet
+tokens=80000: context 80k tokens, 40% of the 200k window (default), 40% of the 200k budget (budget 500k clamped to the window) - suggest /stow at the next quiet moment
+tokens=120000: context 120k tokens, 60% of the 200k window (default), 60% of the 200k budget (budget 500k clamped to the window) - suggest /stow at the next quiet moment
+tokens=120001: context 120k tokens, 60% of the 200k window (default), 60% of the 200k budget (budget 500k clamped to the window) - suggest /stow now
+tokens=190000: context 190k tokens, 95% of the 200k window (default), 95% of the 200k budget (budget 500k clamped to the window) - suggest /stow now
+## B: window precedence (100000 tokens)
+default: context 100k tokens, 50% of the 200k window (default), 50% of the 200k budget (budget 500k clamped to the window) - suggest /stow at the next quiet moment
+AUTO=400000: context 100k tokens, 25% of the 400k window (CLAUDE_CODE_AUTO_COMPACT_WINDOW), 25% of the 400k budget (budget 500k clamped to the window) - quiet
+FM_CONTEXT_WINDOW=1000000 + AUTO=400000: context 100k tokens, 10% of the 1000k window (FM_CONTEXT_WINDOW), 20% of the 500k budget - quiet
+AUTO=abc: context 100k tokens, 50% of the 200k window (default), 50% of the 200k budget (budget 500k clamped to the window) - suggest /stow at the next quiet moment
+## C: 1M window, budget 500k: bands at 200k/300k
+tokens=150000: context 150k tokens, 15% of the 1000k window (FM_CONTEXT_WINDOW), 30% of the 500k budget - quiet
+tokens=199999: context 200k tokens, 19% of the 1000k window (FM_CONTEXT_WINDOW), 39% of the 500k budget - quiet
+tokens=200000: context 200k tokens, 20% of the 1000k window (FM_CONTEXT_WINDOW), 40% of the 500k budget - suggest /stow at the next quiet moment
+tokens=250000: context 250k tokens, 25% of the 1000k window (FM_CONTEXT_WINDOW), 50% of the 500k budget - suggest /stow at the next quiet moment
+tokens=300000: context 300k tokens, 30% of the 1000k window (FM_CONTEXT_WINDOW), 60% of the 500k budget - suggest /stow at the next quiet moment
+tokens=300001: context 300k tokens, 30% of the 1000k window (FM_CONTEXT_WINDOW), 60% of the 500k budget - suggest /stow now
+## C2: budget 300k explicit in 1M window
+130k: context 130k tokens, 13% of the 1000k window (FM_CONTEXT_WINDOW), 43% of the 300k budget - suggest /stow at the next quiet moment
+## D: token overrides 50k/70k
+tokens=40000: context 40k tokens, 4% of the 1000k window (FM_CONTEXT_WINDOW), 8% of the 500k budget - quiet
+tokens=60000: context 60k tokens, 6% of the 1000k window (FM_CONTEXT_WINDOW), 12% of the 500k budget - suggest /stow at the next quiet moment
+tokens=80000: context 80k tokens, 8% of the 1000k window (FM_CONTEXT_WINDOW), 16% of the 500k budget - suggest /stow now
+## E: --percent is of window (100k of 1M => 10)
+10
+## F: nudge throttle (window 1M, budget 500k, step=100k)
+tokens=150000 -> rc=1 <silent>
+tokens=160000 -> rc=1 <silent>
+tokens=210000 -> rc=0 context 210k tokens, 21% of the 1000k window (FM_CONTEXT_WINDOW), 42% of the 500k budget - suggest /stow at the next quiet moment
+tokens=250000 -> rc=1 <silent>
+tokens=310000 -> rc=0 context 310k tokens, 31% of the 1000k window (FM_CONTEXT_WINDOW), 62% of the 500k budget - suggest /stow now
+tokens=320000 -> rc=1 <silent>
+tokens=100000 -> rc=1 <silent>
+tokens=220000 -> rc=0 context 220k tokens, 22% of the 1000k window (FM_CONTEXT_WINDOW), 44% of the 500k budget - suggest /stow at the next quiet moment
+tokens=330000 -> rc=0 context 330k tokens, 33% of the 1000k window (FM_CONTEXT_WINDOW), 66% of the 500k budget - suggest /stow now
+record: unknown 3 now
