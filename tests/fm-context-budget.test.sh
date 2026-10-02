@@ -130,6 +130,78 @@ test_missing_transcript_is_silent() {
   pass "estimator: an unreadable transcript prints nothing and exits 1"
 }
 
+test_window_source_precedence() {
+  local t line
+  t="$TMP_ROOT/window-source/transcript.jsonl"
+  write_transcript "$t" 120000
+
+  line=$(env -u FM_CONTEXT_WINDOW -u CLAUDE_CODE_AUTO_COMPACT_WINDOW "$BUDGET" --transcript "$t")
+  assert_contains "$line" "60% of the 200k window (default)" "no setting must fall back to 200000"
+
+  line=$(env -u FM_CONTEXT_WINDOW CLAUDE_CODE_AUTO_COMPACT_WINDOW=600000 "$BUDGET" --transcript "$t")
+  assert_contains "$line" "20% of the 600k window (CLAUDE_CODE_AUTO_COMPACT_WINDOW)" \
+    "the compaction window must be read when FM_CONTEXT_WINDOW is unset"
+
+  line=$(env -u FM_CONTEXT_WINDOW CLAUDE_CODE_AUTO_COMPACT_WINDOW=lots "$BUDGET" --transcript "$t")
+  assert_contains "$line" "(default)" "a non-numeric compaction window must be ignored"
+
+  line=$(FM_CONTEXT_WINDOW=400000 CLAUDE_CODE_AUTO_COMPACT_WINDOW=600000 "$BUDGET" --transcript "$t")
+  assert_contains "$line" "30% of the 400k window (FM_CONTEXT_WINDOW)" \
+    "FM_CONTEXT_WINDOW must win over the compaction window"
+
+  line=$(FM_CONTEXT_WINDOW=400000 "$BUDGET" --transcript "$t" --window 300000)
+  assert_contains "$line" "40% of the 300k window (--window)" "--window must win over the environment"
+  pass "estimator: window comes from --window, FM_CONTEXT_WINDOW, the compaction window, then 200000"
+}
+
+test_budget_bands_and_clamp() {
+  local t line
+  t="$TMP_ROOT/budget/transcript.jsonl"
+
+  write_transcript "$t" 212000
+  line=$(env -u FM_CONTEXT_BUDGET "$BUDGET" --transcript "$t" --window 600000)
+  assert_contains "$line" "context 212k tokens, 35% of the 600k window (--window), 42% of the 500k budget - suggest /stow at the next quiet moment" \
+    "the line must report tokens, window percent, budget percent, and the band"
+
+  write_transcript "$t" 199999
+  line=$("$BUDGET" --transcript "$t" --window 600000)
+  assert_contains "$line" "- quiet" "one token under 40 percent of the budget must stay quiet"
+  write_transcript "$t" 200000
+  line=$("$BUDGET" --transcript "$t" --window 600000)
+  assert_contains "$line" "at the next quiet moment" "40 percent of the budget must suggest"
+  write_transcript "$t" 300000
+  line=$("$BUDGET" --transcript "$t" --window 600000)
+  assert_contains "$line" "at the next quiet moment" "60 percent of the budget is still the suggest band"
+  write_transcript "$t" 300001
+  line=$("$BUDGET" --transcript "$t" --window 600000)
+  assert_contains "$line" "suggest /stow now" "past 60 percent of the budget must suggest now"
+
+  write_transcript "$t" 150000
+  line=$(FM_CONTEXT_NUDGE_SUGGEST=100000 FM_CONTEXT_NUDGE_NOW=140000 "$BUDGET" --transcript "$t" --window 600000)
+  assert_contains "$line" "suggest /stow now" "token overrides must move the band thresholds"
+
+  line=$(FM_CONTEXT_BUDGET=900000 "$BUDGET" --transcript "$t" --window 600000)
+  assert_contains "$line" "25% of the 600k budget (budget 900k clamped to the window)" \
+    "a budget above the window must clamp and say so"
+  pass "estimator: budget bands sit at 40 and 60 percent of the budget, overridable, clamped to the window"
+}
+
+test_nudge_steps_follow_the_budget() {
+  local state t out status
+  state=$(make_state throttle-budget)
+  t="$TMP_ROOT/throttle-budget/transcript.jsonl"
+  write_transcript "$t" 212000
+  out=$(FM_STATE_OVERRIDE="$state" "$BUDGET" --nudge --transcript "$t" --session s1 --window 600000) \
+    || fail "42 percent of the budget must announce"
+  assert_contains "$out" "suggest /stow at the next quiet moment" "budget nudge lost its verdict"
+  assert_exact_line "$state/.context-budget-nudged" "s1 2 next" "the step must be budget percent / 20"
+  status=0
+  out=$(FM_STATE_OVERRIDE="$state" "$BUDGET" --nudge --transcript "$t" --session s1 --window 600000) || status=$?
+  expect_code 1 "$status" "a repeated reading inside the same budget step"
+  [ -z "$out" ] || fail "the same budget step must announce once, got: $out"
+  pass "nudge: steps and the once-per-step throttle follow the budget"
+}
+
 # --- THROTTLE ----------------------------------------------------------------
 
 nudge() {  # <state> <transcript> <session>
@@ -403,6 +475,9 @@ test_auto_detection_empty_projects_is_silent
 test_verdict_bands
 test_byte_fallback_when_no_usage_record
 test_missing_transcript_is_silent
+test_window_source_precedence
+test_budget_bands_and_clamp
+test_nudge_steps_follow_the_budget
 test_nudge_is_quiet_below_forty_percent
 test_nudge_announces_band_upgrade_at_sixty_one
 test_nudge_reannounces_after_downward_band_change

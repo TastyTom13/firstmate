@@ -702,13 +702,19 @@ The helper's header owns exact parsing, publication, and report output mechanics
 
 ## Context budget nudge (state/.context-budget-nudged)
 
-Firstmate suggests `/stow` plus a fresh session, or compaction, at a low-disruption moment once the session passes about 40 percent of its context, rather than running a session until the whole window is dropped.
+Firstmate suggests `/stow` plus a fresh session, or compaction, at a low-disruption moment once the session passes about 40 percent of its context budget, rather than running a session until the whole window is dropped.
 A low-disruption moment is a turn ending with no open decision, no wake in hand, and no worker mid-steer: the fleet has no work in flight and no leftover task record, the durable wake queue is empty, no captain note is still waiting, and away mode is off.
 `bin/fm-context-budget.sh` owns the estimate and the throttle, and the Claude Stop turn-end guard is the one surface that prints the suggestion into a session ([`turnend-guard.md`](turnend-guard.md)); there is deliberately no second printing owner.
 The estimate reads the newest usage record in the current Claude transcript, so it is the context that request actually carried, and falls back to transcript bytes divided by four only when no usage record is readable.
-Verdicts follow three bands: under 40 percent stays quiet, 40 to 60 percent suggests `/stow` at the next quiet moment, and over 60 percent suggests `/stow` now.
-`state/.context-budget-nudged` records `<session-id> <step> <band>`, where step is the percentage divided by 20 and band is `quiet`, `next`, or `now`, so each 20 percent step is announced at most once, an upward band change is announced once, a new session starts its own count, and a session whose context shrank through compaction rewrites the record down and stays silent until the next real crossing.
-Run `bin/fm-context-budget.sh` by hand at any time for the same one-line reading; `FM_CONTEXT_WINDOW` sets the assumed window and the script's header owns the remaining mechanics.
+The real window is the first of `FM_CONTEXT_WINDOW`, a numeric `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, and 200000, and the printed line names which source won.
+`FM_CONTEXT_BUDGET` (default 500000 tokens) is the point at which the nudge is fully due; a budget above the real window is clamped to it and the line says so.
+Verdicts follow two token thresholds: under `FM_CONTEXT_NUDGE_SUGGEST` (default 40 percent of the budget) stays quiet, up to `FM_CONTEXT_NUDGE_NOW` (default 60 percent of the budget) suggests `/stow` at the next quiet moment, and above it suggests `/stow` now.
+The line reports tokens used, the percentage of the real window, the percentage of the budget, and the verdict.
+`state/.context-budget-nudged` records `<session-id> <step> <band>`, where step is the budget percentage divided by 20 and band is `quiet`, `next`, or `now`, so each 20 percent step is announced at most once, an upward band change is announced once, a new session starts its own count, and a session whose context shrank through compaction rewrites the record down and stays silent until the next real crossing.
+Run `bin/fm-context-budget.sh` by hand at any time for the same one-line reading; the script's header owns the remaining mechanics.
+
+The budget sits below the window on purpose.
+Under the captain's 2026-10-02 decision, Kun Chen's compact-adviser (hint mode, 500000-token budget) and this nudge fire first, while Claude Code's hard auto-compaction at `CLAUDE_CODE_AUTO_COMPACT_WINDOW` stays as the backstop.
 
 ## Stow pass horizon (config/stow-pass-horizon)
 
@@ -2476,7 +2482,10 @@ FM_BOOTSTRAP_NETWORK=all   # internal session-start phase split: all, skip (loca
 FM_STARTUP_NETWORK_TIMEOUT=120   # seconds bounding the deferred inactive-outcome scan plus network checks, including the lock waits the worker makes before them; hitting it prints an actionable NETWORK_CHECKS line, and a lock a live process still holds at the deadline ends the worker with a failed-rerun record (publication and delivery are bounded by FM_SESSION_START_TIMEOUT the same way)
 FM_TASKS_AXI_COMPATIBLE=   # internal one-hop handoff of an already-computed tasks-axi compatibility verdict (0 or 1); consumed when bin/fm-tasks-axi-lib.sh is sourced
 FM_GUARD_READ_ONLY=0    # internal/read-only guard mode: keep alarms but suppress drain, supervision repair, and checkout repair commands
-FM_CONTEXT_WINDOW=200000   # assumed context window for bin/fm-context-budget.sh; see "Context budget nudge"
+FM_CONTEXT_WINDOW=   # real context window for bin/fm-context-budget.sh; unset falls back to CLAUDE_CODE_AUTO_COMPACT_WINDOW, then 200000; see "Context budget nudge"
+FM_CONTEXT_BUDGET=500000   # tokens at which bin/fm-context-budget.sh's nudge is fully due; clamped to the real window
+FM_CONTEXT_NUDGE_SUGGEST=   # token threshold for the suggest-at-next-quiet-moment band; default 40 percent of FM_CONTEXT_BUDGET
+FM_CONTEXT_NUDGE_NOW=   # token threshold above which the nudge suggests /stow now; default 60 percent of FM_CONTEXT_BUDGET
 FM_CONTEXT_TRANSCRIPT=   # explicit Claude transcript path for bin/fm-context-budget.sh, mainly for tests; the turn-end guard passes the hook payload's own path
 FM_CONTEXT_TAIL_LINES=400   # transcript lines bin/fm-context-budget.sh scans back for the newest usage record
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the guarded operation WILL still run.'   # banner continuation line; fm-send.sh overrides it to name the requested message specifically

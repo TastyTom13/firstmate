@@ -22,20 +22,28 @@
 # estimate is transcript bytes / 4 - deliberately coarse, and an overestimate on
 # a session whose transcript is longer than its live context.
 #
+# Window and budget. The real window is the first of FM_CONTEXT_WINDOW (or
+# --window), CLAUDE_CODE_AUTO_COMPACT_WINDOW when numeric, and 200000; the line
+# names which source won. The budget, FM_CONTEXT_BUDGET (default 500000 tokens),
+# is where the nudge is fully due, and is clamped to the window when larger.
+# The bands are token thresholds: FM_CONTEXT_NUDGE_SUGGEST (default 40 percent
+# of the budget) and FM_CONTEXT_NUDGE_NOW (default 60 percent of the budget).
+#
 # Modes.
-#   (default)  print one line: the estimated percentage and the verdict.
-#   --percent  print the integer percentage only.
+#   (default)  print one line: tokens, percent of the window, percent of the
+#              budget, and the verdict.
+#   --percent  print the integer percentage of the real window only.
 #   --nudge    throttle mode for the turn-end guard: print the same one line and
 #              exit 0 only when this session has crossed into a NEW 20 percent
-#              step at or above 40 percent, or upgraded its verdict band;
+#              budget step outside the quiet band, or upgraded its verdict band;
 #              otherwise print nothing and exit 1.
 #
-# Verdicts follow the ruling's bands: under 40 percent is quiet, 40 to 60
-# percent suggests /stow at the next quiet moment, and over 60 percent suggests
-# /stow now.
+# Verdicts: under the suggest threshold is quiet, from it up to the now
+# threshold suggests /stow at the next quiet moment, and above the now
+# threshold suggests /stow now.
 #
 # Throttle record. --nudge keeps state/.context-budget-nudged as one line,
-# "<session-id> <step> <band>", where step is percent/20 and band is quiet,
+# "<session-id> <step> <band>", where step is percent-of-budget/20 and band is quiet,
 # next, or now. A step is announced at most once, except that an upward band
 # change is announced once, a different session id resets the count, and a step
 # BELOW the recorded one (the session was compacted, so its context shrank), or
@@ -55,8 +63,8 @@ NUDGE_RECORD="$STATE/.context-budget-nudged"
 NUDGE_LOCK="$STATE/.context-budget-nudged.lock"
 TAIL_LINES=${FM_CONTEXT_TAIL_LINES:-400}
 case "$TAIL_LINES" in ''|*[!0-9]*|0) TAIL_LINES=400 ;; esac
-WINDOW=${FM_CONTEXT_WINDOW:-200000}
-case "$WINDOW" in ''|*[!0-9]*|0) WINDOW=200000 ;; esac
+WINDOW=
+WINDOW_SOURCE=
 
 TRANSCRIPT=${FM_CONTEXT_TRANSCRIPT:-}
 SESSION_ID=
@@ -76,7 +84,7 @@ USAGE
 while [ $# -gt 0 ]; do
   case "$1" in
     --transcript) TRANSCRIPT=${2:-}; shift 2 || true ;;
-    --window) WINDOW=${2:-}; shift 2 || true ;;
+    --window) WINDOW=${2:-}; WINDOW_SOURCE=--window; shift 2 || true ;;
     --session) SESSION_ID=${2:-}; shift 2 || true ;;
     --percent) MODE=percent; shift ;;
     --nudge) MODE=nudge; shift ;;
@@ -84,7 +92,34 @@ while [ $# -gt 0 ]; do
     *) usage >&2; exit 2 ;;
   esac
 done
-case "$WINDOW" in ''|*[!0-9]*|0) WINDOW=200000 ;; esac
+
+ktok() { printf '%sk' $(( ($1 + 500) / 1000 )); }
+
+is_count() { case "${1:-}" in ''|*[!0-9]*|0) return 1 ;; esac; }
+
+# Real window, in precedence order: --window, FM_CONTEXT_WINDOW,
+# CLAUDE_CODE_AUTO_COMPACT_WINDOW, then the 200000 default.
+if is_count "$WINDOW"; then
+  :
+elif is_count "${FM_CONTEXT_WINDOW:-}"; then
+  WINDOW=$FM_CONTEXT_WINDOW; WINDOW_SOURCE=FM_CONTEXT_WINDOW
+elif is_count "${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-}"; then
+  WINDOW=$CLAUDE_CODE_AUTO_COMPACT_WINDOW; WINDOW_SOURCE=CLAUDE_CODE_AUTO_COMPACT_WINDOW
+else
+  WINDOW=200000; WINDOW_SOURCE=default
+fi
+
+BUDGET=${FM_CONTEXT_BUDGET:-500000}
+is_count "$BUDGET" || BUDGET=500000
+BUDGET_NOTE=
+if [ "$BUDGET" -gt "$WINDOW" ]; then
+  BUDGET_NOTE=" (budget $(ktok "$BUDGET") clamped to the window)"
+  BUDGET=$WINDOW
+fi
+SUGGEST_AT=${FM_CONTEXT_NUDGE_SUGGEST:-}
+is_count "$SUGGEST_AT" || SUGGEST_AT=$((BUDGET * 40 / 100))
+NOW_AT=${FM_CONTEXT_NUDGE_NOW:-}
+is_count "$NOW_AT" || NOW_AT=$((BUDGET * 60 / 100))
 
 # Claude slugs the working directory into a projects subdirectory by replacing
 # every "/" and "." with "-". Auto-detection is a convenience for a hand-run
@@ -141,10 +176,10 @@ tokens_from_bytes() {
   printf '%s\n' $((bytes / 4))
 }
 
-verdict_for() {  # <percent>
-  if [ "$1" -lt 40 ]; then
+verdict_for() {  # <tokens>
+  if [ "$1" -lt "$SUGGEST_AT" ]; then
     printf '%s\n' 'quiet'
-  elif [ "$1" -le 60 ]; then
+  elif [ "$1" -le "$NOW_AT" ]; then
     printf '%s\n' 'suggest /stow at the next quiet moment'
   else
     printf '%s\n' 'suggest /stow now'
@@ -213,7 +248,8 @@ if [ "$MODE" = percent ]; then
   exit 0
 fi
 
-LINE="context $PERCENT% of $WINDOW tokens - $(verdict_for "$PERCENT")"
+BUDGET_PERCENT=$((TOKENS * 100 / BUDGET))
+LINE="context $(ktok "$TOKENS") tokens, $PERCENT% of the $(ktok "$WINDOW") window ($WINDOW_SOURCE), $BUDGET_PERCENT% of the $(ktok "$BUDGET") budget$BUDGET_NOTE - $(verdict_for "$TOKENS")"
 
 if [ "$MODE" = line ]; then
   printf '%s\n' "$LINE"
@@ -222,8 +258,8 @@ fi
 
 # --nudge
 [ -n "$SESSION_ID" ] || SESSION_ID=unknown
-STEP=$((PERCENT / 20))
-BAND=$(verdict_for "$PERCENT")
+STEP=$((BUDGET_PERCENT / 20))
+BAND=$(verdict_for "$TOKENS")
 case "$BAND" in
   quiet) BAND=quiet ;;
   'suggest /stow at the next quiet moment') BAND=next ;;
@@ -243,7 +279,7 @@ if [ "$STEP" -lt "$LAST" ] || [ "$BAND_RANK" -lt "$LAST_RANK" ]; then
   fm_lock_release "$NUDGE_LOCK"
   exit 1
 fi
-if [ "$PERCENT" -lt 40 ] || { [ "$STEP" -le "$LAST" ] && [ "$BAND_RANK" -le "$LAST_RANK" ]; }; then
+if [ "$BAND" = quiet ] || { [ "$STEP" -le "$LAST" ] && [ "$BAND_RANK" -le "$LAST_RANK" ]; }; then
   fm_lock_release "$NUDGE_LOCK"
   exit 1
 fi
