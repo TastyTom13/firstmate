@@ -112,6 +112,9 @@ test_done_lacks_pr_url_classification() {
     'yes|ship|no-mistakes|done: implementation complete' \
     'yes|ship||done [at=1790000000]: fix committed, ready to validate' \
     'yes|ship|no-mistakes|done [key=fix]: tests pass' \
+    'yes|ship|no-mistakes|done: implemented, see https://github.com/o/r/issues/5' \
+    'yes|ship||done: implemented, PR ready, https://github.com/o/r/pull/5' \
+    'no|ship|no-mistakes|done: implemented, PR https://github.com/o/r/pull/5 checks green' \
     'no|ship|no-mistakes|done: PR https://github.com/o/r/pull/5 checks green' \
     'no|ship|no-mistakes|done [at=1790000000]: PR https://github.com/o/r/pull/5 checks green' \
     'no|ship|no-mistakes|done: [key=fix] PR https://github.com/o/r/pull/5 checks green' \

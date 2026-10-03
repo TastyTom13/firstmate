@@ -377,15 +377,23 @@ status_is_terminal_verb() {
 # pipeline not yet run and is classified not done. Empty mode is treated as
 # no-mistakes, the unregistered-project default.
 status_done_lacks_pr_url() {  # <kind> <mode> <line>
-  local note
   [ "$1" = ship ] || return 1
   case "$2" in no-mistakes|'') ;; *) return 1 ;; esac
   [ "$(status_line_verb "$3")" = "done" ] || return 1
-  note=$(status_line_note "$3")
-  case "$note" in
-    *https://*|*http://*) return 1 ;;
-  esac
+  status_pr_url_from_note "$(status_line_note "$3")" >/dev/null && return 1
   return 0
+}
+
+# The URL after the first `PR ` token in a done <note>, or empty and 1 when the
+# note has no `PR http(s)://` token. A bare link (an issue URL) is not one.
+status_pr_url_from_note() {  # <note>
+  local padded=" $1" url
+  case "$padded" in
+    *" PR https://"*) url=https://${padded#*" PR https://"} ;;
+    *" PR http://"*) url=http://${padded#*" PR http://"} ;;
+    *) return 1 ;;
+  esac
+  printf '%s\n' "${url%% *}"
 }
 
 # 0 if the given (last) status line matches a captain-relevant verb.

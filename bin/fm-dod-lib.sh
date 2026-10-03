@@ -573,18 +573,6 @@ fm_dod_should_gate_ship_done() {  # <kind> <mode> <line>
   esac
 }
 
-# The PR/MR URL from a `done: PR <url>...` note, or empty.
-fm_dod_pr_url_from_done_note() {  # <note>
-  local note=$1 url
-  case "$note" in
-    PR\ https://*|PR\ http://*) ;;
-    *) return 1 ;;
-  esac
-  url=${note#PR }
-  url=${url%% *}
-  printf '%s\n' "$url"
-}
-
 # The last recorded <key>= value in <meta>, or empty.
 fm_dod_meta_value() {  # <meta> <key>
   grep "^$2=" "$1" 2>/dev/null | tail -1 | cut -d= -f2-
@@ -716,7 +704,7 @@ fm_dod_accept_ship_done() {  # <kind> <mode> <worktree> <project> <line> [<state
     return 1
   fi
   fm_dod_should_gate_ship_done "$kind" "$mode" "$line" || return 0
-  if url=$(fm_dod_pr_url_from_done_note "$(status_line_note "$line")") \
+  if url=$(status_pr_url_from_note "$(status_line_note "$line")") \
     && fm_dod_recorded_pr_on_forge "$state" "$id" "$meta" "$mode" "$url"; then
     return 0
   fi
