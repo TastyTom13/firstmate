@@ -83,15 +83,55 @@ test_moved_branch_without_named_head_is_refused() {
   pass "a moved remote branch that lacks the named head is refused"
 }
 
-test_no_mistakes_prevalidation_done_is_not_gated() {
-  local repo wt
+# The only done: on a no-mistakes ship is the PR line, so a prose done: that
+# names no PR URL is the pipeline not yet run, never a finished task.
+test_no_mistakes_done_without_pr_url_is_refused() {
+  local repo wt mode reason rc
   repo="$TMP_ROOT/preval-repo"
   wt="$TMP_ROOT/preval-wt"
   fm_git_worktree "$repo" "$wt" fm/preval
   git -C "$wt" commit -q --allow-empty -m 'only in the disposable copy'
-  accept_done ship no-mistakes "$wt" "$repo" 'done: implementation complete' \
-    || fail "no-mistakes pre-validation done: must not require named-head reachability"
-  pass "no-mistakes pre-validation done: is not gated"
+  git -C "$wt" update-ref refs/remotes/origin/fm/preval HEAD
+  for mode in no-mistakes ''; do
+    rc=0
+    reason=$(accept_done ship "$mode" "$wt" "$repo" 'done: implementation complete') || rc=$?
+    [ "$rc" -eq 1 ] || fail "no-mistakes done: without a PR URL was accepted (mode '$mode')"
+    case "$reason" in
+      *"names no PR URL"*) ;;
+      *) fail "no-PR-URL refusal did not say why (mode '$mode'): $reason" ;;
+    esac
+  done
+  accept_done ship direct-PR "$wt" "$repo" 'done: implementation complete' >/dev/null \
+    || fail "the no-mistakes PR-URL rule must not reach a direct-PR done:"
+  pass "no-mistakes done: without a PR URL is refused"
+}
+
+test_done_lacks_pr_url_classification() {
+  local entry kind mode line want rc
+  for entry in \
+    'yes|ship|no-mistakes|done: implementation complete' \
+    'yes|ship||done [at=1790000000]: fix committed, ready to validate' \
+    'yes|ship|no-mistakes|done [key=fix]: tests pass' \
+    'no|ship|no-mistakes|done: PR https://github.com/o/r/pull/5 checks green' \
+    'no|ship|no-mistakes|done [at=1790000000]: PR https://github.com/o/r/pull/5 checks green' \
+    'no|ship|no-mistakes|done: [key=fix] PR https://github.com/o/r/pull/5 checks green' \
+    'no|ship|no-mistakes|done: PR https://review.example/c/p/+/7 published for review' \
+    'no|ship|direct-PR|done: implementation complete' \
+    'no|ship|local-only|done: ready in branch fm/x' \
+    'no|scout|no-mistakes|done: report written' \
+    'no|ship|no-mistakes|working: implementation complete' \
+    'no|ship|no-mistakes|blocked: no PR yet'; do
+    want=${entry%%|*}; entry=${entry#*|}
+    kind=${entry%%|*}; entry=${entry#*|}
+    mode=${entry%%|*}; line=${entry#*|}
+    rc=0
+    status_done_lacks_pr_url "$kind" "$mode" "$line" || rc=$?
+    case "$want:$rc" in
+      yes:0|no:1) ;;
+      *) fail "status_done_lacks_pr_url $kind/'$mode' '$line': want $want, exit $rc" ;;
+    esac
+  done
+  pass "a no-mistakes ship done: without a PR URL is classified not done"
 }
 
 test_local_only_linked_branch_is_accepted() {
@@ -384,7 +424,8 @@ test_pr_based_dod_draft_check_uses_gh_axi() {
 
 test_scout_done_is_not_gated
 test_unpushed_ship_done_is_refused
-test_no_mistakes_prevalidation_done_is_not_gated
+test_no_mistakes_done_without_pr_url_is_refused
+test_done_lacks_pr_url_classification
 test_remote_containing_named_head_is_accepted
 test_moved_branch_without_named_head_is_refused
 test_free_text_sha_is_not_the_named_head

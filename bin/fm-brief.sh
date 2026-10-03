@@ -1059,6 +1059,10 @@ fi
 # The block opens with the fixed "Delivery contract: mode=<mode>" line that
 # bin/fm-spawn.sh checks against its own explicit --mode and the project's
 # registered forge before launching.
+# A no-mistakes status protocol also says its only done line is the PR line,
+# because a prose done: before the pipeline runs is read as not done
+# (status_done_lacks_pr_url in bin/fm-classify-lib.sh).
+DONE_RULE=""
 case "$MODE" in
   direct-PR)
     SETUP2=""
@@ -1069,6 +1073,8 @@ case "$MODE" in
   *)  # no-mistakes
     SETUP2="
 2. Run \`no-mistakes doctor\`; if it reports the repo is not initialized here, run \`no-mistakes init\`."
+    DONE_RULE="
+   On this no-mistakes task the only \`done:\` line is the PR line your Definition of done names, so start the pipeline yourself; a \`done:\` without a PR URL is read as not done."
     ;;
 esac
 RULE1=$(fm_ship_rule_one "$MODE" "$ID" "$BRANCH" "$FORGE") || exit 1
@@ -1128,7 +1134,7 @@ $RULE1
    https:// URL exactly as the forge printed it, never a bare number such as "PR 108"; firstmate
    copies that URL from your line rather than assembling one.
    A mid-task \`working:\` line (including setup complete) is nonterminal: do not end the
-   turn after it; continue the same stage until a defined \`done:\` gate under Definition of done.
+   turn after it; continue the same stage until a defined \`done:\` gate under Definition of done.$DONE_RULE
 $CREWMATE_PAUSE_INSTRUCTIONS
 5. If you hit the same obstacle twice, append \`blocked [at=<epoch>]: {why}\` and stop; firstmate will help.
 6. If a decision belongs above the implementation worker (product choices, destructive actions),
