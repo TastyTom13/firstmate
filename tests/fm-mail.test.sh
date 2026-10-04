@@ -2747,33 +2747,18 @@ test_read_full_body_by_id_renders_html_and_forward() {
   pass "fm-mail: read --id prints the full body with html converted and the forward included"
 }
 
-test_read_full_body_by_number() {
-  local out rc=0
-  write_full_body_fixture "$TMP_ROOT/full-body.eml"
-  write_full_body_harness "$TMP_ROOT/full-body-harness.py"
-  out=$(run_full_body_harness bynum read 2) || rc=$?
-  expect_code 0 "$rc" "read <n> must succeed"
-  assert_contains "$out" "Uid: 42" "read <n> picks the nth listed unseen message"
-  assert_contains "$out" "Notes & fixes" "read <n> prints the full body"
-  rc=0
-  out=$(run_full_body_harness bynum-out read 3) || rc=$?
-  expect_code 1 "$rc" "read <n> past the listing must fail"
-  assert_contains "$out" "no message 3" "out-of-range read names the number"
-  pass "fm-mail: read <n> prints the full body of the nth listed message"
-}
-
-test_read_list_numbers_entries() {
+test_read_list_names_uid_per_entry() {
   local out rc=0
   write_full_body_fixture "$TMP_ROOT/full-body.eml"
   write_full_body_harness "$TMP_ROOT/full-body-harness.py"
   out=$(run_full_body_harness list read) || rc=$?
   expect_code 0 "$rc" "plain read must still list"
-  assert_contains "$out" "No: 2" "list numbers each entry for read <n>"
   assert_contains "$out" "Uid: 42" "list names each entry's uid for read --id"
+  assert_not_contains "$out" "No:" "list has no positional entry number"
   assert_contains "$out" "Subj: first" "list still prints the digest"
   assert_contains "$out" "Body: first body" "list still prints a one-line preview"
   assert_not_contains "$out" "Notes & fixes" "plain read stays a compact digest"
-  pass "fm-mail: plain read keeps the digest and numbers each entry"
+  pass "fm-mail: plain read keeps the digest and names each entry's uid"
 }
 
 test_read_full_body_truncates_with_marker() {
@@ -2794,12 +2779,18 @@ test_read_full_body_rejects_bad_arguments() {
   write_full_body_fixture "$TMP_ROOT/full-body.eml"
   write_full_body_harness "$TMP_ROOT/full-body-harness.py"
   out=$(run_full_body_harness badnum read abc) || rc=$?
-  expect_code 1 "$rc" "a non-numeric message number must fail"
+  expect_code 1 "$rc" "a bare argument must fail"
+  rc=0
+  out=$(run_full_body_harness posnum read 2) || rc=$?
+  expect_code 1 "$rc" "a positional message number is not a read form"
+  rc=0
+  out=$(run_full_body_harness badid2 read --id abc) || rc=$?
+  expect_code 1 "$rc" "a non-numeric uid must fail"
   rc=0
   out=$(run_full_body_harness badid read --id) || rc=$?
   expect_code 1 "$rc" "read --id without a uid must fail"
   assert_contains "$out" "usage" "bad read arguments print usage"
-  pass "fm-mail: read rejects malformed message numbers and ids"
+  pass "fm-mail: read rejects everything but a numeric --id"
 }
 
 test_read_passes_arguments_through_wrapper() {
@@ -2860,8 +2851,7 @@ test_read_tolerates_none_payload
 test_read_surfaces_unfetchable_uid
 test_invalid_port_fails_cleanly
 test_read_full_body_by_id_renders_html_and_forward
-test_read_full_body_by_number
-test_read_list_numbers_entries
+test_read_list_names_uid_per_entry
 test_read_full_body_truncates_with_marker
 test_read_full_body_rejects_bad_arguments
 test_read_passes_arguments_through_wrapper

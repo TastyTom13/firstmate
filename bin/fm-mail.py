@@ -3,10 +3,8 @@
 #
 # A small mail client used by fm-mail.sh:
 #   read                   List unseen INBOX mail as a compact digest, each
-#                          entry numbered (No:) and keyed by its IMAP uid.
-#   read <n> | read --id <uid>
-#                          Print the full body of one message: the nth entry
-#                          of the read listing, or the message with that uid
+#                          entry keyed by its IMAP uid.
+#   read --id <uid>        Print the full body of the message with that uid
 #                          (seen or not). Uses the text/plain part, else the
 #                          text/html part converted to text (tags stripped,
 #                          links kept as text, entities decoded), followed by
@@ -252,27 +250,14 @@ def print_full(uid, raw):
 
 
 def cmd_read_one(args):
-    """read <n> | read --id <uid>: print one message's full body."""
-    usage = 'usage: fm-mail.sh read [<n> | --id <uid>]'
-    by_id = args[0] == '--id'
-    target = args[1] if by_id and len(args) == 2 else (args[0] if not by_id and len(args) == 1 else '')
-    if not target.isdigit() or int(target) < 1:
-        print(usage)
+    """read --id <uid>: print one message's full body."""
+    uid = args[1] if len(args) == 2 and args[0] == '--id' else ''
+    if not uid.isdigit() or int(uid) < 1:
+        print('usage: fm-mail.sh read [--id <uid>]')
         return 1
     try:
         m = connect_mailbox()
         m.select('INBOX')
-        if by_id:
-            uid = target
-        else:
-            typ, data = m.uid('search', None, 'UNSEEN')
-            ids = (data[0] or b'').split()[-READ_LIMIT:]
-            n = int(target)
-            if n > len(ids):
-                print('fm-mail read: no message %d in the unseen listing (%d listed)' % (n, len(ids)))
-                m.logout()
-                return 1
-            uid = ids[n - 1].decode() if isinstance(ids[n - 1], bytes) else str(ids[n - 1])
         typ, msg = m.uid('fetch', uid.encode(), '(BODY.PEEK[])')
         try:
             m.logout()
@@ -298,12 +283,11 @@ def cmd_read():
             print('(no unseen mail)')
             m.logout()
             return 0
-        for n, i in enumerate(ids[-READ_LIMIT:], 1):
+        for i in ids[-READ_LIMIT:]:
             uid = i.decode() if isinstance(i, bytes) else str(i)
             typ, msg = m.uid('fetch', i, '(BODY.PEEK[])')
             if typ != 'OK' or not msg or not msg[0] or not msg[0][1]:
                 print('---')
-                print('No:', n)
                 print('Uid:', uid)
                 print('From:', '(unfetchable)')
                 print('Date:', '')
@@ -312,7 +296,6 @@ def cmd_read():
                 continue
             mi = email.message_from_bytes(msg[0][1])
             print('---')
-            print('No:', n)
             print('Uid:', uid)
             print('From:', dec(mi.get('From')))
             print('Date:', dec(mi.get('Date')))

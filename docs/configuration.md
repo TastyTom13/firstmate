@@ -1603,7 +1603,7 @@ Arm the check once per home with `bin/fm-tool-update-check.sh arm`.
 ## Mail plane (.env)
 
 The mail plane (bin/fm-mail.sh) reads unseen IMAP messages and sends one SMTP message.
-Plain `read` lists unseen mail as a numbered digest with a one-line preview, and `read <n>` or `read --id <uid>` prints one message's full body: the plain-text part, else the HTML part as readable text, followed by any attached forwarded message.
+Plain `read` lists unseen mail as a digest keyed by uid with a one-line preview, and `read --id <uid>` prints one message's full body: the plain-text part, else the HTML part as readable text, followed by any attached forwarded message.
 `<uid>` is the number a `check: mail <uid>` wake names, and a full read never marks the message seen.
 
 **Polling and delivery guarantees**

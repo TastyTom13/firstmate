@@ -8,12 +8,11 @@
 # return/away and other rules).
 #
 # Subcommands:
-#   read                 List unseen INBOX mail as a compact digest (No /
-#                        Uid / From / Date / Subject / first line).
-#   read <n> | read --id <uid>
-#                        Print the full body of one message: entry <n> of the
-#                        read listing, or the message with IMAP uid <uid> (the
-#                        number a `check: mail <uid>` wake names; seen or not).
+#   read                 List unseen INBOX mail as a compact digest (Uid /
+#                        From / Date / Subject / first line).
+#   read --id <uid>      Print the full body of the message with IMAP uid <uid>
+#                        (the number a `check: mail <uid>` wake names; seen or
+#                        not).
 #                        Prints the plain-text part, else the HTML part as
 #                        readable text, then any attached forwarded message,
 #                        bounded to FM_MAIL_BODY_MAX characters (default
@@ -189,7 +188,7 @@ run_py() {
 
 usage() {
   cat <<'EOF'
-fm-mail.sh read [<n> | --id <uid>]
+fm-mail.sh read [--id <uid>]
 fm-mail.sh send <to> <subject> <body | ->
 fm-mail.sh poll
 fm-mail.sh status
