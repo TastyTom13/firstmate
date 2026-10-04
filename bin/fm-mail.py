@@ -2,7 +2,17 @@
 # fm-mail.py - the IMAP/SMTP engine behind bin/fm-mail.sh.
 #
 # A small mail client used by fm-mail.sh:
-#   read                   List unseen INBOX mail as a compact digest.
+#   read                   List unseen INBOX mail as a compact digest, each
+#                          entry numbered (No:) and keyed by its IMAP uid.
+#   read <n> | read --id <uid>
+#                          Print the full body of one message: the nth entry
+#                          of the read listing, or the message with that uid
+#                          (seen or not). Uses the text/plain part, else the
+#                          text/html part converted to text (tags stripped,
+#                          links kept as text, entities decoded), followed by
+#                          any attached forwarded message, bounded to
+#                          FM_MAIL_BODY_MAX characters (default 20000) with a
+#                          truncation marker.
 #   send <to> <subj> <body | ->   Send one SMTP message; "-" reads stdin.
 #   poll_list              Emit unseen mail as tab-separated rows for the bash
 #                          poll, bounded to uids this home has not surfaced,
@@ -20,10 +30,12 @@ import socket
 import ssl
 import sys
 import email
+import email.policy
 import smtplib
 from email.header import decode_header, make_header
 from email.message import EmailMessage
 from email.utils import formatdate
+from html.parser import HTMLParser
 
 USER = os.environ['FM_MAIL_USER']
 PW = os.environ['FM_MAIL_PASS']
@@ -51,6 +63,17 @@ socket.setdefaulttimeout(MAIL_TIMEOUT)
 
 MAX_PREVIEW = 200
 READ_LIMIT = 20
+BODY_MAX_DEFAULT = 20000
+
+
+def body_max():
+    """Characters of a full body to print. Invalid or non-positive values
+    become the default."""
+    try:
+        value = int(os.environ.get('FM_MAIL_BODY_MAX', ''))
+    except ValueError:
+        value = BODY_MAX_DEFAULT
+    return value if value > 0 else BODY_MAX_DEFAULT
 
 
 def dec(s):
@@ -101,6 +124,170 @@ def body_preview(msg):
     return ''
 
 
+class HtmlText(HTMLParser):
+    """Render an HTML body as readable text: drop head/style/script, break
+    lines at block elements, bullet list items, and keep each link's target
+    after its text."""
+    BLOCK = {'p', 'div', 'br', 'tr', 'table', 'ul', 'ol', 'blockquote',
+             'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'pre'}
+    SKIP = {'head', 'style', 'script', 'title'}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out = []
+        self.skip = 0
+        self.links = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SKIP:
+            self.skip += 1
+        elif tag == 'li':
+            self.out.append('\n- ')
+        elif tag in self.BLOCK:
+            self.out.append('\n')
+        elif tag in ('td', 'th'):
+            self.out.append(' ')
+        if tag == 'a':
+            self.links.append((dict(attrs).get('href') or '', len(self.out)))
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP:
+            self.skip = max(0, self.skip - 1)
+        elif tag in self.BLOCK:
+            self.out.append('\n')
+        elif tag == 'a' and self.links:
+            href, start = self.links.pop()
+            text = ''.join(self.out[start:]).strip()
+            if href and not href.startswith('#') and href not in text:
+                self.out.append(' <%s>' % href.removeprefix('mailto:'))
+
+    def handle_data(self, data):
+        if not self.skip:
+            self.out.append(data)
+
+    def text(self):
+        lines = [' '.join(line.split()) for line in ''.join(self.out).splitlines()]
+        return re.sub(r'\n{3,}', '\n\n', '\n'.join(lines)).strip()
+
+
+def html_to_text(raw):
+    parser = HtmlText()
+    parser.feed(raw)
+    parser.close()
+    return parser.text()
+
+
+def part_text(part):
+    """Decoded text of one text/* part; html is converted to plain text."""
+    try:
+        text = part.get_content()
+    except Exception:
+        text = (part.get_payload(decode=True) or b'').decode('utf-8', 'replace')
+    if part.get_content_type() == 'text/html':
+        return html_to_text(text)
+    return text.strip()
+
+
+def full_text(msg):
+    """The readable body of a message: its text/plain part when non-empty,
+    else its text/html part as text, then every attached forwarded message
+    (message/rfc822) with its own headers, rendered the same way."""
+    text = ''
+    for pref in ('plain', 'html'):
+        try:
+            part = msg.get_body(preferencelist=(pref,))
+        except Exception:
+            part = None
+        if part is not None:
+            text = part_text(part)
+            if text:
+                break
+    chunks = [text] if text else []
+    try:
+        attachments = list(msg.iter_attachments())
+    except Exception:
+        attachments = []
+    for part in attachments:
+        if part.get_content_type() != 'message/rfc822':
+            continue
+        try:
+            inner = part.get_content()
+        except Exception:
+            continue
+        chunks.append('\n'.join([
+            '---------- Forwarded message ----------',
+            'From: ' + clean(dec(inner.get('From'))),
+            'Date: ' + clean(dec(inner.get('Date'))),
+            'Subj: ' + clean(dec(inner.get('Subject'))),
+            '',
+            full_text(inner),
+        ]))
+    return '\n\n'.join(chunks).strip()
+
+
+def printable(text):
+    """Drop terminal control characters (escape sequences included) from
+    mail text, keeping newlines and tabs."""
+    return re.sub(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]', '', text.replace('\r\n', '\n'))
+
+
+def print_full(uid, raw):
+    mi = email.message_from_bytes(raw, policy=email.policy.default)
+    body = printable(full_text(mi))
+    limit = body_max()
+    print('Uid:', uid)
+    print('From:', clean(dec(mi.get('From'))))
+    print('To:', clean(dec(mi.get('To'))))
+    print('Date:', clean(dec(mi.get('Date'))))
+    print('Subj:', clean(dec(mi.get('Subject'))))
+    print()
+    if not body:
+        print('(body unavailable)')
+    elif len(body) > limit:
+        print(body[:limit])
+        print('[truncated: showed %d of %d characters; raise FM_MAIL_BODY_MAX to see more]'
+              % (limit, len(body)))
+    else:
+        print(body)
+
+
+def cmd_read_one(args):
+    """read <n> | read --id <uid>: print one message's full body."""
+    usage = 'usage: fm-mail.sh read [<n> | --id <uid>]'
+    by_id = args[0] == '--id'
+    target = args[1] if by_id and len(args) == 2 else (args[0] if not by_id and len(args) == 1 else '')
+    if not target.isdigit() or int(target) < 1:
+        print(usage)
+        return 1
+    try:
+        m = connect_mailbox()
+        m.select('INBOX')
+        if by_id:
+            uid = target
+        else:
+            typ, data = m.uid('search', None, 'UNSEEN')
+            ids = (data[0] or b'').split()[-READ_LIMIT:]
+            n = int(target)
+            if n > len(ids):
+                print('fm-mail read: no message %d in the unseen listing (%d listed)' % (n, len(ids)))
+                m.logout()
+                return 1
+            uid = ids[n - 1].decode() if isinstance(ids[n - 1], bytes) else str(ids[n - 1])
+        typ, msg = m.uid('fetch', uid.encode(), '(BODY.PEEK[])')
+        try:
+            m.logout()
+        except Exception:
+            pass
+        if typ != 'OK' or not msg or not msg[0] or not msg[0][1]:
+            print('fm-mail read: message uid %s could not be fetched' % uid)
+            return 1
+        print_full(uid, msg[0][1])
+        return 0
+    except Exception as e:
+        print('fm-mail read error:', e)
+        return 1
+
+
 def cmd_read():
     try:
         m = connect_mailbox()
@@ -111,11 +298,12 @@ def cmd_read():
             print('(no unseen mail)')
             m.logout()
             return 0
-        for i in ids[-READ_LIMIT:]:
+        for n, i in enumerate(ids[-READ_LIMIT:], 1):
             uid = i.decode() if isinstance(i, bytes) else str(i)
             typ, msg = m.uid('fetch', i, '(BODY.PEEK[])')
             if typ != 'OK' or not msg or not msg[0] or not msg[0][1]:
                 print('---')
+                print('No:', n)
                 print('Uid:', uid)
                 print('From:', '(unfetchable)')
                 print('Date:', '')
@@ -124,6 +312,8 @@ def cmd_read():
                 continue
             mi = email.message_from_bytes(msg[0][1])
             print('---')
+            print('No:', n)
+            print('Uid:', uid)
             print('From:', dec(mi.get('From')))
             print('Date:', dec(mi.get('Date')))
             print('Subj:', dec(mi.get('Subject')))
@@ -475,6 +665,8 @@ def cmd_poll_list():
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else ''
     if cmd == 'read':
+        if len(sys.argv) > 2:
+            return cmd_read_one(sys.argv[2:])
         return cmd_read()
     if cmd == 'send':
         if len(sys.argv) < 5:

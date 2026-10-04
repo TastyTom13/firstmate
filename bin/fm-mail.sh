@@ -8,8 +8,16 @@
 # return/away and other rules).
 #
 # Subcommands:
-#   read                 List unseen INBOX mail as a compact digest (From /
-#                        Date / Subject / first line).
+#   read                 List unseen INBOX mail as a compact digest (No /
+#                        Uid / From / Date / Subject / first line).
+#   read <n> | read --id <uid>
+#                        Print the full body of one message: entry <n> of the
+#                        read listing, or the message with IMAP uid <uid> (the
+#                        number a `check: mail <uid>` wake names; seen or not).
+#                        Prints the plain-text part, else the HTML part as
+#                        readable text, then any attached forwarded message,
+#                        bounded to FM_MAIL_BODY_MAX characters (default
+#                        20000) with a truncation marker. Never marks it seen.
 #   send <to> <subject> <body | ->
 #                        Send one message. A "-" body reads plain text from
 #                        stdin.
@@ -50,6 +58,7 @@
 #   FM_SMTP_HOST=<smtp host>
 #   FM_SMTP_PORT=<smtp port>     (default 465, implicit TLS)
 #   FM_MAIL_TIMEOUT=<seconds>    (default 20; IMAP/SMTP socket timeout)
+#   FM_MAIL_BODY_MAX=<chars>     (default 20000; full-body read bound)
 # FM_HOME falls back to the repo root when unset. This script carries no secret
 # and no default endpoint that could resolve against a wrong home; FM_MAIL_USER,
 # FM_MAIL_PASS, FM_IMAP_HOST, and FM_SMTP_HOST are always required, and
@@ -180,7 +189,7 @@ run_py() {
 
 usage() {
   cat <<'EOF'
-fm-mail.sh read
+fm-mail.sh read [<n> | --id <uid>]
 fm-mail.sh send <to> <subject> <body | ->
 fm-mail.sh poll
 fm-mail.sh status
@@ -618,7 +627,8 @@ mail_poll() {
 
 case "${1:-}" in
   read)
-    run_py read
+    shift
+    run_py read "$@"
     ;;
   send)
     to="${2:-}"
