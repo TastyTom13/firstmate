@@ -2617,6 +2617,199 @@ test_poll_recovers_journaled_wake_after_ack
 test_poll_acknowledged_wake_evading_recovery
 test_poll_legacy_wake_does_not_leak_into_generation
 test_poll_missing_wake_lib_does_not_suppress
+
+# Fixture for the full-body read: an HTML-only note plus a forwarded message
+# attached as message/rfc822 whose own body is multipart/alternative.
+write_full_body_fixture() {
+  cat > "$1" <<'EOF'
+From: Captain <captain@example.com>
+To: info@example.com
+Subject: Fwd: latest feedback
+Date: Mon, 05 Oct 2026 09:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+--outer
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset=utf-8
+
+--alt
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<html><head><style>p { color: red; }</style><script>var x = 1;</script></he=
+ad><body><p>Notes &amp; fixes for the caf&eacute; page.</p><ul><li>Hero to=
+o tall</li><li>See <a href=3D"https://example.com/board">the board</a></li=
+></ul></body></html>
+--alt--
+
+--outer
+Content-Type: message/rfc822
+Content-Disposition: attachment
+
+From: Matthias <matthias@example.com>
+Subject: Feedback round two
+Date: Sun, 04 Oct 2026 18:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="inner"
+
+--inner
+Content-Type: text/plain; charset=utf-8
+
+Forwarded plain text: the pricing table is wrong.
+--inner
+Content-Type: text/html; charset=utf-8
+
+<p>Forwarded HTML copy that must not repeat.</p>
+--inner--
+
+--outer--
+EOF
+}
+
+# Write a python harness that loads bin/fm-mail.py with a fake IMAP server.
+# The fake serves uids 41 and 42 (42 is the fixture), records every FETCH spec
+# in FM_MAIL_TEST_FETCH_LOG, and runs main() with the harness arguments.
+write_full_body_harness() {
+  cat > "$1" <<'PYEOF'
+import os, sys
+os.environ.update({
+    'FM_MAIL_USER': 't', 'FM_MAIL_PASS': 'secret-pass',
+    'FM_IMAP_HOST': 'imap.test', 'FM_IMAP_PORT': '993',
+    'FM_SMTP_HOST': 'smtp.test', 'FM_SMTP_PORT': '465',
+})
+FIXTURE = open(os.environ['FM_MAIL_TEST_FIXTURE'], 'rb').read().replace(b'\n', b'\r\n')
+OTHER = b'From: a@b.c\r\nSubject: first\r\n\r\nfirst body\r\n'
+class FakeConn:
+    def __init__(self, *a, **k):
+        pass
+    def login(self, *a):
+        pass
+    def select(self, *a):
+        return ('OK', [])
+    def uid(self, cmd, *args):
+        if cmd == 'search':
+            return ('OK', [b'41 42'])
+        if cmd == 'fetch':
+            with open(os.environ['FM_MAIL_TEST_FETCH_LOG'], 'a') as log:
+                log.write('%s %s\n' % (args[0].decode() if isinstance(args[0], bytes) else args[0], args[1]))
+            uid = args[0].decode() if isinstance(args[0], bytes) else str(args[0])
+            if uid == '42':
+                return ('OK', [(b'42 (UID 42 BODY[] {1}', FIXTURE)])
+            if uid == '41':
+                return ('OK', [(b'41 (UID 41 BODY[] {1}', OTHER)])
+            return ('OK', [None])
+        return ('NO', None)
+    def logout(self):
+        pass
+import imaplib
+imaplib.IMAP4_SSL = lambda *a, **k: FakeConn()
+import importlib.util
+spec = importlib.util.spec_from_file_location('fm_mail', os.environ['FM_MAIL_TEST_PY'])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+sys.argv = ['fm-mail.py'] + sys.argv[1:]
+sys.exit(mod.main())
+PYEOF
+}
+
+run_full_body_harness() {
+  # $1 = case name; remaining args are the fm-mail.py arguments.
+  local name=$1
+  shift
+  FM_MAIL_TEST_FIXTURE="$TMP_ROOT/full-body.eml" \
+    FM_MAIL_TEST_FETCH_LOG="$TMP_ROOT/full-body-$name.fetch" \
+    FM_MAIL_TEST_PY="$ROOT/bin/fm-mail.py" \
+    python3 "$TMP_ROOT/full-body-harness.py" "$@" 2>&1
+}
+
+test_read_full_body_by_id_renders_html_and_forward() {
+  local out rc=0
+  write_full_body_fixture "$TMP_ROOT/full-body.eml"
+  write_full_body_harness "$TMP_ROOT/full-body-harness.py"
+  out=$(run_full_body_harness byid read --id 42) || rc=$?
+  expect_code 0 "$rc" "read --id must succeed"
+  assert_contains "$out" "Subj: Fwd: latest feedback" "full read prints the subject"
+  assert_contains "$out" "Notes & fixes for the café page." "html part is converted to text with entities decoded"
+  assert_contains "$out" "- Hero too tall" "html list items stay readable"
+  assert_contains "$out" "the board <https://example.com/board>" "html links are kept as text"
+  assert_not_contains "$out" "<p>" "html tags are stripped"
+  assert_not_contains "$out" "color: red" "style content is dropped"
+  assert_not_contains "$out" "var x" "script content is dropped"
+  assert_contains "$out" "From: Matthias <matthias@example.com>" "forwarded message headers are shown"
+  assert_contains "$out" "Forwarded plain text: the pricing table is wrong." "forwarded message body is shown"
+  assert_not_contains "$out" "must not repeat" "forwarded html alternative is not duplicated"
+  assert_not_contains "$out" "secret-pass" "full read never prints the password"
+  assert_grep "42 (BODY.PEEK[])" "$TMP_ROOT/full-body-byid.fetch" "full read fetches with BODY.PEEK"
+  assert_no_grep "BODY\[\]\|RFC822)" "$TMP_ROOT/full-body-byid.fetch" "full read never uses a marking fetch"
+  pass "fm-mail: read --id prints the full body with html converted and the forward included"
+}
+
+test_read_list_names_uid_per_entry() {
+  local out rc=0
+  write_full_body_fixture "$TMP_ROOT/full-body.eml"
+  write_full_body_harness "$TMP_ROOT/full-body-harness.py"
+  out=$(run_full_body_harness list read) || rc=$?
+  expect_code 0 "$rc" "plain read must still list"
+  assert_contains "$out" "Uid: 42" "list names each entry's uid for read --id"
+  assert_not_contains "$out" "No:" "list has no positional entry number"
+  assert_contains "$out" "Subj: first" "list still prints the digest"
+  assert_contains "$out" "Body: first body" "list still prints a one-line preview"
+  assert_not_contains "$out" "Notes & fixes" "plain read stays a compact digest"
+  pass "fm-mail: plain read keeps the digest and names each entry's uid"
+}
+
+test_read_full_body_truncates_with_marker() {
+  local out rc=0
+  write_full_body_fixture "$TMP_ROOT/full-body.eml"
+  write_full_body_harness "$TMP_ROOT/full-body-harness.py"
+  out=$(FM_MAIL_BODY_MAX=12 run_full_body_harness trunc read --id 42) || rc=$?
+  expect_code 0 "$rc" "truncated read must succeed"
+  assert_contains "$out" "Notes & fixe" "the bounded prefix is printed"
+  assert_not_contains "$out" "pricing table" "text past the bound is not printed"
+  assert_contains "$out" "[truncated: showed 12 of" "a clear truncation marker is printed"
+  assert_contains "$out" "FM_MAIL_BODY_MAX" "the marker names the setting that raises the bound"
+  pass "fm-mail: a full body past FM_MAIL_BODY_MAX is cut with a clear marker"
+}
+
+test_read_full_body_rejects_bad_arguments() {
+  local out rc=0
+  write_full_body_fixture "$TMP_ROOT/full-body.eml"
+  write_full_body_harness "$TMP_ROOT/full-body-harness.py"
+  out=$(run_full_body_harness badnum read abc) || rc=$?
+  expect_code 1 "$rc" "a bare argument must fail"
+  rc=0
+  out=$(run_full_body_harness posnum read 2) || rc=$?
+  expect_code 1 "$rc" "a positional message number is not a read form"
+  rc=0
+  out=$(run_full_body_harness badid2 read --id abc) || rc=$?
+  expect_code 1 "$rc" "a non-numeric uid must fail"
+  rc=0
+  out=$(run_full_body_harness badid read --id) || rc=$?
+  expect_code 1 "$rc" "read --id without a uid must fail"
+  assert_contains "$out" "usage" "bad read arguments print usage"
+  pass "fm-mail: read rejects everything but a numeric --id"
+}
+
+test_read_passes_arguments_through_wrapper() {
+  local fakebin out rc=0
+  fakebin=$(fm_fakebin "$TMP_ROOT/read-args")
+  cat > "$fakebin/python3" <<'SH'
+#!/usr/bin/env bash
+shift
+printf 'argv:%s\n' "$*"
+SH
+  chmod +x "$fakebin/python3"
+  out=$(FM_MAIL_USER=test FM_MAIL_PASS=pass FM_IMAP_HOST=h FM_SMTP_HOST=h \
+    FM_HOME="$HOME_DIR" PATH="$fakebin:$PATH" "$MAIL" read --id 42 2>&1) || rc=$?
+  expect_code 0 "$rc" "read --id through the wrapper must succeed"
+  assert_contains "$out" "argv:read --id 42" "the wrapper passes read arguments to the engine"
+  assert_not_contains "$out" "pass" "the wrapper never puts the password in argv"
+  pass "fm-mail: fm-mail.sh read passes its arguments to the engine"
+}
+
 test_poll_rolls_back_wake_without_durable_record
 test_poll_rollback_failure_never_leaves_unrecorded_ackable_wake
 test_poll_caps_wakes_per_run
@@ -2657,3 +2850,8 @@ test_body_preview_tolerates_none_payload
 test_read_tolerates_none_payload
 test_read_surfaces_unfetchable_uid
 test_invalid_port_fails_cleanly
+test_read_full_body_by_id_renders_html_and_forward
+test_read_list_names_uid_per_entry
+test_read_full_body_truncates_with_marker
+test_read_full_body_rejects_bad_arguments
+test_read_passes_arguments_through_wrapper

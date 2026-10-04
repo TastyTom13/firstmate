@@ -1610,6 +1610,8 @@ Arm the check once per home with `bin/fm-tool-update-check.sh arm`.
 ## Mail plane (.env)
 
 The mail plane (bin/fm-mail.sh) reads unseen IMAP messages and sends one SMTP message.
+Plain `read` lists unseen mail as a digest keyed by uid with a one-line preview, and `read --id <uid>` prints one message's full body: the plain-text part, else the HTML part as readable text, followed by any attached forwarded message.
+`<uid>` is the number a `check: mail <uid>` wake names, and a full read never marks the message seen.
 
 **Polling and delivery guarantees**
 
@@ -1635,7 +1637,7 @@ FM_IMAP_HOST=   # IMAP server hostname
 FM_SMTP_HOST=   # SMTP server hostname
 ```
 
-`FM_IMAP_PORT` (default 993), `FM_SMTP_PORT` (default 465), `FM_MAIL_TIMEOUT` (default 20 seconds), and `FM_MAIL_POLL_MAX_WAKES` (default 20, valid 1..200) are optional.
+`FM_IMAP_PORT` (default 993), `FM_SMTP_PORT` (default 465), `FM_MAIL_TIMEOUT` (default 20 seconds), `FM_MAIL_POLL_MAX_WAKES` (default 20, valid 1..200), and `FM_MAIL_BODY_MAX` (default 20000 characters, the bound on a full-body read before its truncation marker) are optional.
 The per-poll wake cap bounds the wakes of one `poll` run; header fetches scan a larger bounded window of new unseen uids plus already-surfaced retry-set uids, so a flood or large backlog still makes bounded progress every poll, keeping the durable wake queue bounded without ever dropping mail.
 
 **Unfetchable headers**
