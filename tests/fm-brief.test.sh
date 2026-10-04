@@ -221,8 +221,18 @@ test_ship_modes_generate_clean_briefs() {
       assert_grep "# Waiting on the pipeline" "$brief" "$id: no-mistakes brief missing the pipeline wait rule"
       assert_grep "Keep the drive call's \`--wait\` at or under your harness's command limit" "$brief" "$id: wait rule missing the harness-bounded wait"
       assert_grep "\`${FM_CLASSIFY_PAUSED_VERB:-paused} [at=<epoch>]: awaiting pipeline <step> on <branch or PR>\`" "$brief" "$id: wait rule missing the paused declaration"
+      assert_grep "the only \`done:\` line is the PR line" "$brief" \
+        "$id: no-mistakes status protocol must say the only done: line is the PR line"
+      assert_grep "a \`done:\` without a PR URL is read as not done" "$brief" \
+        "$id: no-mistakes status protocol must say a done: without a PR URL is not done"
+      assert_no_grep "That first \`done:\` is the handoff" "$brief" \
+        "$id: no-mistakes brief must not ask for a pre-pipeline done: handoff"
+      assert_no_grep "Firstmate will then instruct you to run /no-mistakes" "$brief" \
+        "$id: no-mistakes worker must start the pipeline itself rather than wait after a done:"
     else
       assert_no_grep "# Waiting on the pipeline" "$brief" "$id: non-no-mistakes brief must not carry the pipeline wait rule"
+      assert_no_grep "the only \`done:\` line is the PR line" "$brief" \
+        "$id: the no-mistakes done: rule must not reach a $mode brief"
     fi
   done
   pass "fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly"
@@ -267,7 +277,7 @@ test_ship_mode_is_explicit_not_registry() {
   brief="$home/data/brief-explicit-a5/brief.md"
   grep -qx "Delivery contract: mode=no-mistakes" "$brief" \
     || fail "registered direct-PR posture overrode the explicit --mode"
-  assert_grep "Firstmate will then instruct you to run /no-mistakes" "$brief" \
+  assert_grep "run /no-mistakes yourself" "$brief" \
     "explicit no-mistakes brief did not render the pipeline definition of done"
 
   # An unregistered project is not a blocker either, because nothing is looked up.

@@ -2352,7 +2352,7 @@ test_other_branch_run_ignored() {
   make_repo_on_branch "$d/wt" fm/feat-g
   make_fakebin "$d" >/dev/null
   fm_write_meta "$d/state/feat-g.meta" "window=fm:fm-feat-g" "worktree=$d/wt" "kind=ship" "harness=claude"
-  printf 'done: implemented, ready to validate\n' > "$d/state/feat-g.status"
+  printf 'done: implemented, PR https://example.test/o/r/pull/1\n' > "$d/state/feat-g.status"
   FM_FAKE_AXI_STATUS="$(run_running fm/some-other)"
   FM_FAKE_RUNS_LIST="$(cat <<'EOF'
   running    fm/some-other aaaaaaa  2026-07-02 22:10
@@ -2425,7 +2425,7 @@ test_merged_pr_reads_done_under_captured_meta() {
   pass "recorded merged PR reads done under the fleet snapshot's captured meta"
 }
 
-test_no_mistakes_prevalidation_done_stays_done() {
+test_no_mistakes_done_without_pr_url_is_not_done() {
   reset_fakes
   local d out
   d=$(new_case preval-done)
@@ -2441,9 +2441,10 @@ test_no_mistakes_prevalidation_done_stays_done() {
   FM_FAKE_BUSY=0
   arm_idle_record "$d/state" preval
   out=$(run_crew_state "$d" preval)
-  assert_contains "$out" "state: done" "no-mistakes pre-validation done: remains done"
-  assert_not_contains "$out" "state: blocked" "pre-validation done: must not be the named-head gate"
-  pass "no-mistakes pre-validation done: stays current-state done"
+  assert_not_contains "$out" "state: done" "a no-mistakes done: without a PR URL must not read done"
+  assert_contains "$out" "state: blocked" "a no-mistakes done: without a PR URL needs the pipeline started"
+  assert_contains "$out" "names no PR URL" "the not-done reading must say the PR URL is missing"
+  pass "no-mistakes done: without a PR URL is not current-state done"
 }
 
 test_moved_remote_branch_without_named_head_is_blocked() {
@@ -2932,7 +2933,7 @@ test_single_owner_terminal_declaration_supersedes_stale_decision() {
     fm_write_meta "$d/state/task.meta" "window=fm:fm-task" "worktree=$d/wt" "kind=$kind" "harness=claude"
     for opener in needs-decision blocked; do
       for terminal in 'done' failed; do
-        printf '%s [key=choice]: an earlier decision\n%s: final outcome\nContinuation prose.\n\n' \
+        printf '%s [key=choice]: an earlier decision\n%s: final outcome, PR https://example.test/o/r/pull/1\nContinuation prose.\n\n' \
           "$opener" "$terminal" > "$d/state/task.status"
         out=$(run_crew_state "$d" task)
         assert_contains "$out" "state: $terminal" "$kind terminal declaration supersedes stale $opener"
@@ -5640,7 +5641,7 @@ test_coarse_run_does_not_probe_other_branch_ci_log_for_ready_status
 test_other_branch_run_ignored
 test_unpushed_ship_done_is_blocked
 test_merged_pr_reads_done_under_captured_meta
-test_no_mistakes_prevalidation_done_stays_done
+test_no_mistakes_done_without_pr_url_is_not_done
 test_moved_remote_branch_without_named_head_is_blocked
 test_no_run_busy_pane
 test_no_run_launch_prompt_parked_is_not_working
