@@ -1,0 +1,10 @@
+mode=no-mistakes rc=1  done: implementation complete
+   -> no-mistakes done: names no PR URL, so it is not done: the only done line on a no-mistakes ship is the PR line, so start the pipeline with /no-mistakes
+mode=<empty> rc=1  done [at=1790000000]: fix committed, ready to validate
+   -> no-mistakes done: names no PR URL, so it is not done: the only done line on a no-mistakes ship is the PR line, so start the pipeline with /no-mistakes
+mode=no-mistakes rc=1  done: implemented, see https://github.com/o/r/issues/5
+   -> no-mistakes done: names no PR URL, so it is not done: the only done line on a no-mistakes ship is the PR line, so start the pipeline with /no-mistakes
+mode=direct-PR rc=1  done: implementation complete
+   -> named head 8dc9f5db9e919656422cb4f805d9ec826ede8873 is unreachable outside the worker copy
+mode=no-mistakes rc=1  done: PR https://github.com/o/r/pull/5 checks green
+   -> named head 8dc9f5db9e919656422cb4f805d9ec826ede8873 is unreachable outside the worker copy

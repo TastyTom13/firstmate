@@ -1,0 +1,6 @@
+=== no-mistakes
+3:44:   On this no-mistakes task the only `done:` line is the PR line your Definition of done names, so start the pipeline yourself; a `done:` without a PR URL is read as not done.
+15:140:When you believe it is complete and verified, run /no-mistakes yourself to validate and ship a PR; do not append a `done:` line first.
+17:142:The only `done:` line on this task is the CI-ready PR line below; a `done:` without a PR URL is read as not done.
+=== direct-PR
+=== local-only
