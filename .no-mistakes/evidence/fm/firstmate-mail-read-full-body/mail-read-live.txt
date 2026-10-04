@@ -1,0 +1,91 @@
+$ fm-mail.sh read
+---
+Uid: 41
+From: Matthias <m@x.io>
+Date: Sun, 04 Oct 2026 10:00:00 +0000
+Subj: Note
+Body: Hello team one two link
+---
+Uid: 42
+From: Tomas <t@x.io>
+Date: Sun, 04 Oct 2026 11:00:00 +0000
+Subj: Fwd: Latest feedback
+Body: FYI see below
+---
+Uid: 43
+From: a@x.io
+Date: Sun, 04 Oct 2026 12:00:00 +0000
+Subj: Big
+Body: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word 
+---
+Uid: 44
+From: a@x.io
+Date: Sun, 04 Oct 2026 12:00:00 +0000
+Subj: Evil
+Body: before[31mREDafter
+rc=0
+
+$ read --id 41 (html-only note)
+Uid: 41
+From: Matthias <m@x.io>
+To: info@x.io
+Date: Sun, 04 Oct 2026 10:00:00 +0000
+Subj: Note
+
+Hello team
+
+- one
+- two
+link <https://ex.com/a>
+rc=0
+
+$ read --id 42 (forward)
+Uid: 42
+From: Tomas <t@x.io>
+To: info@x.io
+Date: Sun, 04 Oct 2026 11:00:00 +0000
+Subj: Fwd: Latest feedback
+
+FYI see below
+
+---------- Forwarded message ----------
+From: Matthias <m@x.io>
+Date: Sat, 03 Oct 2026 09:00:00 +0000
+Subj: Latest feedback
+
+Feedback: please fix the logo
+rc=0
+
+$ FM_MAIL_BODY_MAX=100 read --id 43
+Uid: 43
+From: a@x.io
+To: b@x.io
+Date: Sun, 04 Oct 2026 12:00:00 +0000
+Subj: Big
+
+word word word word word word word word word word word word word word word word word word word word 
+[truncated: showed 100 of 24999 characters; raise FM_MAIL_BODY_MAX to see more]
+rc=0
+
+$ read --id 44 | cat -v (control chars)
+Uid: 44
+From: a@x.io
+To: b@x.io
+Date: Sun, 04 Oct 2026 12:00:00 +0000
+Subj: Evil
+
+before[31mREDafter
+
+$ bad args
+usage: fm-mail.sh read [--id <uid>]
+rc=1
+usage: fm-mail.sh read [--id <uid>]
+rc=1
+usage: fm-mail.sh read [--id <uid>]
+rc=1
+usage: fm-mail.sh read [--id <uid>]
+rc=1
+
+$ read --id 999 (missing)
+fm-mail read: message uid 999 could not be fetched
+rc=1
