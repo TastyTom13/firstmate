@@ -1,0 +1,24 @@
+tmux server: ; windows: 
+== A1 fire-and-forget retry ring, flag present, worker has open decision then resolves
+due action: retry /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-wnt.Nlnu74/live/a1/state/t1.inbox/001.msg
+open decision: doorbells in pane=0 retry mark present=yes
+after resolve, 3 checks: doorbells in pane=0 retry mark present=no record kept=yes wake queue=empty
+pane text:
+== A2 same retry mark, flag absent
+due action: quiet
+flag absent, 2 checks: doorbells in pane=0
+== A3 real fm-send --fire-and-forget to a secondmate pane, flag present
+fm-send rc=0; retry mark=001.msg; doorbells in pane=0
+fm-send stderr tail:
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fm-send: doorbell did not reach fmlive:fm-hibit; the steer is durably recorded at /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-wnt.Nlnu74/live/a3/state/domain.inbox/001.msg and the watcher will ring it once more
+== B pending-reply recovery, flag present, mate has open decision then resolves (real fm-send, no hook)
+open decision: recovery held (rc=1)
+phase=awaiting_report inbox records=0
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-wnt.Nlnu74/live/b
+fm-send: doorbell did not reach fmlive:fm-hibit; the steer is durably recorded at /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-wnt.Nlnu74/live/b/state/hibit.inbox/001.msg and the watcher will re-ring
+after resolve: recovery sent
+inbox records=1
+doorbells in mate pane=0

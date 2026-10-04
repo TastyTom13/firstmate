@@ -1,0 +1,20 @@
+tmux server: ; windows: 
+== A1 fire-and-forget retry ring, flag present, worker has open decision then resolves
+due action: retry /private/tmp/claude-501/-Users-tomas--treehouse-firstmate-d07056-6-firstmate/45ed2b54-8963-4b8a-96f0-4dbb6e85d7a5/scratchpad/live/a1/state/t1.inbox/001.msg
+open decision: doorbells in pane=0 retry mark present=yes
+after resolve, 3 checks: doorbells in pane=0 retry mark present=no record kept=yes wake queue=empty
+pane text:
+== A2 same retry mark, flag absent
+due action: quiet
+flag absent, 2 checks: doorbells in pane=0
+== A3 real fm-send --fire-and-forget to a secondmate pane, flag present
+fm-send rc=0; retry mark=001.msg; doorbells in pane=0
+fm-send stderr tail:
+fm-send: doorbell did not reach fmlive:fm-hibit; the steer is durably recorded at /private/tmp/claude-501/-Users-tomas--treehouse-firstmate-d07056-6-firstmate/45ed2b54-8963-4b8a-96f0-4dbb6e85d7a5/scratchpad/live/a3/state/domain.inbox/001.msg and the watcher will ring it once more
+== B pending-reply recovery, flag present, mate has open decision then resolves (real fm-send, no hook)
+open decision: recovery held (rc=1)
+phase=awaiting_report inbox records=0
+fm-send: doorbell did not reach fmlive:fm-hibit; the steer is durably recorded at /private/tmp/claude-501/-Users-tomas--treehouse-firstmate-d07056-6-firstmate/45ed2b54-8963-4b8a-96f0-4dbb6e85d7a5/scratchpad/live/b/state/hibit.inbox/001.msg and the watcher will re-ring
+after resolve: recovery sent
+inbox records=1
+doorbells in mate pane=0
