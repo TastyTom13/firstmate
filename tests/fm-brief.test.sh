@@ -1469,6 +1469,8 @@ test_ci_failures_are_classified_never_rerun() {
       "$mode: brief lost the own-branch class"
     assert_grep "paused [at=<epoch>]: base branch red: <base run URL>" "$brief" \
       "$mode: brief lost the base-red declared wait"
+    assert_grep "Unless your task is the fix for that base failure: then keep fixing it." "$brief" \
+      "$mode: brief lost the base-fix worker carve-out"
     assert_grep "rerun that job once at most" "$brief" "$mode: brief lost the infrastructure single rerun"
     assert_grep "A failure whose cause you know is never retried." "$brief" \
       "$mode: brief lost the known-cause rule"

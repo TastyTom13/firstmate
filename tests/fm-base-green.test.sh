@@ -81,6 +81,36 @@ EOF
   pass "a failed latest run reads red with its run URL and failing job names; a skipped run is ignored"
 }
 
+test_only_gating_events_decide() {
+  local c out rc
+  c=$(make_case gating)
+  write_gh "$c"
+  cat > "$c/runs.json" <<'EOF'
+[{"databaseId":6,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/6","workflowName":"Nightly e2e","event":"schedule"},
+ {"databaseId":5,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/5","workflowName":"Manual deploy","event":"workflow_dispatch"},
+ {"databaseId":4,"conclusion":"success","url":"https://github.com/o/r/actions/runs/4","workflowName":"CI","event":"push"}]
+EOF
+  out=$(run_check "$c" demo); rc=$?
+  [ "$rc" -eq 0 ] || fail "gating: exit $rc, want 0 ($out)"
+  [ "$out" = "green dev https://github.com/o/r/actions/runs/4" ] || fail "gating: got '$out'"
+
+  cat > "$c/runs.json" <<'EOF'
+[{"databaseId":7,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/7","workflowName":"Nightly e2e","event":"schedule"}]
+EOF
+  out=$(run_check "$c" demo); rc=$?
+  [ "$rc" -eq 2 ] || fail "gating only schedule: exit $rc, want 2 ($out)"
+
+  cat > "$c/runs.json" <<'EOF'
+[{"databaseId":8,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/8","workflowName":"Nightly e2e","event":"schedule"},
+ {"databaseId":9,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/9","workflowName":"CI","event":"pull_request"}]
+EOF
+  printf '%s\n' '{"jobs":[{"name":"unit","conclusion":"failure"}]}' > "$c/jobs-9.json"
+  out=$(run_check "$c" demo); rc=$?
+  [ "$rc" -eq 1 ] || fail "gating pull_request: exit $rc, want 1 ($out)"
+  [ "$out" = "red dev https://github.com/o/r/actions/runs/9 (unit)" ] || fail "gating pull_request: got '$out'"
+  pass "failed schedule and workflow_dispatch runs are ignored; push and pull_request runs decide"
+}
+
 test_no_workflow() {
   local c out rc
   c=$(make_case none)
@@ -175,6 +205,7 @@ EOF
 
 test_green
 test_red
+test_only_gating_events_decide
 test_no_workflow
 test_gh_unavailable
 test_gh_error

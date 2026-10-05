@@ -15,12 +15,14 @@
 #   usage error                                               exit 64
 #
 # The verdict: list the branch's completed runs (`gh run list --status
-# completed`), drop runs whose conclusion says nothing about the code (skipped,
-# cancelled, neutral, stale) and runs started by another run's completion
-# (event workflow_run, such as an automatic retry helper), then take the newest
-# remaining run of each workflow. Red when any of those concluded failure,
+# completed`), keep only runs whose event is push or pull_request, which is
+# exactly what a PR rebased on the branch inherits, and drop runs whose
+# conclusion says nothing about the code (skipped, cancelled, neutral, stale).
+# Runs from schedule, workflow_dispatch, release, deploy, workflow_run (such as
+# an automatic retry helper) and every other event never gate a PR, so they
+# never decide the verdict. Then take the newest remaining run of each workflow. Red when any of those concluded failure,
 # timed_out, startup_failure, or action_required; green when every one
-# succeeded; unknown when none remains (the project has no CI on that branch),
+# succeeded; unknown when none remains (the project has no push or pull_request CI on that branch),
 # gh is missing, or a gh call fails. Unknown is never reported as green.
 #
 # Consumers: firstmate at ship intake (AGENTS.md section 7: a red base is a
@@ -73,7 +75,7 @@ runs=$(gh_in_clone run list --branch "$BRANCH" --status completed --limit "$RUN_
 # One "<conclusion>\t<id>\t<url>" row per workflow: its newest meaningful run.
 latest=$(printf '%s' "$runs" | jq -r '
   [ .[]
-    | select(.event != "workflow_run")
+    | select(.event == "push" or .event == "pull_request")
     | select(.conclusion as $c | ["skipped","cancelled","neutral","stale",""] | index($c) | not) ]
   | reduce .[] as $r ({}; if has($r.workflowName) then . else .[$r.workflowName] = $r end)
   | to_entries[] | .value | [.conclusion, (.databaseId | tostring), .url] | @tsv

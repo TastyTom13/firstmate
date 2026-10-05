@@ -1141,7 +1141,7 @@ if [ "$MODE" != local-only ]; then
 Never rerun CI and never ask anyone for a rerun, except the one infrastructure rerun below: rerunning a failure changes nothing when its cause is known, and every rerun spends hosted minutes and runner memory other work is waiting for.
 When a check fails, read the failing job's log once (\`gh run view <run-id> --log-failed\`), then classify the failure and act on it:
 1. Caused by this branch: fix it on this branch.
-2. Red on the base branch too, meaning the same job failed on the base branch's latest completed run (\`gh run list --branch <base> --status completed\`): append \`$PAUSED_VERB [at=<epoch>]: base branch red: <base run URL>\` and stop; firstmate routes the base-branch fix and rings you when it lands.
+2. Red on the base branch too, meaning the same job failed on the base branch's latest completed run (\`gh run list --branch <base> --status completed\`): append \`$PAUSED_VERB [at=<epoch>]: base branch red: <base run URL>\` and stop; firstmate routes the base-branch fix and rings you when it lands. Unless your task is the fix for that base failure: then keep fixing it.
 3. Infrastructure failure, such as a lost runner, a refused billing or spending limit, or a network error before the job's own steps ran: rerun that job once at most; if it fails again, append \`$PAUSED_VERB [at=<epoch>]: CI infrastructure failure: <run URL> <reason>\` and stop.
 A failure whose cause you know is never retried.
 EOF
