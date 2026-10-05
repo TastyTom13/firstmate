@@ -46,6 +46,16 @@
 # (degraded placeholders) and retried on later polls until the real metadata
 # lands; a persistently unfetchable uid is never skipped and never re-wakes.
 #
+# Sender allow-list: FM_MAIL_WAKE_FROM is an optional comma-separated list of
+# sender addresses or domains (for example
+# tomas@mindshake.io,notes@mail.mindshake.io,mindshake.io). When it is set,
+# poll wakes only for new mail whose From address matches an entry,
+# case-insensitively; an entry without "@" is a domain and matches any address
+# at that domain or a subdomain of it. Other new mail is counted in the cursor
+# without a wake, stays unread, and is reported as one "filtered N" line. A
+# degraded message (sender unknown) and a recovered retry still wake. Unset or
+# empty, every new message wakes.
+#
 # Deployment - credentials and endpoints are read from the environment,
 # filling missing keys from the gitignored $FM_HOME/.env (same convention
 # as the Relay/FMX token; env wins). Add these four required values, plus
@@ -58,6 +68,7 @@
 #   FM_SMTP_PORT=<smtp port>     (default 465, implicit TLS)
 #   FM_MAIL_TIMEOUT=<seconds>    (default 20; IMAP/SMTP socket timeout)
 #   FM_MAIL_BODY_MAX=<chars>     (default 20000; full-body read bound)
+#   FM_MAIL_WAKE_FROM=<list>     (optional poll allow-list, see below)
 # FM_HOME falls back to the repo root when unset. This script carries no secret
 # and no default endpoint that could resolve against a wrong home; FM_MAIL_USER,
 # FM_MAIL_PASS, FM_IMAP_HOST, and FM_SMTP_HOST are always required, and
@@ -139,6 +150,17 @@ if [ "$MAIL_MAX_WAKES" -gt 200 ]; then
   MAIL_MAX_WAKES=200
 fi
 
+# Lowercased, trimmed FM_MAIL_WAKE_FROM entries; empty means no filter.
+MAIL_WAKE_FROM=()
+if [ -n "${FM_MAIL_WAKE_FROM:-}" ]; then
+  IFS=, read -r -a wake_from_raw <<< "$FM_MAIL_WAKE_FROM"
+  for entry in "${wake_from_raw[@]}"; do
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    [ -n "$entry" ] && MAIL_WAKE_FROM+=("$(printf '%s' "$entry" | tr '[:upper:]' '[:lower:]')")
+  done
+fi
+
 PY="$(command -v python3 || true)"
 if [ -z "$PY" ]; then
   echo "fm-mail: python3 required" >&2
@@ -198,6 +220,37 @@ EOF
 mail_seen() {
   # $1 = uid; returns 0 when the cursor already records the uid as surfaced.
   grep -Fqx "$1" "$CURSOR"
+}
+
+mail_wake_allowed() {
+  # $1 = From header display text; 0 when FM_MAIL_WAKE_FROM is unset or the
+  # sender address matches one of its entries.
+  local addr entry domain
+  [ "${#MAIL_WAKE_FROM[@]}" -eq 0 ] && return 0
+  addr=$1
+  case "$addr" in
+    *\<*\>*) addr="${addr##*<}"; addr="${addr%%>*}" ;;
+  esac
+  addr="${addr#"${addr%%[![:space:]]*}"}"
+  addr="${addr%"${addr##*[![:space:]]}"}"
+  addr=$(printf '%s' "$addr" | tr '[:upper:]' '[:lower:]')
+  domain="${addr##*@}"
+  for entry in "${MAIL_WAKE_FROM[@]}"; do
+    case "$entry" in
+      *@*) [ "$addr" = "$entry" ] && return 0 ;;
+      *)
+        case "$addr" in
+          *@*) ;;
+          *) continue ;;
+        esac
+        [ "$domain" = "$entry" ] && return 0
+        case "$domain" in
+          *."$entry") return 0 ;;
+        esac
+        ;;
+    esac
+  done
+  return 1
 }
 
 mail_retry_add() {
@@ -493,7 +546,7 @@ mail_poll() {
   # interrupted between its phases (mail_heal), so an overlapping poll or an
   # interrupted run can never lose a mail. wake_for owns the remaining
   # kill-window duplicate residual.
-  local list generation first_line uid fr subj status woke=0 need_wake line wake_rc=0
+  local list generation first_line uid fr subj status woke=0 filtered=0 need_wake line wake_rc=0
   if [ ! -f "$SCRIPT_DIR/fm-wake-lib.sh" ]; then
     echo "fm-mail: $SCRIPT_DIR/fm-wake-lib.sh missing; cannot poll" >&2
     return 1
@@ -570,6 +623,18 @@ mail_poll() {
         fi
         ;;
     esac
+    if [ "$need_wake" -eq 1 ] && [ "$status" = ok ] && ! mail_wake_allowed "$fr"; then
+      # A sender outside FM_MAIL_WAKE_FROM is counted once in the cursor so it
+      # neither wakes nor stays a new candidate that crowds the bounded header
+      # window on every later poll. The message itself stays unread.
+      if ! printf '%s\n' "$uid" >> "$CURSOR"; then
+        echo "fm-mail: could not record filtered $uid; retried on next poll" >&2
+        fm_lock_release "$STATE_DIR/.mail-seen.lock"
+        return 1
+      fi
+      filtered=$((filtered + 1))
+      need_wake=0
+    fi
     if [ "$need_wake" -eq 1 ]; then
       # Wake first, then record, then clear retry eligibility: the wake append,
       # journal, cursor commit, and retry-record removal all happen together
@@ -618,7 +683,9 @@ mail_poll() {
     fi
   done <<< "$list"
   fm_lock_release "$STATE_DIR/.mail-seen.lock"
-  if [ "$woke" -eq 0 ]; then
+  if [ "$filtered" -gt 0 ]; then
+    echo "fm-mail: filtered $filtered new mail from senders outside FM_MAIL_WAKE_FROM"
+  elif [ "$woke" -eq 0 ]; then
     echo "fm-mail: no new mail"
   fi
   return 0
