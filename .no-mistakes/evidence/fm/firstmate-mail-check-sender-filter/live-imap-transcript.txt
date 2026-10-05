@@ -1,0 +1,39 @@
+## A: unset allow-list
+mail: new mail: woke for 55
+rc=0
+-- wake queue:
+1791222660	1	check	mail:777/51	check: mail 51 - mail from Tomas@MindShake.io - msg 51
+1791222661	2	check	mail:777/52	check: mail 52 - mail from Doc Creator <Notes@Mail.Mindshake.io> - msg 52
+1791222661	3	check	mail:777/53	check: mail 53 - mail from Weekly <news@letters.example.com> - msg 53
+1791222661	4	check	mail:777/54	check: mail 54 - mail from nope@evilmindshake.io - msg 54
+1791222661	5	check	mail:777/55	check: mail 55 - mail from Scout Digest <digest@substack.com> - msg 55
+
+## B: only captain+notes listed
+mail: new mail: woke for 52; 3 filtered
+rc=0
+-- wake queue:
+1791222662	1	check	mail:777/51	check: mail 51 - mail from Tomas@MindShake.io - msg 51
+1791222662	2	check	mail:777/52	check: mail 52 - mail from Doc Creator <Notes@Mail.Mindshake.io> - msg 52
+-- cursor:
+uidvalidity=777
+51
+52
+53
+54
+55
+-- second check (should be silent):
+rc=0
+
+## C: domain entry mindshake.io
+mail: new mail: woke for 52; 3 filtered
+rc=0
+-- wake queue:
+1791222663	1	check	mail:777/51	check: mail 51 - mail from Tomas@MindShake.io - msg 51
+1791222664	2	check	mail:777/52	check: mail 52 - mail from Doc Creator <Notes@Mail.Mindshake.io> - msg 52
+
+## D: no listed sender matches
+rc=0
+-- wake queue:
+cat: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-live.damOST/home-D/state/.wake-queue: No such file or directory
+-- raw poll rerun:
+fm-mail: no new mail
