@@ -24,14 +24,37 @@ make_case() {
   printf '%s\n' "$case_dir"
 }
 
+# write_run_list <case_dir> installs the fake `gh run list` backend: it serves
+# the runs file given as its first argument the way the forge does, filtering by
+# --event and applying --limit after that filter, newest first.
+write_run_list() {
+  cat > "$1/run-list.sh" <<'EOF'
+#!/usr/bin/env bash
+file=$1
+shift
+event=
+limit=30
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --event) event=$2; shift ;;
+    --limit) limit=$2; shift ;;
+  esac
+  shift
+done
+jq -c --arg event "$event" --argjson limit "$limit" \
+  '[.[] | select($event == "" or .event == $event)] | sort_by(.createdAt) | reverse | .[:$limit]' "$file"
+EOF
+}
+
 # write_gh <case_dir> installs a fake gh that answers `run list` from
 # runs.json and `run view <id>` from jobs-<id>.json, and records its argv.
 write_gh() {
+  write_run_list "$1"
   cat > "$1/fakebin/gh" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$1/gh.argv"
 case "\$1 \$2" in
-  'run list') cat "$1/runs.json" ;;
+  'run list') shift 2; bash "$1/run-list.sh" "$1/runs.json" "\$@" ;;
   'run view') cat "$1/jobs-\$3.json" ;;
   *) exit 1 ;;
 esac
@@ -51,9 +74,9 @@ test_green() {
   c=$(make_case green)
   write_gh "$c"
   cat > "$c/runs.json" <<'EOF'
-[{"databaseId":3,"conclusion":"success","url":"https://github.com/o/r/actions/runs/3","workflowName":"CI","event":"push"},
- {"databaseId":2,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/2","workflowName":"CI","event":"push"},
- {"databaseId":1,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/1","workflowName":"CI retry","event":"workflow_run"}]
+[{"databaseId":3,"createdAt":"2026-10-03T00:00:00Z","conclusion":"success","url":"https://github.com/o/r/actions/runs/3","workflowName":"CI","event":"push"},
+ {"databaseId":2,"createdAt":"2026-10-02T00:00:00Z","conclusion":"failure","url":"https://github.com/o/r/actions/runs/2","workflowName":"CI","event":"push"},
+ {"databaseId":1,"createdAt":"2026-10-01T00:00:00Z","conclusion":"failure","url":"https://github.com/o/r/actions/runs/1","workflowName":"CI retry","event":"workflow_run"}]
 EOF
   out=$(run_check "$c" demo); rc=$?
   [ "$rc" -eq 0 ] || fail "green: exit $rc, want 0 ($out)"
@@ -67,9 +90,9 @@ test_red() {
   c=$(make_case red)
   write_gh "$c"
   cat > "$c/runs.json" <<'EOF'
-[{"databaseId":9,"conclusion":"skipped","url":"https://github.com/o/r/actions/runs/9","workflowName":"CI","event":"push"},
- {"databaseId":8,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/8","workflowName":"CI","event":"push"},
- {"databaseId":7,"conclusion":"success","url":"https://github.com/o/r/actions/runs/7","workflowName":"Lint","event":"push"}]
+[{"databaseId":9,"createdAt":"2026-10-09T00:00:00Z","conclusion":"skipped","url":"https://github.com/o/r/actions/runs/9","workflowName":"CI","event":"push"},
+ {"databaseId":8,"createdAt":"2026-10-08T00:00:00Z","conclusion":"failure","url":"https://github.com/o/r/actions/runs/8","workflowName":"CI","event":"push"},
+ {"databaseId":7,"createdAt":"2026-10-07T00:00:00Z","conclusion":"success","url":"https://github.com/o/r/actions/runs/7","workflowName":"Lint","event":"push"}]
 EOF
   cat > "$c/jobs-8.json" <<'EOF'
 {"jobs":[{"name":"e2e shard 1","conclusion":"failure"},{"name":"unit","conclusion":"success"},{"name":"e2e shard 3","conclusion":"timed_out"}]}
@@ -86,29 +109,46 @@ test_only_gating_events_decide() {
   c=$(make_case gating)
   write_gh "$c"
   cat > "$c/runs.json" <<'EOF'
-[{"databaseId":6,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/6","workflowName":"Nightly e2e","event":"schedule"},
- {"databaseId":5,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/5","workflowName":"Manual deploy","event":"workflow_dispatch"},
- {"databaseId":4,"conclusion":"success","url":"https://github.com/o/r/actions/runs/4","workflowName":"CI","event":"push"}]
+[{"databaseId":6,"createdAt":"2026-10-06T00:00:00Z","conclusion":"failure","url":"https://github.com/o/r/actions/runs/6","workflowName":"Nightly e2e","event":"schedule"},
+ {"databaseId":5,"createdAt":"2026-10-05T00:00:00Z","conclusion":"failure","url":"https://github.com/o/r/actions/runs/5","workflowName":"Manual deploy","event":"workflow_dispatch"},
+ {"databaseId":4,"createdAt":"2026-10-04T00:00:00Z","conclusion":"success","url":"https://github.com/o/r/actions/runs/4","workflowName":"CI","event":"push"}]
 EOF
   out=$(run_check "$c" demo); rc=$?
   [ "$rc" -eq 0 ] || fail "gating: exit $rc, want 0 ($out)"
   [ "$out" = "green dev https://github.com/o/r/actions/runs/4" ] || fail "gating: got '$out'"
 
   cat > "$c/runs.json" <<'EOF'
-[{"databaseId":7,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/7","workflowName":"Nightly e2e","event":"schedule"}]
+[{"databaseId":7,"createdAt":"2026-10-07T00:00:00Z","conclusion":"failure","url":"https://github.com/o/r/actions/runs/7","workflowName":"Nightly e2e","event":"schedule"}]
 EOF
   out=$(run_check "$c" demo); rc=$?
   [ "$rc" -eq 2 ] || fail "gating only schedule: exit $rc, want 2 ($out)"
 
   cat > "$c/runs.json" <<'EOF'
-[{"databaseId":8,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/8","workflowName":"Nightly e2e","event":"schedule"},
- {"databaseId":9,"conclusion":"failure","url":"https://github.com/o/r/actions/runs/9","workflowName":"CI","event":"pull_request"}]
+[{"databaseId":8,"createdAt":"2026-10-08T00:00:00Z","conclusion":"failure","url":"https://github.com/o/r/actions/runs/8","workflowName":"Nightly e2e","event":"schedule"},
+ {"databaseId":9,"createdAt":"2026-10-09T00:00:00Z","conclusion":"failure","url":"https://github.com/o/r/actions/runs/9","workflowName":"CI","event":"pull_request"}]
 EOF
   printf '%s\n' '{"jobs":[{"name":"unit","conclusion":"failure"}]}' > "$c/jobs-9.json"
   out=$(run_check "$c" demo); rc=$?
   [ "$rc" -eq 1 ] || fail "gating pull_request: exit $rc, want 1 ($out)"
   [ "$out" = "red dev https://github.com/o/r/actions/runs/9 (unit)" ] || fail "gating pull_request: got '$out'"
   pass "failed schedule and workflow_dispatch runs are ignored; push and pull_request runs decide"
+}
+
+test_non_gating_runs_do_not_crowd_out_gating_runs() {
+  local c out rc
+  c=$(make_case crowd)
+  write_gh "$c"
+  jq -n '[range(60) | {databaseId: (100 + .), conclusion: "success", url: "https://github.com/o/r/actions/runs/\(100 + .)",
+      workflowName: "Retry", event: (if . % 2 == 0 then "schedule" else "workflow_run" end), createdAt: "2026-10-05T12:00:00Z"}]
+    + [{databaseId: 5, conclusion: "failure", url: "https://github.com/o/r/actions/runs/5", workflowName: "CI", event: "push", createdAt: "2026-10-03T00:00:00Z"}]' \
+    > "$c/runs.json"
+  printf '%s\n' '{"jobs":[{"name":"e2e shard 2","conclusion":"failure"}]}' > "$c/jobs-5.json"
+  out=$(run_check "$c" demo); rc=$?
+  [ "$rc" -eq 1 ] || fail "crowd: exit $rc, want 1 ($out)"
+  [ "$out" = "red dev https://github.com/o/r/actions/runs/5 (e2e shard 2)" ] || fail "crowd: got '$out'"
+  grep -q -- '--event push' "$c/gh.argv" || fail "crowd: push runs were not requested by event"
+  grep -q -- '--event pull_request' "$c/gh.argv" || fail "crowd: pull_request runs were not requested by event"
+  pass "60 newer non-gating runs do not hide a failing push run from the verdict"
 }
 
 test_no_workflow() {
@@ -177,18 +217,19 @@ test_session_start_lists_base_branches() {
     '- solo [local-only] - no CI (added 2026-10-05)' \
     '- ghost [direct-PR] - registered but not cloned (added 2026-10-05)' \
     > "$c/home/data/projects.md"
+  write_run_list "$c"
   cat > "$c/fakebin/gh" <<EOF
 #!/usr/bin/env bash
 case "\$1 \$2" in
   'auth status') exit 0 ;;
-  'run list') cat "$c/runs-\$(basename "\$PWD").json" ;;
+  'run list') shift 2; bash "$c/run-list.sh" "$c/runs-\$(basename "\$PWD").json" "\$@" ;;
   'run view') printf '%s\n' '{"jobs":[{"name":"e2e","conclusion":"failure"}]}' ;;
   *) exit 1 ;;
 esac
 EOF
   chmod +x "$c/fakebin/gh"
-  printf '%s\n' '[{"databaseId":1,"conclusion":"success","url":"https://x/runs/1","workflowName":"CI","event":"push"}]' > "$c/runs-alpha.json"
-  printf '%s\n' '[{"databaseId":2,"conclusion":"failure","url":"https://x/runs/2","workflowName":"CI","event":"push"}]' > "$c/runs-bravo.json"
+  printf '%s\n' '[{"databaseId":1,"createdAt":"2026-10-01T00:00:00Z","conclusion":"success","url":"https://x/runs/1","workflowName":"CI","event":"push"}]' > "$c/runs-alpha.json"
+  printf '%s\n' '[{"databaseId":2,"createdAt":"2026-10-02T00:00:00Z","conclusion":"failure","url":"https://x/runs/2","workflowName":"CI","event":"push"}]' > "$c/runs-bravo.json"
 
   out=$(FM_HOME="$c/home" PATH="$c/fakebin:$PATH" FM_BOOTSTRAP_NETWORK=only FM_BOOTSTRAP_DETECT_ONLY=1 \
     bash "$ROOT/bin/fm-bootstrap.sh" 2>/dev/null)
@@ -206,6 +247,7 @@ EOF
 test_green
 test_red
 test_only_gating_events_decide
+test_non_gating_runs_do_not_crowd_out_gating_runs
 test_no_workflow
 test_gh_unavailable
 test_gh_error
