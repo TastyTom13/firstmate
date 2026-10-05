@@ -94,7 +94,7 @@
 #                             wake.
 #   .startup-network.timings  per-step elapsed times for the last run, in
 #                             bin/fm-timing-lib.sh's tab-separated format: the
-#                             stage total, one record per network phase (gh auth,
+#                             stage total, one record per network phase (gh auth, base branches,
 #                             secondmate liveness, secondmate convergence, handoff
 #                             delivery, fleet sync), one per secondmate for the
 #                             remote-touching steps (id and host), and one per

@@ -12,6 +12,7 @@
 #                 "STARTUP_MEMORY_BUDGET: invalid config/startup-memory-budget - <reason>",
 #                 "CREW_DISPATCH: invalid config/crew-dispatch.json - <reason>",
 #                 "FLEET_SYNC: <repo>: skipped|recovered|STUCK: <detail>",
+#                 "BASE_BRANCHES: red base branch blocks CI-dependent ships until fixed: <project> <fm-base-green line>; ...",
 #                 "HOME_SUMMARY: <ledger never published|not republished since
 #                 <stamp>>; <n> failed attempt(s) ... last: <recorded failure>",
 #                 "BACKLOG_RECONCILE: <id>: <what this home could not reconcile>",
@@ -121,7 +122,7 @@
 #                 step. Unrecognized values fall back here on purpose: a typo
 #                 must never silently skip a safety sweep.
 #            skip - every LOCAL step, and none of the network ones. Skips
-#                 `gh auth status`, secondmate_liveness_sweep, secondmate_sync,
+#                 `gh auth status`, base_branches_report, secondmate_liveness_sweep, secondmate_sync,
 #                 secondmate_handoff_resume, and fleet_sync.
 #            only - ONLY those network steps and nothing else. No tool detection,
 #                 no version floors, no tangle check, no backlog
@@ -193,6 +194,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-config-inherit-lib.sh"
 # shellcheck source=bin/fm-secondmate-nudge-lib.sh disable=SC1091
 . "$SCRIPT_DIR/fm-secondmate-nudge-lib.sh"
+# shellcheck source=bin/fm-timeout-lib.sh disable=SC1091
+. "$SCRIPT_DIR/fm-timeout-lib.sh"
 # shellcheck source=bin/fm-startup-memory-budget-lib.sh disable=SC1091
 . "$SCRIPT_DIR/fm-startup-memory-budget-lib.sh"
 # shellcheck source=bin/fm-x-lib.sh disable=SC1091
@@ -280,6 +283,47 @@ bootstrap_parallel_finish() {
   done
   rm -rf "$BOOTSTRAP_PAR_DIR"
   unset FM_BOOTSTRAP_PARALLEL_DIR BOOTSTRAP_PAR_DIR BOOTSTRAP_PAR_N
+}
+
+# base_branches_report: one line naming every registered, cloned, CI-running
+# project's base-branch verdict from bin/fm-base-green.sh, red projects first.
+# Any red makes it an actionable BASE_BRANCHES line (AGENTS.md section 7: a red
+# base is fixed before any CI-dependent ship is dispatched onto it); otherwise
+# it is a BOOTSTRAP_INFO fact. Read-only, so it runs in detect-only mode too.
+# local-only projects run no forge CI and are skipped; no checked project
+# prints nothing. Checks run concurrently, each under its own bound.
+base_branches_report() {
+  local reg="$DATA/projects.md" dir name i=0 n red=() rest=() line
+  [ -f "$reg" ] || return 0
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/fm-bootstrap-base.XXXXXX") || return 0
+  while IFS= read -r name; do
+    [ -d "$PROJECTS/$name" ] || continue
+    case "$("$SCRIPT_DIR/fm-project-mode.sh" "$name" 2>/dev/null)" in local-only\ *) continue ;; esac
+    i=$((i + 1))
+    printf '%s\n' "$name" > "$dir/$i.name"
+    ( fm_run_timed "${FM_BASE_GREEN_TIMEOUT:-30}" "$SCRIPT_DIR/fm-base-green.sh" "$name" \
+        >"$dir/$i.out" 2>/dev/null || [ -s "$dir/$i.out" ] || echo "unknown - check timed out or failed" >"$dir/$i.out" ) &
+  done < <(awk '/^- / { n = substr($0, 3); sub(/ (\[| - ).*/, "", n); print n }' "$reg")
+  wait
+  n=$i
+  i=1
+  while [ "$i" -le "$n" ]; do
+    line="$(cat "$dir/$i.name") $(head -n 1 "$dir/$i.out")"
+    case "$line" in
+      *" red "*) red+=("$line") ;;
+      *) rest+=("$line") ;;
+    esac
+    i=$((i + 1))
+  done
+  rm -rf "$dir"
+  [ "$n" -gt 0 ] || return 0
+  if [ "${#red[@]}" -gt 0 ]; then
+    line=$(printf '%s\n' "${red[@]}" ${rest[@]+"${rest[@]}"} | paste -sd ';' - | sed 's/;/; /g')
+    echo "BASE_BRANCHES: red base branch blocks CI-dependent ships until fixed: $line"
+  else
+    line=$(printf '%s\n' "${rest[@]}" | paste -sd ';' - | sed 's/;/; /g')
+    echo "BOOTSTRAP_INFO: base branches: $line"
+  fi
 }
 
 secondmate_note_respawned() {  # <id>
@@ -1560,6 +1604,16 @@ if network_phase; then
   __fm_timing_stamp=$(fm_timing_now_ms)
   gh auth status >/dev/null 2>&1 || echo "NEEDS_GH_AUTH"
   fm_timing_record phase gh-auth "$__fm_timing_stamp"
+  # Base-branch reads overlap every sweep below; their line prints last.
+  base_branches_out=$(mktemp "${TMPDIR:-/tmp}/fm-bootstrap-base-out.XXXXXX") || base_branches_out=
+  if [ -n "$base_branches_out" ]; then
+    (
+      __fm_timing_stamp=$(fm_timing_now_ms)
+      base_branches_report
+      fm_timing_record phase base-branches "$__fm_timing_stamp"
+    ) >"$base_branches_out" 2>/dev/null &
+    base_branches_pid=$!
+  fi
 fi
 local_phase && detect_local_config
 
@@ -1615,6 +1669,11 @@ if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" != 1 ]; then
     cat "$fleet_sync_out"
     rm -f "$fleet_sync_out"
   fi
+fi
+if [ -n "${base_branches_pid:-}" ]; then
+  wait "$base_branches_pid" || true
+  cat "$base_branches_out"
+  rm -f "$base_branches_out"
 fi
 local_phase && secondmate_handoff_detect
 exit 0

@@ -1,6 +1,6 @@
 ---
 name: ship-landing
-description: Load when a ship reports a PR or ready branch, when deciding or monitoring landing, and before task cleanup.
+description: Load when a ship reports a PR or ready branch, when a ship declares a wait on a red base branch, when deciding or monitoring landing, and before task cleanup.
 user-invocable: false
 metadata:
   internal: true
@@ -17,6 +17,8 @@ A no-mistakes worker re-validates it with /no-mistakes so the pipeline stays the
 In no-mistakes mode the only `done:` is the PR line, so a `done:` naming no PR URL reads blocked as not done: steer that worker to start /no-mistakes.
 Tell the captain the PR's full `https://...` URL copied from the worker's ready line, the resolved checks-green crew-state line, or the task's `pr=` metadata, a concise outcome summary, and the no-mistakes risk level when applicable.
 A captain instruction to merge is explicit authority; `yolo` is the only standing routine merge authority.
+A worker that declares a wait because its failing check is also red on the base branch is parked correctly, not stuck: never steer it to rerun or try again.
+Confirm the base verdict with `bin/fm-base-green.sh <project> [<base branch>]`, route the base-branch fix as its own task if none is under way (`AGENTS.md` section 7), and ring the parked worker to rebase only after that fix lands and the base reads green.
 For any custom `state/<id>.check.sh` you write yourself, keep it an ordinary single-link mode-`0700` file, print one line only when firstmate should wake, print nothing otherwise, finish before `FM_CHECK_TIMEOUT`, then bind its current bytes with `bin/fm-check-register.sh <id>` before the watcher may execute it.
 Retire a custom check only through `bin/fm-check-unregister.sh <id>` (or `bin/fm-teardown.sh` for a spawned task); never hand-compose an `rm` with `$STATE`/`$ID`.
 
