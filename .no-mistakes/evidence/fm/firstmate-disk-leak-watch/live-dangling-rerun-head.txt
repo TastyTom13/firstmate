@@ -1,0 +1,14 @@
+3df39fa26c2b68fa9f37f5f1050a856268a0bd20
+## baseline real dangling: 44
+## A before creating (limit 46; expect silent)
+exit=0
+fm-disk-check-test-1
+fm-disk-check-test-2
+fm-disk-check-test-3
+## B with 3 test volumes (expect wake naming 47)
+disk: dangling Docker volumes over 46 or 5 GB [free 1166.7 GB, 47 dangling Docker volumes (3.7 GB), ~/.treehouse 0.0 GB]
+exit=0
+leftover test volumes: 0
+dangling after removal:       44
+## C after removal (expect silent; new episode cleared)
+exit=0

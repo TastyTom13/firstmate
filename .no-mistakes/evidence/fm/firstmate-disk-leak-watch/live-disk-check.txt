@@ -1,0 +1,35 @@
+## 1 healthy real-tools check (expect silent unless real disk low)
+exit=0
+## history
+fm-disk-watch-history-v1
+2026-10-05T18:24:04Z 1791224644 1139398408 ok 44 3614238 4888
+## tree cache
+fm-disk-watch-treehouse-v1
+1956	1791224644	/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-live.ocbj0H/h/.treehouse/loose.bin
+2932	1791224644	/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-live.ocbj0H/h/.treehouse/pool/1
+0	1791224644	/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-live.ocbj0H/h/.treehouse/pool/2
+## 2 absurd threshold forces a wake
+disk: free space below 100000 GB [free 1166.7 GB, 44 dangling Docker volumes (3.7 GB), ~/.treehouse 0.0 GB]
+exit=0
+## 3 partly listable treehouse (mode 000 dir)
+exit=0
+## 4 du exit-1 on unreadable subdir inside entry
+exit=0
+hist
+fm-disk-watch-history-v1
+2026-10-05T18:24:06Z 1791224646 1139477564 ok 44 3614238 4888
+fm-disk-watch-treehouse-v1
+1956	1791224646	/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-live.ocbj0H/h/.treehouse/loose.bin
+2932	1791224646	/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-live.ocbj0H/h/.treehouse/pool/1
+0	1791224646	/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-live.ocbj0H/h/.treehouse/pool/2
+## 5 bad config reported
+disk: check failed: config/disk-watch has an unknown key
+exit=0
+## 6 pool dir unreadable: find fails partly
+disk: cannot measure /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-live.4OyqnM/h/.treehouse [free 1166.6 GB, 44 dangling Docker volumes (3.7 GB), ~/.treehouse unknown]
+exit=0
+fm-disk-watch-history-v1
+2026-10-05T18:24:14Z 1791224654 1139285256 ok 44 3614238 -
+## 7 after fix, readable again: blind clears
+exit=0
+2026-10-05T18:24:15Z 1791224655 1139264284 ok 44 3614238 980

@@ -1,0 +1,45 @@
+HEAD 3df39fa26c2b68fa9f37f5f1050a856268a0bd20
+created fm-disk-check-test-1
+created fm-disk-check-test-2
+created fm-disk-check-test-3
+## before: volumes=54 containers=16
+## test volumes in before listing:
+local fm-disk-check-test-1
+local fm-disk-check-test-2
+local fm-disk-check-test-3
+## dangling before: 47
+## containers before (docker ps -a):
+28dd2168210c4f3abcdc4af50fc018f79ff9d17d4c9ecbd3907d43628a152fdb bull-postgres-dev pgvector/pgvector:pg16 running
+7090ed83511d06072016c3cbb9a518ef13a85c1ede5847d6321dddf440c2a1fd supabase_db_Mentum_4.0 public.ecr.aws/supabase/postgres:17.6.1.095 running
+712ace5ca8e6d2e4fda3a6be10add2d931e04732b91e3fef77ca80812bf0d9b4 scout_postgres pgvector/pgvector:pg17 running
+71699efa0477c0c321da06cbc50f95b7fda1d278fa7af7f218758d8217fbaf98 supabase_realtime_Mentum_4.0 public.ecr.aws/supabase/realtime:v2.78.18 running
+788142924d6f1e9989f64f10f0d27178b914dcd599d05d870ee2f56b040326b0 supabase_kong_Mentum_4.0 public.ecr.aws/supabase/kong:2.8.1 running
+86a6851355c81ac45d2e14e975775aca448ce97606176731793f45b087b8b513 scout-p10-dest-pg pgvector/pgvector:pg16 exited
+8b4d53f84e29683cbe771d7b73e8c66942b764ad38c99d1b69c6c923f9007303 sharp_albattani pgvector/pgvector:pg16 exited
+a5ac7475f4726317259cc7d13c71281f6c4848df256d0c01c61ba3c4ba4445b9 supabase_pg_meta_Mentum_4.0 public.ecr.aws/supabase/postgres-meta:v0.96.1 running
+a6dd1347a6bd435fe07ea0a73a0701c079cda52fd973fd28f49461241f814872 bull-orchestrator bull-orchestrator:dev running
+acd87b55333f2148315c9afd5f1905d508d7024c9eea7db8b9987c351500509a supabase_auth_Mentum_4.0 public.ecr.aws/supabase/gotrue:v2.188.1 running
+bb828bc6014ae5b031bb6a73f2adf6920e63bf5cf3dfff7623096aa766c14afd supabase_inbucket_Mentum_4.0 public.ecr.aws/supabase/mailpit:v1.22.3 running
+c04ee9ed242aab5edc0fb6d13862f336ed1ce97d9cd167bcf73ed970810d9bea ntfy binwiederhier/ntfy:v2.11.0 running
+c113a895a30a111b12e7e5260aa98a4c8a968b2ac9da7622631b439f462ca42a bull-ci-integration-37353046918-1 pgvector/pgvector:pg16 running
+cbe93a1267adff88b6b9c3a578f6e17b8649dd3aa4eb8808f3d7e391cee019d8 supabase_rest_Mentum_4.0 public.ecr.aws/supabase/postgrest:v14.7 running
+d1a234e0eb2a559f782b7909601f03082b401f14568acfe7314affa77b0b91ef supabase_storage_Mentum_4.0 public.ecr.aws/supabase/storage-api:v1.44.11 running
+efbcdd08769750aed47efaa43619652de68c2078175822cd205b882427ea0ae6 supabase_studio_Mentum_4.0 public.ecr.aws/supabase/studio:2026.03.23-sha-b7847b7 running
+## run check (DANGLING_MAX_COUNT=1)
+disk: dangling Docker volumes over 1 or 5 GB [free 1178.7 GB, 47 dangling Docker volumes (3.7 GB), ~/.treehouse 0.0 GB]
+exit=0
+## after: volumes=54 containers=16
+## test volumes in after listing:
+local fm-disk-check-test-1
+local fm-disk-check-test-2
+local fm-disk-check-test-3
+## diff volumes:
+IDENTICAL
+## diff containers:
+IDENTICAL
+## cleanup: remove only the 3 test volumes by name (no prune)
+fm-disk-check-test-1
+fm-disk-check-test-2
+fm-disk-check-test-3
+leftover test volumes: 0
+## volumes after cleanup: 51
