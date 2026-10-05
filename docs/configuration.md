@@ -1535,7 +1535,7 @@ Run `bin/fm-memory-check.sh disarm` to unregister the generated check and remove
 Each run reads free space from `df` on `/System/Volumes/Data` (`/` where that volume does not exist), the count and total size of dangling Docker volumes, and the size of `~/.treehouse`, and appends one dated sample to `state/.disk-watch-history`, which keeps eight days of samples.
 When the docker CLI or daemon does not answer, the sample records `docker unreachable`, which is not itself a wake.
 It prints one line, which the watcher turns into a `check:` wake, only when free space is below `FREE_MIN_GB`, free space fell more than `FREE_DROP_GB` since the newest sample at least 24 hours old, dangling Docker volumes exceed `DANGLING_MAX_COUNT` or `DANGLING_MAX_GB`, or `~/.treehouse` grew more than `TREEHOUSE_GROWTH_GB` since the newest sample at least seven days old.
-An invalid config file, an unreadable `df`, or a `~/.treehouse` entry that cannot be measured within a whole run's budget is also reported, because it leaves the watch blind.
+An invalid config file, an unreadable `df`, or a `~/.treehouse` that cannot be listed in full or has an entry that cannot be measured is also reported, because it leaves the watch blind.
 An unchanged set of conditions is reported once and then at most once a day while it persists, and a run with no condition ends the episode.
 GB means 10^9 bytes, the unit docker prints.
 The check only reads; it never prunes, removes, or stops anything.

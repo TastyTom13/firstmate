@@ -245,6 +245,19 @@ test_partial_du_total_is_used_and_no_size_is_reported() {
   pass "fm-disk-check: a failing du uses its printed total or reports the entry"
 }
 
+test_partial_treehouse_listing_is_reported() {
+  local home out
+  [ "$(id -u)" -ne 0 ] || { pass "fm-disk-check: partial listing skipped as root"; return 0; }
+  home=$(make_home locked)
+  mkdir -p "$home/h/.treehouse/locked"
+  chmod 000 "$home/h/.treehouse/locked"
+  out=$(run_check "$home" "$T0")
+  chmod 755 "$home/h/.treehouse/locked"
+  assert_contains "$out" "cannot measure $home/h/.treehouse" "a ~/.treehouse that find cannot list in full wakes"
+  assert_contains "$out" "$TH unknown" "no total is computed from a partial listing"
+  pass "fm-disk-check: a partly listable ~/.treehouse is reported"
+}
+
 test_check_never_prunes() {
   local home
   home=$(make_home never)
@@ -267,4 +280,5 @@ test_unreadable_df_is_reported
 test_unmeasurable_treehouse_entry_is_reported
 test_loose_treehouse_files_are_summed
 test_partial_du_total_is_used_and_no_size_is_reported
+test_partial_treehouse_listing_is_reported
 test_check_never_prunes

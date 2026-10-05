@@ -26,7 +26,8 @@
 #   - ~/.treehouse grew more than TREEHOUSE_GROWTH_GB since the newest sample
 #     at least seven days old;
 #   - the check is blind: config/disk-watch is invalid, df is unreadable, or
-#     one ~/.treehouse entry cannot be measured within a whole run's budget.
+#     ~/.treehouse cannot be listed in full or one of its entries cannot be
+#     measured.
 # Otherwise it prints nothing. An unchanged set of conditions is reported once
 # and then again at most once a day while it persists; a run with no condition
 # clears the episode. GB means 10^9 bytes, the unit docker prints.
@@ -271,17 +272,18 @@ sample_docker() {
 }
 
 # Refreshes the per-entry ~/.treehouse size cache inside the time left and sets
-# TREE_KB to the total when every current entry has a size. TREE_BLIND names an
-# entry that could not be measured even when given the whole time left.
+# TREE_KB to the total when every current entry has a size and the listing was
+# complete. TREE_BLIND names an entry that could not be measured even when given
+# the whole time left, or ~/.treehouse when it could not be listed in full.
 TREE_KB=
 TREE_BLIND=
 sample_treehouse() {
-  local now=$1 units loose merged out tmp kb epoch path bound status first=1 refreshed
+  local now=$1 units loose merged out tmp kb epoch path bound status first=1 refreshed listed=1
   TREE_KB=
   TREE_BLIND=
   [ -d "$TREEHOUSE" ] || return 0
-  units=$(probe 3 find "$TREEHOUSE" -mindepth 2 -maxdepth 2 -print) || return 0
-  loose=$(probe 3 find "$TREEHOUSE" -mindepth 1 -maxdepth 1 ! -type d -print) || return 0
+  units=$(probe 3 find "$TREEHOUSE" -mindepth 2 -maxdepth 2 -print) || listed=0
+  loose=$(probe 3 find "$TREEHOUSE" -mindepth 1 -maxdepth 1 ! -type d -print) || listed=0
   units=$units$'\n'$loose
   # Old cache rows for entries that still exist, unmeasured entries first, then
   # oldest measurement first, as "kb<TAB>epoch<TAB>path" with - for no size.
@@ -321,6 +323,10 @@ EOF
   tmp=$(state_tmp) || return 0
   { printf '%s\n' "$TREE_SCHEMA"; printf '%s' "$refreshed"; } > "$tmp" || { rm -f -- "$tmp"; return 0; }
   private_replace "$TREE_CACHE" "$tmp" || true
+  if [ "$listed" -eq 0 ]; then
+    TREE_BLIND=$TREEHOUSE
+    return 0
+  fi
   TREE_KB=$(printf '%s' "$refreshed" | awk -F '\t' 'NF == 3 { if ($1 == "-") { miss = 1 } else total += $1 } END { if (!miss) printf "%d\n", total }')
 }
 
