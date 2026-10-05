@@ -55,11 +55,15 @@ SH
 #!/usr/bin/env bash
 path=$2
 [ -z "${FM_TEST_DU_SLEEP:-}" ] || sleep "$FM_TEST_DU_SLEEP"
-if [ -f "$path/.fake-kb" ]; then
+[ -z "${FM_TEST_DU_NOSIZE:-}" ] || exit 1
+if [ -f "$path" ]; then
+  printf '%s\t%s\n' "$(cat "$path")" "$path"
+elif [ -f "$path/.fake-kb" ]; then
   printf '%s\t%s\n' "$(cat "$path/.fake-kb")" "$path"
 else
   printf '0\t%s\n' "$path"
 fi
+exit "${FM_TEST_DU_EXIT:-0}"
 SH
   chmod +x "$home/fakebin/df" "$home/fakebin/docker" "$home/fakebin/du"
   printf '%s\n' "$home"
@@ -217,6 +221,30 @@ test_unmeasurable_treehouse_entry_is_reported() {
   pass "fm-disk-check: an unmeasurable ~/.treehouse entry is reported"
 }
 
+test_loose_treehouse_files_are_summed() {
+  local home sample
+  home=$(make_home loose)
+  printf '%s\n' "$(kb 3)" > "$home/h/.treehouse/loose.bin"
+  run_check "$home" "$T0" >/dev/null
+  sample=$(sed -n 2p "$home/state/.disk-watch-history")
+  assert_contains "$sample" " $(($(kb 10) + $(kb 5) + $(kb 3)))" "a loose file directly under ~/.treehouse is in the total"
+  pass "fm-disk-check: loose files directly under ~/.treehouse are summed"
+}
+
+test_partial_du_total_is_used_and_no_size_is_reported() {
+  local home out sample
+  home=$(make_home partial)
+  out=$(run_check "$home" "$T0" FM_TEST_DU_EXIT=1)
+  assert_equals "" "$out" "a du that prints a total but exits 1 stays silent"
+  sample=$(sed -n 2p "$home/state/.disk-watch-history")
+  assert_contains "$sample" " $(($(kb 10) + $(kb 5)))" "the printed total is used when du exits non-zero"
+  home=$(make_home nosize)
+  out=$(run_check "$home" "$T0" FM_TEST_DU_NOSIZE=1)
+  assert_contains "$out" "cannot measure $home/h/.treehouse/pool/" "an entry du gives no size for wakes"
+  assert_contains "$out" "$TH unknown" "no partial ~/.treehouse total is reported"
+  pass "fm-disk-check: a failing du uses its printed total or reports the entry"
+}
+
 test_check_never_prunes() {
   local home
   home=$(make_home never)
@@ -237,4 +265,6 @@ test_treehouse_growth_over_a_week_wakes
 test_config_thresholds_apply_and_bad_config_is_reported
 test_unreadable_df_is_reported
 test_unmeasurable_treehouse_entry_is_reported
+test_loose_treehouse_files_are_summed
+test_partial_du_total_is_used_and_no_size_is_reported
 test_check_never_prunes

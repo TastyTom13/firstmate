@@ -276,11 +276,13 @@ sample_docker() {
 TREE_KB=
 TREE_BLIND=
 sample_treehouse() {
-  local now=$1 units merged out tmp kb epoch path bound status first=1 refreshed
+  local now=$1 units loose merged out tmp kb epoch path bound status first=1 refreshed
   TREE_KB=
   TREE_BLIND=
   [ -d "$TREEHOUSE" ] || return 0
-  units=$(probe 3 find "$TREEHOUSE" -mindepth 1 -maxdepth 2 \( -mindepth 2 -o ! -type d \) -print) || return 0
+  units=$(probe 3 find "$TREEHOUSE" -mindepth 2 -maxdepth 2 -print) || return 0
+  loose=$(probe 3 find "$TREEHOUSE" -mindepth 1 -maxdepth 1 ! -type d -print) || return 0
+  units=$units$'\n'$loose
   # Old cache rows for entries that still exist, unmeasured entries first, then
   # oldest measurement first, as "kb<TAB>epoch<TAB>path" with - for no size.
   merged=$(
@@ -303,10 +305,10 @@ sample_treehouse() {
         out=$(fm_run_timed "$bound" du -sk "$path" 2>/dev/null)
         status=$?
         out=$(printf '%s\n' "$out" | awk 'NR == 1 && $1 ~ /^[0-9]+$/ { print $1 }')
-        if [ "$status" -eq 0 ] && [ -n "$out" ]; then
+        if ! fm_timed_out "$status" && [ -n "$out" ]; then
           kb=$out
           epoch=$now
-        elif [ "$first" -eq 1 ] && [ "$status" -ne 0 ] && [ -e "$path" ] && fm_timed_out "$status"; then
+        elif [ -e "$path" ] && { [ "$first" -eq 1 ] || ! fm_timed_out "$status"; }; then
           TREE_BLIND=$path
         fi
         first=0
@@ -457,7 +459,7 @@ action_check() {
   fi
   if [ -n "$TREE_BLIND" ]; then
     key="$key treehouse-blind"
-    line="$line; cannot measure $TREE_BLIND within the check budget"
+    line="$line; cannot measure $TREE_BLIND"
   fi
 
   history_append "$now" "$(date -u -r "$now" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ) $now ${FREE_KB:--} $DOCKER_STATE ${DANGLING_COUNT:--} ${DANGLING_KB:--} ${TREE_KB:--}" || true
