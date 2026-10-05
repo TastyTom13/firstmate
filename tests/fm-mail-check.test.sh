@@ -30,7 +30,7 @@ run_check() {
   shift 3
   local status=0
   env -u FM_MAIL_USER -u FM_MAIL_PASS -u FM_IMAP_HOST -u FM_SMTP_HOST \
-    -u FM_MAIL_CHECK_BUDGET \
+    -u FM_MAIL_CHECK_BUDGET -u FM_MAIL_WAKE_FROM \
     FM_CHECK_TIMEOUT=30 \
     "$@" FM_HOME="$home" PATH="$FAKEBIN:$PATH" \
     "$check" check >"$out" 2>&1 || status=$?
@@ -165,6 +165,90 @@ printf "42\\t2026-09-05T00:00:00Z\\talice@example.com\\tHello\\n"'
   assert_contains "$(cat "$wakeq" 2>/dev/null)" "mail from alice@example.com" "the check-run poll still surfaces new mail as a durable wake"
   assert_contains "$(cat "$home/state/.mail-seen" 2>/dev/null)" "42" "the check-run poll still advances the inbox cursor"
   pass "fm-mail-check: a successful poll that surfaces new mail emits one wake line"
+}
+
+# sender_mailbox <generation>: a mailbox of four new messages from the captain,
+# a captain subdomain sender written with a display name, a newsletter, and a
+# look-alike domain that must not match as a subdomain.
+sender_mailbox() {
+  printf '%s\n' \
+    "printf \"uidvalidity\\\\t$1\\\\n\"" \
+    'printf "51\\t2026-10-05T00:00:00Z\\tTomas@MindShake.io\\tPlan\\n"' \
+    'printf "52\\t2026-10-05T00:00:00Z\\tDoc Creator <Notes@Mail.Mindshake.io>\\tNotes\\n"' \
+    'printf "53\\t2026-10-05T00:00:00Z\\tWeekly <news@letters.example.com>\\tIssue 7\\n"' \
+    'printf "54\\t2026-10-05T00:00:00Z\\tnope@evilmindshake.io\\tHi\\n"'
+}
+
+test_unset_wake_from_wakes_for_every_sender() {
+  local home out wakeq
+  home=$(make_home wake-from-unset)
+  write_env "$home"
+  enter_mailbox "$home" "$(sender_mailbox 30001)"
+  out="$home/out.txt"
+  run_check "$home" "$out" "$CHECK"
+  assert_contains "$(cat "$out")" "mail: new mail: woke for 54" "unset FM_MAIL_WAKE_FROM wakes for the last new message"
+  assert_not_contains "$(cat "$out")" "filtered" "unset FM_MAIL_WAKE_FROM filters nothing"
+  wakeq="$home/state/.wake-queue"
+  for uid in 51 52 53 54; do
+    assert_contains "$(cat "$wakeq")" "check: mail $uid " "unset FM_MAIL_WAKE_FROM queues a wake for uid $uid"
+  done
+  pass "fm-mail-check: unset FM_MAIL_WAKE_FROM wakes for every sender"
+}
+
+test_wake_from_filters_senders_not_on_the_list() {
+  local home out
+  home=$(make_home wake-from-set)
+  write_env "$home"
+  printf 'FM_MAIL_WAKE_FROM=friend@example.org\n' >> "$home/.env"
+  enter_mailbox "$home" \
+    'printf "uidvalidity\\t30002\\n"
+printf "61\\t2026-10-05T00:00:00Z\\tWeekly <news@letters.example.com>\\tIssue 7\\n"'
+  out="$home/out.txt"
+  run_check "$home" "$out" "$CHECK"
+  [ ! -s "$out" ] || fail "a poll whose only new mail is filtered must not print a wake line: $(cat "$out")"
+  assert_not_contains "$(cat "$home/state/.wake-queue" 2>/dev/null)" "check: mail 61" "a filtered sender queues no mail wake"
+  assert_exact_line "$home/state/.mail-seen" "61" "a filtered message is counted once in the cursor"
+  out="$home/poll.txt"
+  env -u FM_MAIL_WAKE_FROM FM_HOME="$home" PATH="$FAKEBIN:$PATH" "$ROOT/bin/fm-mail.sh" poll >"$out" 2>&1 || true
+  assert_contains "$(cat "$out")" "no new mail" "a counted filtered message is not filtered again"
+  pass "fm-mail-check: FM_MAIL_WAKE_FROM filters a sender not on the list without a wake"
+}
+
+test_wake_from_domain_entry_matches_domain_and_subdomains() {
+  local home out wakeq
+  home=$(make_home wake-from-domain)
+  write_env "$home"
+  printf 'FM_MAIL_WAKE_FROM= MINDSHAKE.IO \n' >> "$home/.env"
+  enter_mailbox "$home" "$(sender_mailbox 30003)"
+  out="$home/out.txt"
+  run_check "$home" "$out" "$CHECK"
+  wakeq="$home/state/.wake-queue"
+  assert_contains "$(cat "$wakeq")" "check: mail 51 " "a domain entry matches an address at that domain, ignoring case"
+  assert_contains "$(cat "$wakeq")" "check: mail 52 " "a domain entry matches a subdomain address inside a display name"
+  assert_not_contains "$(cat "$wakeq")" "check: mail 53 " "a domain entry does not match another domain"
+  assert_not_contains "$(cat "$wakeq")" "check: mail 54 " "a domain entry does not match a look-alike domain"
+  pass "fm-mail-check: a FM_MAIL_WAKE_FROM domain entry matches the domain and its subdomains"
+}
+
+test_wake_from_mixed_batch_wakes_and_counts_filtered() {
+  local home out wakeq
+  home=$(make_home wake-from-mixed)
+  write_env "$home"
+  printf 'FM_MAIL_WAKE_FROM=tomas@mindshake.io,NOTES@mail.mindshake.io\n' >> "$home/.env"
+  enter_mailbox "$home" "$(sender_mailbox 30004)"
+  out="$home/out.txt"
+  run_check "$home" "$out" "$CHECK"
+  [ "$(wc -l < "$out" | tr -d '[:space:]')" = 1 ] || fail "a mixed batch reports exactly one line: $(cat "$out")"
+  assert_contains "$(cat "$out")" "mail: new mail: woke for 52; 2 filtered" "a mixed batch summary names the wake and the filtered count"
+  wakeq="$home/state/.wake-queue"
+  assert_contains "$(cat "$wakeq")" "check: mail 51 " "an address entry matches the sender, ignoring case"
+  assert_contains "$(cat "$wakeq")" "check: mail 52 " "an address entry matches the address inside a display name"
+  assert_not_contains "$(cat "$wakeq")" "check: mail 53 " "a sender off the list queues no wake"
+  assert_not_contains "$(cat "$wakeq")" "check: mail 54 " "an address entry is not a domain entry"
+  for uid in 51 52 53 54; do
+    assert_exact_line "$home/state/.mail-seen" "$uid" "uid $uid is counted in the cursor"
+  done
+  pass "fm-mail-check: a mixed batch wakes for listed senders and counts the filtered ones"
 }
 
 test_failure_is_reported_once_until_it_changes() {
@@ -462,6 +546,10 @@ test_arm_resolves_a_relative_home_into_the_shim
 test_arm_refuses_a_symlink_at_the_shim_path
 test_arm_refuses_without_the_mail_plane
 test_successful_poll_with_new_mail_emits_one_wake_line
+test_unset_wake_from_wakes_for_every_sender
+test_wake_from_filters_senders_not_on_the_list
+test_wake_from_domain_entry_matches_domain_and_subdomains
+test_wake_from_mixed_batch_wakes_and_counts_filtered
 test_failure_is_reported_once_until_it_changes
 test_unconfigured_home_is_reported_once
 test_slow_poll_times_out_and_is_reported

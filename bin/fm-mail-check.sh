@@ -24,6 +24,12 @@
 # for the missing value until the .env is fixed, which makes a partially
 # configured channel a wake instead of a silent gap.
 #
+# When the home's .env sets FM_MAIL_WAKE_FROM (docs/configuration.md "Mail
+# plane"), the poll wakes only for listed senders; new mail from anyone else
+# is counted and left unread without a wake. A poll whose new mail was all
+# filtered is a no-op here, and a wake line adds "; N filtered" when the same
+# poll filtered other mail.
+#
 # Reporting keeps state/.mail-check as the news key, but prints whenever
 # the poll is not a proven no-op. A proven no-op is a repeated identical
 # line, not a timeout, with no publication evidence. Publication evidence
@@ -75,7 +81,8 @@ Usage:
   fm-mail-check.sh --help    print this help
 
 Mail configuration (FM_MAIL_USER, FM_MAIL_PASS, FM_IMAP_HOST, FM_SMTP_HOST,
-FM_IMAP_PORT, FM_SMTP_PORT) is read from <FM_HOME>/.env by fm-mail.sh.
+FM_IMAP_PORT, FM_SMTP_PORT) and the optional FM_MAIL_WAKE_FROM sender
+allow-list are read from <FM_HOME>/.env by fm-mail.sh.
 See docs/configuration.md "Mail plane" for the schema.
 EOF
 }
@@ -194,7 +201,7 @@ poll_has_publication_evidence() {
 }
 
 action_check() {
-  local out rc line woken_before queued=0
+  local out rc line filtered woken_before queued=0
   mkdir -p "$STATE" || return 1
   woken_before=$(mktemp) || woken_before=
   if [ -n "$woken_before" ]; then
@@ -219,6 +226,8 @@ action_check() {
       # uid (the last woke-for in this poll) so the watcher wakes the agent to
       # drain the queued mail rows; without it, new mail sits queued and silent.
       line=$(printf '%s\n' "$out" | grep '^fm-mail: woke for ' | tail -n 1 | sed 's/^fm-mail: /new mail: /')
+      filtered=$(printf '%s\n' "$out" | sed -n 's/^fm-mail: filtered \([0-9][0-9]*\) .*/\1/p' | sed -n '1p')
+      [ -z "$filtered" ] || line="$line; $filtered filtered"
     else
       line=
     fi
