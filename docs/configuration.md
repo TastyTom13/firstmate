@@ -1641,12 +1641,12 @@ FM_SMTP_HOST=   # SMTP server hostname
 
 `FM_IMAP_PORT` (default 993), `FM_SMTP_PORT` (default 465), `FM_MAIL_TIMEOUT` (default 20 seconds), `FM_MAIL_POLL_MAX_WAKES` (default 20, valid 1..200), and `FM_MAIL_BODY_MAX` (default 20000 characters, the bound on a full-body read before its truncation marker) are optional.
 `FM_MAIL_WAKE_FROM` is an optional comma-separated sender allow-list for `poll`, for example `FM_MAIL_WAKE_FROM=tomas@mindshake.io,notes@mail.mindshake.io,mindshake.io`.
-`FM_MAIL_CHECK_BUDGET` (default 15, valid 5..25) bounds one standing poll, is cut down to fit `FM_CHECK_TIMEOUT`, and follows the same environment-over-`.env` precedence as the mail settings.
 When it is unset or empty, every new message wakes.
 When it is set, new mail wakes only when its From address matches an entry, ignoring case; an entry without `@` is a domain that matches any address at that domain or a subdomain of it.
 New mail from any other sender is counted once in the poll cursor without a wake and stays unread, and the poll prints one `filtered N` line; the standing check adds `; N filtered` to a wake line and stays silent when all new mail was filtered.
 A message whose sender is unknown because its header could not be fetched still wakes.
 The per-poll wake cap bounds the wakes of one `poll` run; header fetches scan a larger bounded window of new unseen uids plus already-surfaced retry-set uids, so a flood or large backlog still makes bounded progress every poll, keeping the durable wake queue bounded without ever dropping mail.
+`FM_MAIL_CHECK_BUDGET` (default 15, valid 5..25) bounds one standing poll, is cut down to fit `FM_CHECK_TIMEOUT`, and follows the same environment-over-`.env` precedence as the mail settings.
 
 **Unfetchable headers**
 
