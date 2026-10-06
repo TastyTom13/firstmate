@@ -304,6 +304,9 @@ arm_digest() {
   recipient="$state/.capture-digest-to"
   shim="$state/capture-digest.check.sh"
   [ -n "$to" ] && [[ "$to" == *@* ]] && [[ "$to" != *$'\n'* ]] || fail 'arm requires a single --to email address'
+  if [ -s "$recipient" ] && [ "$(cat "$recipient")" != "$to" ]; then
+    fail "a recipient is already armed; the captain must delete $recipient to change it"
+  fi
   private_mkdir "$state"
   tmp=$(mktemp "$state/.capture-digest-to.XXXXXX") || fail 'could not stage digest recipient'
   printf '%s\n' "$to" > "$tmp"

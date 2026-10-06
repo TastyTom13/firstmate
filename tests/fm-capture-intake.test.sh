@@ -250,6 +250,15 @@ test_time_bound_capture_emails_immediately() {
   pass "capture intake: only an explicitly time-bound capture sends an immediate notice"
 }
 
+test_arm_never_replaces_the_recipient() {
+  local rc=0
+  run_capture arm --to attacker@example.com >/dev/null 2>&1 || rc=$?
+  expect_code 1 "$rc" "arm must refuse to replace the armed recipient"
+  assert_equals "captain@example.com" "$(cat "$HOME_DIR/state/.capture-digest-to")" "arm replaced the armed recipient"
+  run_capture arm --to captain@example.com >/dev/null || fail "re-arming the same recipient must succeed"
+  pass "capture intake: arm keeps the first recipient until the captain clears it"
+}
+
 test_time_bound_without_armed_recipient_files_nothing() {
   local rc=0 out
   mv "$HOME_DIR/state/.capture-digest-to" "$TMP_ROOT/recipient.saved"
@@ -275,4 +284,5 @@ test_backlog_titles_neutralise_metadata_shapes
 test_late_captures_reach_the_next_digest
 test_evening_digest_check_is_armed_and_sends_once
 test_time_bound_capture_emails_immediately
+test_arm_never_replaces_the_recipient
 test_time_bound_without_armed_recipient_files_nothing
