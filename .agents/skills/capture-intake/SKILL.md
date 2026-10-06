@@ -55,7 +55,8 @@ Its `--help` and header own the exact command syntax.
 Filing and reversible research may proceed under the normal Firstmate lifecycle.
 Never send a message, subscribe, book, write a calendar event, change an appointment, or make another outward change from a capture.
 Keep those requests as drafts waiting for a yes.
-An explicit time-bound non-People capture may pass `--time-bound --notify-to <captain-email>` so the helper sends the one immediate notice allowed by this routine.
+An explicit time-bound non-People capture may pass `--time-bound` so the helper sends the one immediate notice allowed by this routine to the address stored by `arm`.
+The helper accepts no other recipient, so run `arm` before the first time-bound filing.
 Do not use the immediate path merely because a capture feels important.
 
 ## Digest

@@ -5,8 +5,8 @@
 #   fm-capture-intake.sh save --uid <imap-uid>
 #   fm-capture-intake.sh file --uid <uid> --bucket <bucket> --text <text>
 #       [--source <source>] [--project <project>] [--attachment <path>]
-#       [--draft <text>] [--question <text>] [--time-bound --notify-to <email>]
-#   fm-capture-intake.sh digest --to <email>
+#       [--draft <text>] [--question <text>] [--time-bound]
+#   fm-capture-intake.sh digest
 #   fm-capture-intake.sh arm --to <email>
 #   fm-capture-intake.sh check
 #
@@ -16,8 +16,8 @@
 # Person captures move into data/captures/people/ and are excluded from every
 # digest. Project ideas become queued idea-kind backlog items, never dispatched.
 # Outward work is recorded only as a draft. The sole sends are `digest` and an
-# explicitly time-bound notice to --notify-to, both through the existing mail
-# plane and its $FM_HOME/.env credentials.
+# explicitly time-bound notice, both sent only to the recipient stored by `arm`
+# through the existing mail plane and its $FM_HOME/.env credentials.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -101,7 +101,7 @@ append_list() { # <list-name> <line>
 
 file_capture() {
   local uid=$1 bucket=$2 text=$3 source=$4 project=$5 attachment=$6 draft=$7 question=$8
-  local time_bound=$9 notify_to=${10} dir raw marker location line task_out
+  local time_bound=$9 notify_to='' dir raw marker location line task_out
   dir=$(capture_path "$uid")
   raw="$dir/capture.md"
   marker="$dir/.filed"
@@ -112,6 +112,10 @@ file_capture() {
   fi
   text=$(single_line "$text")
   [ -n "$text" ] || fail '--text must not be empty'
+  if [ "$time_bound" = 1 ]; then
+    [ "$bucket" != person ] || fail 'a People capture cannot be time-bound'
+    notify_to=$(armed_recipient)
+  fi
   case "$bucket" in
     book)
       line="- $text"
@@ -194,19 +198,24 @@ file_capture() {
   chmod 0600 "$marker"
   journal_record "$uid" "$location" "$text" "$draft" "$question"
   if [ "$time_bound" = 1 ]; then
-    [ -n "$notify_to" ] || fail '--time-bound requires --notify-to'
     printf 'A phone capture may need action soon.\n\n%s\n\nFiled in: %s\n' "$text" "$location" \
       | FM_HOME="$FM_HOME" "$MAIL_BIN" send "$notify_to" 'Time-bound phone capture' -
   fi
   printf 'filed: %s\n' "$location"
 }
 
+armed_recipient() {
+  local recipient="$FM_HOME/state/.capture-digest-to"
+  [ -s "$recipient" ] || fail 'mail recipient is missing; run arm --to <email>'
+  cat "$recipient"
+}
+
 digest() {
-  local to=$1 today journal sent body uid location summary draft question
+  local to today journal sent body uid location summary draft question
+  to=$(armed_recipient)
   today=$(date +%F)
   journal="$CAPTURES/digest/$today.records"
   sent="$CAPTURES/digest/$today.sent"
-  [ -n "$to" ] || fail 'digest requires --to'
   [ -s "$journal" ] || fail 'no filed captures are waiting for the evening digest'
   [ ! -e "$sent" ] || fail "the $today digest was already sent"
   body=$'Phone captures filed today:\n'
@@ -242,16 +251,16 @@ arm_digest() {
 }
 
 check_digest() {
-  local hour=${FM_CAPTURE_DIGEST_HOUR:-18} now recipient="$FM_HOME/state/.capture-digest-to"
+  local hour=${FM_CAPTURE_DIGEST_HOUR:-18} now
   case "$hour" in ''|*[!0-9]*) fail 'FM_CAPTURE_DIGEST_HOUR must be 0 through 23' ;; esac
   [ "$hour" -le 23 ] || fail 'FM_CAPTURE_DIGEST_HOUR must be 0 through 23'
   now=$(date +%H)
   now=$((10#$now))
   [ "$now" -ge "$hour" ] || return 0
-  [ -s "$recipient" ] || fail 'evening digest recipient is missing; run arm --to <email>'
+  armed_recipient >/dev/null
   [ -s "$CAPTURES/digest/$(date +%F).records" ] || return 0
   [ ! -e "$CAPTURES/digest/$(date +%F).sent" ] || return 0
-  digest "$(cat "$recipient")" >/dev/null
+  digest >/dev/null
 }
 
 command=${1:-}
@@ -264,12 +273,11 @@ project=''
 attachment=''
 draft=''
 question=''
-notify_to=''
 to=''
 time_bound=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --uid|--bucket|--text|--source|--project|--attachment|--draft|--question|--notify-to|--to)
+    --uid|--bucket|--text|--source|--project|--attachment|--draft|--question|--to)
       [ "$#" -ge 2 ] || fail "$1 requires a value"
       key=${1#--}; key=${key//-/_}; printf -v "$key" '%s' "$2"; shift 2 ;;
     --time-bound) time_bound=1; shift ;;
@@ -282,9 +290,9 @@ case "$command" in
   save) [ -n "$uid" ] || fail 'save requires --uid'; save_capture "$uid" ;;
   file)
     [ -n "$uid" ] && [ -n "$bucket" ] && [ -n "$text" ] || fail 'file requires --uid, --bucket, and --text'
-    file_capture "$uid" "$bucket" "$text" "$source" "$project" "$attachment" "$draft" "$question" "$time_bound" "$notify_to"
+    file_capture "$uid" "$bucket" "$text" "$source" "$project" "$attachment" "$draft" "$question" "$time_bound"
     ;;
-  digest) digest "$to" ;;
+  digest) digest ;;
   arm) arm_digest "$to" ;;
   check) check_digest ;;
   -h|--help|'') usage ;;

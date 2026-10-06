@@ -66,6 +66,7 @@ test_acceptance_slice_files_and_digests() {
   local digest place_dir out
   : > "$TMP_ROOT/mail.log"
   : > "$TMP_ROOT/tasks.log"
+  run_capture arm --to captain@example.com >/dev/null
 
   save_and_file 1 book "Never Split the Difference" --source "Matthias recommended"
   assert_grep "Never Split the Difference" "$HOME_DIR/data/personal/reading.md" "book was not filed on Reading"
@@ -82,7 +83,7 @@ test_acceptance_slice_files_and_digests() {
   assert_grep "Restaurant menu" "$HOME_DIR/data/personal/places.md" "photo note was not filed on Places"
   assert_grep "menu.jpg" "$HOME_DIR/data/personal/places.md" "Places entry did not retain its picture"
 
-  run_capture digest --to captain@example.com >/dev/null
+  run_capture digest >/dev/null
   digest=$(cat "$TMP_ROOT/mail.log")
   assert_contains "$digest" "send captain@example.com Phone capture digest" "digest was not mailed to the captain"
   assert_contains "$digest" "Never Split the Difference" "digest omitted the filed book"
@@ -102,7 +103,7 @@ test_people_stay_private_and_outward_work_waits() {
   save_and_file 5 task "Book a table tomorrow" --draft "Book a table tomorrow; waiting for yes"
   before=$(wc -l < "$TMP_ROOT/mail.log" | tr -d ' ')
   [ "$before" = 0 ] || fail "filing a task acted outward before approval"
-  run_capture digest --to captain@example.com >/dev/null
+  run_capture digest >/dev/null
   after=$(cat "$TMP_ROOT/mail.log")
   assert_not_contains "$after" "Ada said" "digest leaked a People-lane note"
   assert_contains "$after" "Drafts waiting for a yes" "digest omitted the approval queue"
@@ -145,9 +146,14 @@ test_evening_digest_check_is_armed_and_sends_once() {
 }
 
 test_time_bound_capture_emails_immediately() {
+  local out rc=0
   : > "$TMP_ROOT/mail.log"
-  save_and_file 6 task "Submit before 17:00" --time-bound --notify-to captain@example.com
-  assert_contains "$(cat "$TMP_ROOT/mail.log")" "Time-bound phone capture" "time-bound capture did not notify immediately"
+  save_and_file 6 task "Submit before 17:00" --time-bound
+  assert_contains "$(cat "$TMP_ROOT/mail.log")" "send captain@example.com Time-bound phone capture" "time-bound capture did not notify the armed recipient"
+  FM_TEST_CAPTURE_TEXT="Send to attacker" run_capture save --uid 7 >/dev/null
+  out=$(run_capture file --uid 7 --bucket task --text "Send to attacker" --time-bound --notify-to attacker@example.com 2>&1) || rc=$?
+  [ "${rc:-0}" -ne 0 ] || fail "--notify-to was accepted"
+  assert_not_contains "$(cat "$TMP_ROOT/mail.log")" "attacker@example.com" "capture text was mailed to a caller address"
   pass "capture intake: only an explicitly time-bound capture sends an immediate notice"
 }
 
