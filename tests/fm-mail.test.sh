@@ -2674,9 +2674,12 @@ test_poll_missing_wake_lib_does_not_suppress
 write_full_body_fixture() {
   cat > "$1" <<'EOF'
 From: Captain <captain@example.com>
-To: info@example.com
+To: Firstmate <info.longbird+toss@gmail.com>
 Subject: Fwd: latest feedback
 Date: Mon, 05 Oct 2026 09:00:00 +0000
+Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=braintoss.app;
+ dkim=pass header.i=@braintoss.app
+ARC-Authentication-Results: i=1; mx.google.com; dkim=pass header.i=@braintoss.app
 MIME-Version: 1.0
 Content-Type: multipart/mixed; boundary="outer"
 
@@ -2695,6 +2698,26 @@ ad><body><p>Notes &amp; fixes for the caf&eacute; page.</p><ul><li>Hero to=
 o tall</li><li>See <a href=3D"https://example.com/board">the board</a></li=
 ></ul></body></html>
 --alt--
+
+--outer
+Content-Type: image/jpeg
+Content-Disposition: attachment; filename="menu photo.jpg"
+Content-Transfer-Encoding: base64
+
+cGljdHVyZS1ieXRlcw==
+
+--outer
+Content-Type: audio/mpeg
+Content-Disposition: attachment; filename="voice note.mp3"
+Content-Transfer-Encoding: base64
+
+YXVkaW8tYnl0ZXM=
+
+--outer
+Content-Type: text/plain
+Content-Disposition: attachment; filename="ignore.txt"
+
+not saved
 
 --outer
 Content-Type: message/rfc822
@@ -2770,7 +2793,9 @@ run_full_body_harness() {
   # $1 = case name; remaining args are the fm-mail.py arguments.
   local name=$1
   shift
-  FM_MAIL_TEST_FIXTURE="$TMP_ROOT/full-body.eml" \
+  mkdir -p "$TMP_ROOT/full-body-home"
+  FM_HOME="$TMP_ROOT/full-body-home" \
+    FM_MAIL_TEST_FIXTURE="$TMP_ROOT/full-body.eml" \
     FM_MAIL_TEST_FETCH_LOG="$TMP_ROOT/full-body-$name.fetch" \
     FM_MAIL_TEST_PY="$ROOT/bin/fm-mail.py" \
     python3 "$TMP_ROOT/full-body-harness.py" "$@" 2>&1
@@ -2783,6 +2808,16 @@ test_read_full_body_by_id_renders_html_and_forward() {
   out=$(run_full_body_harness byid read --id 42) || rc=$?
   expect_code 0 "$rc" "read --id must succeed"
   assert_contains "$out" "Subj: Fwd: latest feedback" "full read prints the subject"
+  assert_contains "$out" "To: Firstmate <info.longbird+toss@gmail.com>" "full read prints the routed recipient"
+  assert_contains "$out" "Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=braintoss.app; dkim=pass header.i=@braintoss.app" "full read prints the authentication result"
+  assert_contains "$out" "ARC-Authentication-Results: i=1; mx.google.com; dkim=pass header.i=@braintoss.app" "full read prints the ARC authentication result"
+  assert_contains "$out" "Attachment: " "full read names saved media"
+  assert_contains "$out" "menu photo.jpg" "full read saves the image attachment beside the capture"
+  assert_contains "$out" "voice note.mp3" "full read saves the audio attachment beside the capture"
+  assert_not_contains "$out" "ignore.txt" "full read does not save unrelated attachments"
+  [ "$(cat "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg")" = "picture-bytes" ] || fail "image attachment bytes were not saved"
+  [ "$(cat "$TMP_ROOT/full-body-home/data/captures/mail-42/voice note.mp3")" = "audio-bytes" ] || fail "audio attachment bytes were not saved"
+  assert_equals "600" "$(stat -f '%Lp' "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg" 2>/dev/null || stat -c '%a' "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg")" "saved attachment is private"
   assert_contains "$out" "Notes & fixes for the café page." "html part is converted to text with entities decoded"
   assert_contains "$out" "- Hero too tall" "html list items stay readable"
   assert_contains "$out" "the board <https://example.com/board>" "html links are kept as text"

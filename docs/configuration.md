@@ -1646,8 +1646,15 @@ Arm the check once per home with `bin/fm-tool-update-check.sh arm`.
 ## Mail plane (.env)
 
 The mail plane (bin/fm-mail.sh) reads unseen IMAP messages and sends one SMTP message.
-Plain `read` lists unseen mail as a digest keyed by uid with a one-line preview, and `read --id <uid>` prints one message's full body: the plain-text part, else the HTML part as readable text, followed by any attached forwarded message.
+Plain `read` lists unseen mail as a digest keyed by uid with a one-line preview.
+`read --id <uid>` prints the routing and authentication-result headers plus the message's full body: the plain-text part, else the HTML part as readable text, followed by any attached forwarded message.
+It also saves image and audio attachments privately under `data/captures/mail-<uid>/`, where phone capture intake stores the rendered raw message beside them.
 `<uid>` is the number a `check: mail <uid>` wake names, and a full read never marks the message seen.
+
+The agent-only `capture-intake` skill handles authenticated BrainToss mail addressed through the mailbox's `+toss` route.
+Its helper files private lists and parked tasks locally, keeps People-lane content out of chat and digests, and records outward requests only as drafts waiting for approval.
+`bin/fm-capture-intake.sh arm --to <captain-email>` registers the evening digest check, which sends at most once per local day through this same mail account when captures are waiting.
+`FM_CAPTURE_DIGEST_HOUR` optionally selects the local send hour from 0 through 23 and defaults to 18.
 
 **Polling and delivery guarantees**
 
