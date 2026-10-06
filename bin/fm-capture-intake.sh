@@ -221,7 +221,9 @@ file_capture() {
       fi
       ;;
     watch)
-      append_list watching "- $text ([capture](../captures/mail-$uid/capture.md))"
+      line="- $text"
+      [ -z "$source" ] || line="$line (Source: $(single_line "$source"))"
+      append_list watching "$line ([capture](../captures/mail-$uid/capture.md))"
       location='Watching'
       ;;
     name)

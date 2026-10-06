@@ -39,7 +39,7 @@ Its `--help` and header own the exact command syntax.
 - A business idea uses `idea`.
 - A product or business name uses `name`.
 - A book, article, or listening recommendation uses `book`, with `--source` when the capture names who recommended it.
-- A film, series, documentary, podcast, or other watching item uses `watch`.
+- A film, series, documentary, podcast, or other watching item uses `watch`, with `--source` when the capture names who recommended it.
 - A destination, restaurant, or place to visit uses `place`, with one `--attachment` path when a saved image belongs with it.
 - A reversible "look into" or "find out" request uses `research --project <project>`.
   The helper files a queued research item; normal Firstmate intake and base-branch rules govern whether it can be dispatched.

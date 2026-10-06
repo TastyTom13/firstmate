@@ -180,12 +180,13 @@ test_people_stay_private_and_outward_work_waits() {
 
 test_remaining_sort_table_routes_locally() {
   rm -rf "$HOME_DIR/data/captures/digest"
-  save_and_file 10 watch "Watch Arrival"
+  save_and_file 10 watch "Watch Arrival" --source "Sam recommended"
   save_and_file 11 name "Product name: North Star"
   save_and_file 12 question "Maybe reserve something" --question "Which date did you mean?"
   save_and_file 13 calendar "Meet Sam Friday" --draft "Calendar draft: meet Sam Friday; waiting for yes"
   save_and_file 14 research "Look into train passes" --project firstmate
   assert_grep "Watch Arrival" "$HOME_DIR/data/personal/watching.md" "watching item missed Watching"
+  assert_grep "Sam recommended" "$HOME_DIR/data/personal/watching.md" "watching recommender was not preserved"
   assert_grep "North Star" "$HOME_DIR/data/personal/names.md" "product name missed Names"
   assert_grep "Which date" "$HOME_DIR/data/personal/questions.md" "unclear capture missed Questions"
   assert_grep "Calendar draft" "$HOME_DIR/data/personal/drafts.md" "calendar capture was not kept as a draft"
