@@ -260,7 +260,16 @@ check_digest() {
 
 command=${1:-}
 shift || true
-uid= bucket= text= source= project= attachment= draft= question= notify_to= to=
+uid=''
+bucket=''
+text=''
+source=''
+project=''
+attachment=''
+draft=''
+question=''
+notify_to=''
+to=''
 time_bound=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
