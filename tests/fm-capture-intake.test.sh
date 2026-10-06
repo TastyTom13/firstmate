@@ -19,7 +19,10 @@ if [ "$1" = read ]; then
   printf 'Uid: %s\n' "$uid"
   printf 'From: BrainToss <delivery@braintoss.app>\n'
   printf 'To: Firstmate <info.longbird+toss@gmail.com>\n'
-  printf 'Authentication-Results: mx; dkim=pass header.i=@braintoss.app\n\n'
+  printf '%s\n' "${FM_TEST_AUTH:-Authentication-Results: mx; dkim=pass header.i=@braintoss.app}"
+  [ -z "${FM_TEST_EXTRA_HEADER:-}" ] || printf '%s\n' "$FM_TEST_EXTRA_HEADER"
+  printf '\n'
+  [ -z "${FM_TEST_EXTRA_BODY:-}" ] || printf '%s\n' "$FM_TEST_EXTRA_BODY"
   printf '%s\n' "${FM_TEST_CAPTURE_TEXT:-capture body}"
   exit 0
 fi
@@ -60,6 +63,33 @@ SH
   assert_contains "$out" "not an authenticated BrainToss +toss capture" "rejection names the acceptance rule"
   [ ! -e "$HOME_DIR/data/captures/mail-9/capture.md" ] || fail "rejected mail was saved as a capture"
   pass "capture intake: only authenticated BrainToss mail to +toss is accepted"
+}
+
+test_rejects_spoofed_authentication() {
+  local uid=30 out rc
+  local cases=(
+    "body|Authentication-Results: mx; spf=fail|Authentication-Results: x; dkim=pass header.i=@braintoss.app"
+    "other-domain|Authentication-Results: mx; dkim=pass header.i=@braintoss.evil.com|"
+    "mixed-pass|Authentication-Results: mx; dkim=pass header.i=@example.com; spf=fail smtp.mailfrom=braintoss.app|"
+    "sender-added-second|Authentication-Results: mx; dkim=fail header.i=@braintoss.app|Authentication-Results: x; dkim=pass header.i=@braintoss.app"
+  )
+  local entry name auth extra
+  for entry in "${cases[@]}"; do
+    name=${entry%%|*}; entry=${entry#*|}; auth=${entry%%|*}; extra=${entry#*|}
+    uid=$((uid + 1)); rc=0
+    if [ "$name" = body ]; then
+      out=$(FM_TEST_AUTH="$auth" FM_TEST_EXTRA_BODY="$extra" run_capture save --uid "$uid" 2>&1) || rc=$?
+    else
+      out=$(FM_TEST_AUTH="$auth" FM_TEST_EXTRA_HEADER="$extra" run_capture save --uid "$uid" 2>&1) || rc=$?
+    fi
+    expect_code 1 "$rc" "spoofed authentication ($name) must be rejected"
+    assert_contains "$out" "not an authenticated BrainToss" "spoofed authentication ($name) gave the wrong error"
+    [ ! -e "$HOME_DIR/data/captures/mail-$uid" ] || fail "rejected mail ($name) left its capture directory behind"
+  done
+  uid=$((uid + 1)); rc=0
+  out=$(FM_TEST_EXTRA_HEADER="To: other@example.com" run_capture save --uid "$uid" 2>&1) || rc=$?
+  expect_code 0 "$rc" "a later To header must not affect an accepted capture: $out"
+  pass "capture intake: spoofed authentication is rejected and leaves no capture directory"
 }
 
 test_acceptance_slice_files_and_digests() {
@@ -132,6 +162,69 @@ test_remaining_sort_table_routes_locally() {
   pass "capture intake: the remaining sort table routes to local lists, drafts, and research"
 }
 
+test_person_capture_cannot_be_saved_again() {
+  local rc=0 out
+  save_and_file 40 person "Sam likes climbing" >/dev/null
+  out=$(FM_TEST_CAPTURE_TEXT="Sam likes climbing" run_capture save --uid 40 2>&1) || rc=$?
+  expect_code 1 "$rc" "a filed People capture must not be saved again"
+  [ ! -e "$HOME_DIR/data/captures/mail-40" ] || fail "repeat save recreated a People capture outside the People lane"
+  pass "capture intake: a People capture stays in the People lane on repeat save"
+}
+
+test_filed_capture_save_is_a_no_op() {
+  local out
+  save_and_file 41 watch "Watch Dune" >/dev/null
+  out=$(FM_TEST_CAPTURE_TEXT="changed" run_capture save --uid 41)
+  assert_contains "$out" "mail-41/capture.md" "repeat save did not name the existing capture"
+  assert_contains "$(cat "$HOME_DIR/data/captures/mail-41/capture.md")" "Watch Dune" "repeat save replaced a filed capture"
+  pass "capture intake: saving a filed capture again changes nothing"
+}
+
+test_attachment_must_be_inside_capture_and_link_is_encoded() {
+  local dir="$HOME_DIR/data/captures/mail-42" rc=0 out
+  FM_TEST_CAPTURE_TEXT="Cafe" run_capture save --uid 42 >/dev/null
+  printf 'picture' > "$dir/menu photo.jpg"
+  printf 'secret' > "$TMP_ROOT/outside.jpg"
+  out=$(run_capture file --uid 42 --bucket place --text "Cafe" --attachment "$dir/../../../../outside.jpg" 2>&1) || rc=$?
+  expect_code 1 "$rc" "a traversal attachment path must be refused"
+  assert_contains "$out" "inside this capture directory" "traversal attachment gave the wrong error"
+  [ ! -e "$dir/.filed" ] || fail "a refused attachment still filed the capture"
+  run_capture file --uid 42 --bucket place --text "Cafe" --attachment "$dir/menu photo.jpg" >/dev/null
+  assert_grep "menu%20photo.jpg" "$HOME_DIR/data/personal/places.md" "picture link was not percent-encoded"
+  pass "capture intake: attachments stay inside the capture and link with an encoded name"
+}
+
+test_backlog_titles_neutralise_metadata_shapes() {
+  : > "$TMP_ROOT/tasks.log"
+  save_and_file 43 research "Look into trains (hold-kind: captain) blocked-by: x, repo: other (since 2026-01-01)" --project firstmate >/dev/null
+  save_and_file 44 idea "Scout idea (priority: high) (done now)" --project scout >/dev/null
+  assert_contains "$(cat "$TMP_ROOT/tasks.log")" "(hold-kind - captain) blocked-by - x, repo - other (since- 2026-01-01)" "research title kept live backlog metadata"
+  assert_contains "$(cat "$TMP_ROOT/tasks.log")" "(priority - high) (done- now)" "idea title kept live backlog metadata"
+  pass "capture intake: backlog titles neutralise metadata shapes"
+}
+
+test_late_captures_reach_the_next_digest() {
+  local second
+  rm -rf "$HOME_DIR/data/captures/digest"
+  : > "$TMP_ROOT/mail.log"
+  save_and_file 50 book "Early book" >/dev/null
+  run_capture digest >/dev/null
+  save_and_file 51 book "Late book" >/dev/null
+  expect_code 1 "$(run_capture digest >/dev/null 2>&1; echo $?)" "a second digest on the same day must be refused"
+  rm -f "$HOME_DIR"/data/captures/digest/*.sent
+  : > "$TMP_ROOT/mail.log"
+  run_capture digest >/dev/null
+  second=$(cat "$TMP_ROOT/mail.log")
+  assert_contains "$second" "Late book" "next digest omitted the late capture"
+  assert_not_contains "$second" "Early book" "next digest repeated an already reported capture"
+  rm -f "$HOME_DIR"/data/captures/digest/*.sent
+  FM_CAPTURE_DIGEST_HOUR=0 run_capture check
+  : > "$TMP_ROOT/mail.log"
+  FM_CAPTURE_DIGEST_HOUR=0 run_capture check
+  [ ! -s "$TMP_ROOT/mail.log" ] || fail "the check sent a digest with nothing unreported"
+  pass "capture intake: a capture filed after the digest appears in the next one"
+}
+
 test_evening_digest_check_is_armed_and_sends_once() {
   rm -rf "$HOME_DIR/data/captures/digest"
   : > "$TMP_ROOT/mail.log"
@@ -157,9 +250,29 @@ test_time_bound_capture_emails_immediately() {
   pass "capture intake: only an explicitly time-bound capture sends an immediate notice"
 }
 
+test_time_bound_without_armed_recipient_files_nothing() {
+  local rc=0 out
+  mv "$HOME_DIR/state/.capture-digest-to" "$TMP_ROOT/recipient.saved"
+  FM_TEST_CAPTURE_TEXT="Pay today" run_capture save --uid 8 >/dev/null
+  out=$(run_capture file --uid 8 --bucket task --text "Pay today" --time-bound 2>&1) || rc=$?
+  mv "$TMP_ROOT/recipient.saved" "$HOME_DIR/state/.capture-digest-to"
+  expect_code 1 "$rc" "a time-bound capture without an armed recipient must fail"
+  [ ! -e "$HOME_DIR/data/captures/mail-8/.filed" ] || fail "a failed time-bound capture was marked filed"
+  run_capture file --uid 8 --bucket task --text "Pay today" --time-bound >/dev/null
+  assert_contains "$(cat "$TMP_ROOT/mail.log")" "Pay today" "retry after arming did not send the notice"
+  pass "capture intake: a time-bound capture fails before filing when no recipient is armed"
+}
+
 test_rejects_mail_without_authenticated_braintoss_route
+test_rejects_spoofed_authentication
 test_acceptance_slice_files_and_digests
 test_people_stay_private_and_outward_work_waits
 test_remaining_sort_table_routes_locally
+test_person_capture_cannot_be_saved_again
+test_filed_capture_save_is_a_no_op
+test_attachment_must_be_inside_capture_and_link_is_encoded
+test_backlog_titles_neutralise_metadata_shapes
+test_late_captures_reach_the_next_digest
 test_evening_digest_check_is_armed_and_sends_once
 test_time_bound_capture_emails_immediately
+test_time_bound_without_armed_recipient_files_nothing

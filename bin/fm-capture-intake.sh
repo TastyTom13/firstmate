@@ -55,21 +55,83 @@ single_line() {
 
 capture_path() { printf '%s/mail-%s' "$CAPTURES" "$1"; }
 
+is_braintoss_capture() { # <rendered-mail-file>
+  python3 -I - "$1" <<'PY'
+import re, sys
+
+header = []
+with open(sys.argv[1], encoding='utf-8', errors='replace') as rendered:
+    for line in rendered:
+        if not line.strip():
+            break
+        header.append(line.rstrip('\n'))
+
+def first(name):
+    prefix = name.lower() + ':'
+    for line in header:
+        if line.lower().startswith(prefix):
+            return line[len(prefix):]
+    return None
+
+def from_braintoss(value):
+    domain = value.rsplit('@', 1)[-1].strip('<>;, ').lower()
+    return re.search(r'(^|\.)braintoss\.(com|app)$', domain) is not None
+
+to = first('To')
+results = first('Authentication-Results')
+if to is None or results is None:
+    sys.exit(1)
+if not any(addr.split('@')[0].lower().endswith('+toss')
+           for addr in re.findall(r'[^\s<>,"]+@[^\s<>,"]+', to)):
+    sys.exit(1)
+for method in results.split(';')[1:]:
+    fields = dict(f.split('=', 1) for f in method.split() if '=' in f)
+    if fields.get('dkim') == 'pass' and any(from_braintoss(fields.get(k, '')) for k in ('header.d', 'header.i')):
+        sys.exit(0)
+    if fields.get('spf') == 'pass' and from_braintoss(fields.get('smtp.mailfrom', '')):
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+neutralize_title() {
+  python3 -I -c '
+import re, sys
+t = sys.argv[1]
+t = re.sub(r"((?:\(|,)\s*)(hold-kind|hold-until|hold|repo|kind|priority):", r"\1\2 -", t)
+t = re.sub(r"((?:\(|,)\s*)(since|merged|reported|done)(\s)", r"\1\2-\3", t)
+print(t.replace("blocked-by:", "blocked-by -"))
+' "$1"
+}
+
+url_encode() {
+  python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+
+discard_unaccepted() { # <capture-dir> <staged-file>
+  rm -f -- "$2"
+  [ -f "$1/capture.md" ] || rm -rf -- "$1"
+}
+
 save_capture() {
   local uid=$1 dir tmp
   case "$uid" in ''|*[!0-9]*) fail '--uid must be a positive IMAP uid' ;; esac
   [ "$uid" -gt 0 ] || fail '--uid must be a positive IMAP uid'
   [ -x "$MAIL_BIN" ] || fail "mail plane is not executable: $MAIL_BIN"
   dir=$(capture_path "$uid")
+  [ ! -e "$CAPTURES/people/mail-$uid" ] || fail "capture $uid was already filed to the People lane"
+  if [ -f "$dir/.filed" ]; then
+    printf '%s\n' "$dir/capture.md"
+    return 0
+  fi
   private_mkdir "$dir"
   tmp=$(mktemp "$dir/.capture.XXXXXX") || fail 'could not stage capture'
   if ! "$MAIL_BIN" read --id "$uid" > "$tmp"; then
-    rm -f -- "$tmp"
+    discard_unaccepted "$dir" "$tmp"
     fail "mail uid $uid could not be read"
   fi
-  if ! grep -Eiq '^To: .*\+toss@' "$tmp" \
-      || ! grep -Eiq '^(Authentication-Results|ARC-Authentication-Results):.*(dkim|spf)=pass.*braintoss' "$tmp"; then
-    rm -f -- "$tmp"
+  if ! is_braintoss_capture "$tmp"; then
+    discard_unaccepted "$dir" "$tmp"
     fail "mail uid $uid is not an authenticated BrainToss +toss capture"
   fi
   chmod 0600 "$tmp"
@@ -78,9 +140,7 @@ save_capture() {
 }
 
 journal_record() { # <uid> <location> <summary> <draft> <question>
-  local today path
-  today=$(date +%F)
-  path="$CAPTURES/digest/$today.records"
+  local path="$CAPTURES/digest/records"
   private_mkdir "$(dirname "$path")"
   printf '%s\x1f%s\x1f%s\x1f%s\x1f%s\n' \
     "$(single_line "$1")" "$(single_line "$2")" "$(single_line "$3")" \
@@ -93,7 +153,7 @@ append_list() { # <list-name> <line>
   path="$PERSONAL/$list.md"
   private_mkdir "$PERSONAL"
   if [ ! -s "$path" ]; then
-    printf '# %s\n\n' "${list^}" > "$path"
+    printf '# %s%s\n\n' "$(printf '%s' "${list%"${list#?}"}" | tr '[:lower:]' '[:upper:]')" "${list#?}" > "$path"
   fi
   printf '%s\n' "$line" >> "$path"
   chmod 0600 "$path"
@@ -101,7 +161,7 @@ append_list() { # <list-name> <line>
 
 file_capture() {
   local uid=$1 bucket=$2 text=$3 source=$4 project=$5 attachment=$6 draft=$7 question=$8
-  local time_bound=$9 notify_to='' dir raw marker location line task_out
+  local time_bound=$9 notify_to='' dir raw marker location line task_out title attachment_dir
   dir=$(capture_path "$uid")
   raw="$dir/capture.md"
   marker="$dir/.filed"
@@ -115,7 +175,10 @@ file_capture() {
   if [ "$time_bound" = 1 ]; then
     [ "$bucket" != person ] || fail 'a People capture cannot be time-bound'
     notify_to=$(armed_recipient)
+    printf 'A phone capture may need action soon.\n\n%s\n' "$text" \
+      | FM_HOME="$FM_HOME" "$MAIL_BIN" send "$notify_to" 'Time-bound phone capture' -
   fi
+  title=$(neutralize_title "$text")
   case "$bucket" in
     book)
       line="- $text"
@@ -127,9 +190,10 @@ file_capture() {
     place)
       line="- $text ([capture](../captures/mail-$uid/capture.md))"
       if [ -n "$attachment" ]; then
-        case "$attachment" in "$dir"/*) ;; *) fail '--attachment must be inside this capture directory' ;; esac
-        [ -f "$attachment" ] || fail "attachment does not exist: $attachment"
-        line="$line ([picture](../captures/mail-$uid/$(basename "$attachment")))"
+        [ -f "$attachment" ] && [ ! -L "$attachment" ] || fail "attachment does not exist: $attachment"
+        attachment_dir=$(cd "$(dirname "$attachment")" && pwd -P)
+        [ "$attachment_dir" = "$(cd "$dir" && pwd -P)" ] || fail '--attachment must be inside this capture directory'
+        line="$line ([picture](../captures/mail-$uid/$(url_encode "$(basename "$attachment")")))"
       fi
       append_list places "$line"
       location='Places'
@@ -137,7 +201,7 @@ file_capture() {
     idea)
       if [ -n "$project" ]; then
         [ -x "$TASKS_BIN" ] || fail "tasks plane is not executable: $TASKS_BIN"
-        task_out=$(FM_HOME="$FM_HOME" "$TASKS_BIN" add "Idea: $text" --mint --kind idea --repo "$project" --body "Captured from BrainToss uid $uid; raw: data/captures/mail-$uid/capture.md")
+        task_out=$(FM_HOME="$FM_HOME" "$TASKS_BIN" add "Idea: $title" --mint --kind idea --repo "$project" --body "Captured from BrainToss uid $uid; raw: data/captures/mail-$uid/capture.md")
         location="parked $project backlog idea"
         printf '%s\n' "$task_out"
       else
@@ -156,7 +220,7 @@ file_capture() {
     research)
       [ -n "$project" ] || project=firstmate
       [ -x "$TASKS_BIN" ] || fail "tasks plane is not executable: $TASKS_BIN"
-      task_out=$(FM_HOME="$FM_HOME" "$TASKS_BIN" add "Research: $text" --mint --kind scout --repo "$project" --body "Captured from BrainToss uid $uid; raw: data/captures/mail-$uid/capture.md")
+      task_out=$(FM_HOME="$FM_HOME" "$TASKS_BIN" add "Research: $title" --mint --kind scout --repo "$project" --body "Captured from BrainToss uid $uid; raw: data/captures/mail-$uid/capture.md")
       location="queued $project research"
       printf '%s\n' "$task_out"
       ;;
@@ -197,10 +261,6 @@ file_capture() {
   printf '%s\n' "$location" > "$marker"
   chmod 0600 "$marker"
   journal_record "$uid" "$location" "$text" "$draft" "$question"
-  if [ "$time_bound" = 1 ]; then
-    printf 'A phone capture may need action soon.\n\n%s\n\nFiled in: %s\n' "$text" "$location" \
-      | FM_HOME="$FM_HOME" "$MAIL_BIN" send "$notify_to" 'Time-bound phone capture' -
-  fi
   printf 'filed: %s\n' "$location"
 }
 
@@ -210,24 +270,33 @@ armed_recipient() {
   cat "$recipient"
 }
 
+unreported_range() { # prints "<reported-count> <record-count>"
+  local cursor=0 total=0
+  [ ! -s "$CAPTURES/digest/reported" ] || cursor=$(cat "$CAPTURES/digest/reported")
+  [ ! -s "$CAPTURES/digest/records" ] || total=$(wc -l < "$CAPTURES/digest/records" | tr -d ' ')
+  printf '%s %s\n' "$cursor" "$total"
+}
+
 digest() {
-  local to today journal sent body uid location summary draft question
+  local to today records cursor_file cursor total sent body uid location summary draft question
   to=$(armed_recipient)
   today=$(date +%F)
-  journal="$CAPTURES/digest/$today.records"
+  records="$CAPTURES/digest/records"
+  cursor_file="$CAPTURES/digest/reported"
   sent="$CAPTURES/digest/$today.sent"
-  [ -s "$journal" ] || fail 'no filed captures are waiting for the evening digest'
   [ ! -e "$sent" ] || fail "the $today digest was already sent"
-  body=$'Phone captures filed today:\n'
+  read -r cursor total <<< "$(unreported_range)"
+  [ "$total" -gt "$cursor" ] || fail 'no filed captures are waiting for the evening digest'
+  body=$'Phone captures filed since the last digest:\n'
   while IFS=$'\x1f' read -r uid location summary draft question; do
     body+=$'\n- '"$summary -> $location"
     [ -z "$draft" ] || body+=$'\n  Drafts waiting for a yes: '"$draft"
     [ -z "$question" ] || body+=$'\n  Question: '"$question"
-  done < "$journal"
+  done < <(sed -n "$((cursor + 1)),${total}p" "$records")
   printf '%s\n' "$body" | FM_HOME="$FM_HOME" "$MAIL_BIN" send "$to" 'Phone capture digest' -
-  private_mkdir "$(dirname "$sent")"
+  printf '%s\n' "$total" > "$cursor_file"
   printf 'sent=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$sent"
-  chmod 0600 "$sent"
+  chmod 0600 "$cursor_file" "$sent"
 }
 
 arm_digest() {
@@ -251,15 +320,16 @@ arm_digest() {
 }
 
 check_digest() {
-  local hour=${FM_CAPTURE_DIGEST_HOUR:-18} now
+  local hour=${FM_CAPTURE_DIGEST_HOUR:-18} now cursor total
   case "$hour" in ''|*[!0-9]*) fail 'FM_CAPTURE_DIGEST_HOUR must be 0 through 23' ;; esac
   [ "$hour" -le 23 ] || fail 'FM_CAPTURE_DIGEST_HOUR must be 0 through 23'
   now=$(date +%H)
   now=$((10#$now))
   [ "$now" -ge "$hour" ] || return 0
   armed_recipient >/dev/null
-  [ -s "$CAPTURES/digest/$(date +%F).records" ] || return 0
   [ ! -e "$CAPTURES/digest/$(date +%F).sent" ] || return 0
+  read -r cursor total <<< "$(unreported_range)"
+  [ "$total" -gt "$cursor" ] || return 0
   digest >/dev/null
 }
 
