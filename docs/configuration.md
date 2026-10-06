@@ -1680,6 +1680,7 @@ When it is set, new mail wakes only when its From address matches an entry, igno
 New mail from any other sender is counted once in the poll cursor without a wake and stays unread, and the poll prints one `filtered N` line; the standing check adds `; N filtered` to a wake line and stays silent when all new mail was filtered.
 A message whose sender is unknown because its header could not be fetched still wakes.
 The per-poll wake cap bounds the wakes of one `poll` run; header fetches scan a larger bounded window of new unseen uids plus already-surfaced retry-set uids, so a flood or large backlog still makes bounded progress every poll, keeping the durable wake queue bounded without ever dropping mail.
+`FM_MAIL_CHECK_BUDGET` (default 15, valid 5..25) bounds one standing poll, is cut down to fit `FM_CHECK_TIMEOUT`, and follows the same environment-over-`.env` precedence as the mail settings.
 
 **Unfetchable headers**
 
@@ -1694,7 +1695,6 @@ Arming writes `state/mail.check.sh` and registers it with the watcher's slow-che
 Same-line silence is only for a proven no-op: a successful poll with no new mail, or a repeated identical pre-wake failure that cannot have queued mail.
 A fail-closed poll that already queued a wake, and a timeout, always print so the watcher wakes to drain it.
 
-`FM_MAIL_CHECK_BUDGET` (default 15, valid 5..25) bounds one standing poll and is cut down to fit `FM_CHECK_TIMEOUT`.
 `bin/fm-mail-check.sh disarm` removes the standing check.
 
 ## Relay (.env)

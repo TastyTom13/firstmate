@@ -44,10 +44,11 @@
 # The poll must finish inside the watcher's per-check bound
 # (FM_CHECK_TIMEOUT, default 30, read from this check's own environment
 # because the watcher runs it as a direct child). The internal budget
-# FM_MAIL_CHECK_BUDGET (default 15, valid 5..25) is cut down to whatever fits
-# inside that bound before the poll starts. A poll that does not finish is a
-# real condition, so the budget is enforced rather than assumed: a timed-out
-# poll reports one line naming the budget instead of leaving the check silent.
+# FM_MAIL_CHECK_BUDGET (default 15, valid 5..25) is read from <FM_HOME>/.env
+# when the check's process environment does not set it, then cut down to
+# whatever fits inside that bound before the poll starts. A poll that does not
+# finish is a real condition, so the budget is enforced rather than assumed: a
+# timed-out poll reports one line naming the budget instead of leaving the check silent.
 set -u
 export LC_ALL=C
 
@@ -65,6 +66,8 @@ MAX_LINE=240
 
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
+# shellcheck source=bin/fm-env-lib.sh
+. "$SCRIPT_DIR/fm-env-lib.sh"
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-line-cap-lib.sh
@@ -82,7 +85,9 @@ Usage:
 
 Mail configuration (FM_MAIL_USER, FM_MAIL_PASS, FM_IMAP_HOST, FM_SMTP_HOST,
 FM_IMAP_PORT, FM_SMTP_PORT) and the optional FM_MAIL_WAKE_FROM sender
-allow-list are read from <FM_HOME>/.env by fm-mail.sh.
+allow-list are read from <FM_HOME>/.env by fm-mail.sh. FM_MAIL_CHECK_BUDGET
+(default 15, valid 5..25) is also read there, with the process environment
+winning.
 See docs/configuration.md "Mail plane" for the schema.
 EOF
 }
@@ -105,7 +110,11 @@ case "$CHECK_TIMEOUT" in
   ''|*[!0-9]*|0) CHECK_TIMEOUT=30 ;;
 esac
 
-BUDGET_SECS=${FM_MAIL_CHECK_BUDGET:-15}
+BUDGET_SECS=${FM_MAIL_CHECK_BUDGET:-}
+if [ -z "$BUDGET_SECS" ]; then
+  BUDGET_SECS=$(fmx_env_get FM_MAIL_CHECK_BUDGET "$FM_HOME/.env")
+fi
+BUDGET_SECS=${BUDGET_SECS:-15}
 case "$BUDGET_SECS" in
   ''|*[!0-9]*|0)
     printf 'fm-mail-check: FM_MAIL_CHECK_BUDGET must be a whole number from 5 to 25\n' >&2

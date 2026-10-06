@@ -137,7 +137,7 @@ test_arm_refuses_without_the_mail_plane() {
   home="$TMP_ROOT/plane/home"
   mkdir -p "$tmpbin" "$home/state"
   cp "$ROOT/bin/fm-mail-check.sh" "$tmpbin/"
-  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh; do
+  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh fm-env-lib.sh; do
     [ -e "$tmpbin/$lib" ] || ln -s "$ROOT/bin/$lib" "$tmpbin/$lib"
   done
   out=$(FM_HOME="$home" "$tmpbin/fm-mail-check.sh" arm 2>&1) || rc=$?
@@ -304,13 +304,27 @@ test_slow_poll_times_out_and_is_reported() {
   local home out
   home=$(make_home slow)
   write_env "$home"
+  printf 'FM_MAIL_CHECK_BUDGET=5\n' >> "$home/.env"
   enter_mailbox "$home" \
     'sleep 6'
   out="$home/out.txt"
-  run_check "$home" "$out" "$CHECK" FM_MAIL_CHECK_BUDGET=5
-  assert_contains "$(cat "$out")" "mail: poll did not finish within the 5s budget" "a poll past its budget is reported, not ignored"
+  run_check "$home" "$out" "$CHECK"
+  assert_contains "$(cat "$out")" "mail: poll did not finish within the 5s budget" "the standing check reads its poll budget from the home .env"
   [ "$(wc -l < "$out" | tr -d '[:space:]')" = 1 ] || fail "a poll timeout reports exactly one line: $(cat "$out")"
-  pass "fm-mail-check: a slow poll times out into a one-line report"
+  pass "fm-mail-check: the home .env budget bounds a slow poll"
+}
+
+test_process_budget_overrides_home_env() {
+  local home out
+  home=$(make_home budget-env-override)
+  write_env "$home"
+  printf 'FM_MAIL_CHECK_BUDGET=4\n' >> "$home/.env"
+  enter_mailbox "$home" \
+    'printf "uidvalidity\\t20004\\n"'
+  out="$home/out.txt"
+  run_check "$home" "$out" "$CHECK" FM_MAIL_CHECK_BUDGET=5
+  [ ! -s "$out" ] || fail "a valid process budget must override an invalid .env budget: $(cat "$out")"
+  pass "fm-mail-check: the process budget overrides the home .env"
 }
 
 test_repeated_failure_that_queued_new_mail_still_wakes() {
@@ -323,7 +337,7 @@ test_repeated_failure_that_queued_new_mail_still_wakes() {
   mkdir -p "$tmpbin" "$home/state"
   check_bin="$tmpbin/fm-mail-check.sh"
   cp "$ROOT/bin/fm-mail-check.sh" "$tmpbin/"
-  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh; do
+  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh fm-env-lib.sh; do
     [ -e "$tmpbin/$lib" ] || ln -s "$ROOT/bin/$lib" "$tmpbin/$lib"
   done
   printf '%s\n' '#!/usr/bin/env bash' 'echo "fm-mail: woke for 42"' 'echo "fm-mail: connection refused" >&2' 'exit 1' > "$tmpbin/fm-mail.sh"
@@ -350,7 +364,7 @@ test_large_poll_output_is_drained() {
   tmpbin="$TMP_ROOT/large-poll/bin"
   mkdir -p "$tmpbin"
   cp "$CHECK" "$tmpbin/"
-  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh; do
+  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh fm-env-lib.sh; do
     ln -s "$ROOT/bin/$lib" "$tmpbin/$lib"
   done
   cat > "$tmpbin/fm-mail.sh" <<'SH'
@@ -401,7 +415,7 @@ test_repeated_timeout_still_wakes() {
   mkdir -p "$tmpbin" "$home/state"
   check_bin="$tmpbin/fm-mail-check.sh"
   cp "$ROOT/bin/fm-mail-check.sh" "$tmpbin/"
-  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh; do
+  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh fm-env-lib.sh; do
     [ -e "$tmpbin/$lib" ] || ln -s "$ROOT/bin/$lib" "$tmpbin/$lib"
   done
   printf '%s\n' '#!/usr/bin/env bash' 'exit 124' > "$tmpbin/fm-mail.sh"
@@ -478,7 +492,7 @@ test_repeated_status2_stays_queued_still_wakes() {
   mkdir -p "$tmpbin" "$home/state"
   check_bin="$tmpbin/fm-mail-check.sh"
   cp "$ROOT/bin/fm-mail-check.sh" "$tmpbin/"
-  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh; do
+  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh fm-env-lib.sh; do
     [ -e "$tmpbin/$lib" ] || ln -s "$ROOT/bin/$lib" "$tmpbin/$lib"
   done
   cat > "$tmpbin/fm-mail.sh" <<EOF
@@ -531,7 +545,7 @@ test_missing_mail_plane_is_reported() {
   mkdir -p "$tmpbin" "$home/state"
   check_bin="$tmpbin/fm-mail-check.sh"
   cp "$ROOT/bin/fm-mail-check.sh" "$tmpbin/"
-  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh; do
+  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh fm-env-lib.sh; do
     [ -e "$tmpbin/$lib" ] || ln -s "$ROOT/bin/$lib" "$tmpbin/$lib"
   done
   out="$home/out.txt"
@@ -553,6 +567,7 @@ test_wake_from_mixed_batch_wakes_and_counts_filtered
 test_failure_is_reported_once_until_it_changes
 test_unconfigured_home_is_reported_once
 test_slow_poll_times_out_and_is_reported
+test_process_budget_overrides_home_env
 test_fail_closed_poll_after_wake_reports_the_failure
 test_repeated_status4_fail_closed_still_wakes
 test_repeated_status2_stays_queued_still_wakes
