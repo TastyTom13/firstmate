@@ -15,7 +15,8 @@
 #                        not).
 #                        Prints To, From, authentication-result headers and the
 #                        plain-text part (else readable HTML), then any attached
-#                        forwarded message. Saves image/audio attachments under
+#                        forwarded message. With FM_MAIL_SAVE_MEDIA=1 it also saves
+#                        image/audio attachments under
 #                        data/captures/mail-<uid>/ beside the raw capture. Output
 #                        is bounded to FM_MAIL_BODY_MAX characters (default
 #                        20000) with a truncation marker. Never marks it seen.

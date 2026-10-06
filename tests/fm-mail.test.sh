@@ -2811,13 +2811,8 @@ test_read_full_body_by_id_renders_html_and_forward() {
   assert_contains "$out" "To: Firstmate <info.longbird+toss@gmail.com>" "full read prints the routed recipient"
   assert_contains "$out" "Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=braintoss.app; dkim=pass header.i=@braintoss.app" "full read prints the authentication result"
   assert_contains "$out" "ARC-Authentication-Results: i=1; mx.google.com; dkim=pass header.i=@braintoss.app" "full read prints the ARC authentication result"
-  assert_contains "$out" "Attachment: " "full read names saved media"
-  assert_contains "$out" "menu photo.jpg" "full read saves the image attachment beside the capture"
-  assert_contains "$out" "voice note.mp3" "full read saves the audio attachment beside the capture"
-  assert_not_contains "$out" "ignore.txt" "full read does not save unrelated attachments"
-  [ "$(cat "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg")" = "picture-bytes" ] || fail "image attachment bytes were not saved"
-  [ "$(cat "$TMP_ROOT/full-body-home/data/captures/mail-42/voice note.mp3")" = "audio-bytes" ] || fail "audio attachment bytes were not saved"
-  assert_equals "600" "$(stat -f '%Lp' "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg" 2>/dev/null || stat -c '%a' "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg")" "saved attachment is private"
+  assert_not_contains "$out" "Attachment: " "full read saves no media unless asked"
+  [ ! -e "$TMP_ROOT/full-body-home/data/captures/mail-42" ] || fail "full read created a capture directory without FM_MAIL_SAVE_MEDIA"
   assert_contains "$out" "Notes & fixes for the café page." "html part is converted to text with entities decoded"
   assert_contains "$out" "- Hero too tall" "html list items stay readable"
   assert_contains "$out" "the board <https://example.com/board>" "html links are kept as text"
@@ -2831,6 +2826,22 @@ test_read_full_body_by_id_renders_html_and_forward() {
   assert_grep "42 (BODY.PEEK[])" "$TMP_ROOT/full-body-byid.fetch" "full read fetches with BODY.PEEK"
   assert_no_grep "BODY\[\]\|RFC822)" "$TMP_ROOT/full-body-byid.fetch" "full read never uses a marking fetch"
   pass "fm-mail: read --id prints the full body with html converted and the forward included"
+}
+
+test_read_full_body_saves_media_only_when_asked() {
+  local out rc=0
+  write_full_body_fixture "$TMP_ROOT/full-body.eml"
+  write_full_body_harness "$TMP_ROOT/full-body-harness.py"
+  out=$(FM_MAIL_SAVE_MEDIA=1 run_full_body_harness media read --id 42) || rc=$?
+  expect_code 0 "$rc" "read --id with FM_MAIL_SAVE_MEDIA must succeed"
+  assert_contains "$out" "Attachment: " "full read names saved media"
+  assert_contains "$out" "menu photo.jpg" "full read saves the image attachment beside the capture"
+  assert_contains "$out" "voice note.mp3" "full read saves the audio attachment beside the capture"
+  assert_not_contains "$out" "ignore.txt" "full read does not save unrelated attachments"
+  [ "$(cat "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg")" = "picture-bytes" ] || fail "image attachment bytes were not saved"
+  [ "$(cat "$TMP_ROOT/full-body-home/data/captures/mail-42/voice note.mp3")" = "audio-bytes" ] || fail "audio attachment bytes were not saved"
+  assert_equals "600" "$(stat -f '%Lp' "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg" 2>/dev/null || stat -c '%a' "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg")" "saved attachment is private"
+  pass "fm-mail: read --id saves image and audio attachments only when FM_MAIL_SAVE_MEDIA=1"
 }
 
 test_read_list_names_uid_per_entry() {
@@ -2938,6 +2949,7 @@ test_read_tolerates_none_payload
 test_read_surfaces_unfetchable_uid
 test_invalid_port_fails_cleanly
 test_read_full_body_by_id_renders_html_and_forward
+test_read_full_body_saves_media_only_when_asked
 test_read_list_names_uid_per_entry
 test_read_full_body_truncates_with_marker
 test_read_full_body_rejects_bad_arguments

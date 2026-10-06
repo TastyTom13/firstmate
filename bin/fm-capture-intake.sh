@@ -42,13 +42,6 @@ private_mkdir() {
   chmod 0700 "$1"
 }
 
-private_append() { # <path> <line>
-  local path=$1 line=$2
-  private_mkdir "$(dirname "$path")"
-  printf '%s\n' "$line" >> "$path"
-  chmod 0600 "$path"
-}
-
 single_line() {
   printf '%s' "$1" | tr '\r\n\t' '   ' | awk '{$1=$1; print}'
 }
@@ -133,6 +126,10 @@ save_capture() {
   if ! is_braintoss_capture "$tmp"; then
     discard_unaccepted "$dir" "$tmp"
     fail "mail uid $uid is not an authenticated BrainToss +toss capture"
+  fi
+  if ! FM_MAIL_SAVE_MEDIA=1 "$MAIL_BIN" read --id "$uid" > "$tmp"; then
+    discard_unaccepted "$dir" "$tmp"
+    fail "mail uid $uid could not be read"
   fi
   chmod 0600 "$tmp"
   mv -f -- "$tmp" "$dir/capture.md"

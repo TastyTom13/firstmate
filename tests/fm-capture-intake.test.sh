@@ -23,6 +23,11 @@ if [ "$1" = read ]; then
   printf 'Uid: %s\n' "$uid"
   printf 'From: BrainToss <delivery@braintoss.app>\n'
   printf 'To: Firstmate <info.longbird+toss@gmail.com>\n'
+  if [ -n "${FM_TEST_MEDIA:-}" ] && [ "${FM_MAIL_SAVE_MEDIA:-}" = 1 ]; then
+    mkdir -p "$FM_HOME/data/captures/mail-$uid"
+    printf 'media\n' > "$FM_HOME/data/captures/mail-$uid/$FM_TEST_MEDIA"
+    printf 'Attachment: %s\n' "$FM_HOME/data/captures/mail-$uid/$FM_TEST_MEDIA"
+  fi
   printf '%s\n' "${FM_TEST_AUTH:-Authentication-Results: mx; dkim=pass header.i=@braintoss.app}"
   [ -z "${FM_TEST_EXTRA_HEADER:-}" ] || printf '%s\n' "$FM_TEST_EXTRA_HEADER"
   printf '\n'
@@ -111,6 +116,17 @@ test_rejected_mail_cannot_pose_as_accepted_capture() {
   [ ! -e "$HOME_DIR/data/personal/watching.md" ] || fail "an unaccepted capture was filed"
   rm -rf "$HOME_DIR/data/captures/mail-61"
   pass "capture intake: a rejected mail leaves nothing that file will accept"
+}
+
+test_media_is_saved_only_for_accepted_captures() {
+  local rc=0
+  FM_TEST_MEDIA=photo.jpg FM_TEST_AUTH="Authentication-Results: mx; dkim=fail" run_capture save --uid 62 >/dev/null 2>&1 || rc=$?
+  expect_code 1 "$rc" "a rejected mail must fail to save"
+  [ ! -e "$HOME_DIR/data/captures/mail-62" ] || fail "a rejected sender's media was saved"
+  FM_TEST_MEDIA=photo.jpg run_capture save --uid 63 >/dev/null
+  [ -f "$HOME_DIR/data/captures/mail-63/photo.jpg" ] || fail "an accepted capture's media was not saved"
+  assert_contains "$(cat "$HOME_DIR/data/captures/mail-63/capture.md")" "photo.jpg" "accepted capture does not name its saved media"
+  pass "capture intake: media is saved only after the mail is accepted"
 }
 
 test_acceptance_slice_files_and_digests() {
@@ -312,6 +328,7 @@ test_time_bound_without_armed_recipient_files_nothing() {
 test_rejects_mail_without_authenticated_braintoss_route
 test_rejects_spoofed_authentication
 test_rejected_mail_cannot_pose_as_accepted_capture
+test_media_is_saved_only_for_accepted_captures
 test_acceptance_slice_files_and_digests
 test_people_stay_private_and_outward_work_waits
 test_remaining_sort_table_routes_locally

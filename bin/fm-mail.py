@@ -11,7 +11,8 @@
 #                          any attached forwarded message, bounded to
 #                          FM_MAIL_BODY_MAX characters (default 20000) with a
 #                          truncation marker. Prints routing and authentication
-#                          headers and saves image/audio attachments under
+#                          headers and, only when FM_MAIL_SAVE_MEDIA=1,
+#                          saves image/audio attachments under
 #                          data/captures/mail-<uid>/ in this home.
 #   send <to> <subj> <body | ->   Send one SMTP message; "-" reads stdin.
 #   poll_list              Emit unseen mail as tab-separated rows for the bash
@@ -298,7 +299,7 @@ def save_media_attachments(uid, msg):
 def print_full(uid, raw):
     mi = email.message_from_bytes(raw, policy=email.policy.default)
     body = printable(full_text(mi))
-    attachments = save_media_attachments(uid, mi)
+    attachments = save_media_attachments(uid, mi) if os.environ.get('FM_MAIL_SAVE_MEDIA') == '1' else []
     limit = body_max()
     print('Uid:', uid)
     print('From:', clean(dec(mi.get('From'))))
