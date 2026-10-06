@@ -457,7 +457,17 @@ def cmd_poll_list():
         m.select('INBOX')
         ur = m.untagged_responses.get('UIDVALIDITY')
         uidv = clean(ur[-1].decode()) if ur else ''
-        typ, data = m.uid('search', None, 'UNSEEN')
+        # Keep the server-side candidate set proportional to arrivals since
+        # this home's cursor. A same-generation cursor proves every uid up to
+        # its greatest recorded value has already been considered; older
+        # degraded messages are fetched separately through the retry set.
+        seen_numbers = [int(u) for u in seen if u.isdigit()]
+        last_seen = max(seen_numbers) if seen_numbers else None
+        if uidv and uidv == stored_gen and last_seen is not None:
+            uid_start = str(last_seen + 1) + ':*'
+            typ, data = m.uid('search', None, 'UID', uid_start, 'UNSEEN')
+        else:
+            typ, data = m.uid('search', None, 'UNSEEN')
         unseen = []
         for x in (data[0] or b'').split():
             uid = x.decode() if isinstance(x, bytes) else str(x)
@@ -466,7 +476,10 @@ def cmd_poll_list():
             # Same mailbox generation: skip uids this home already surfaced so
             # the fetch budget goes to genuinely new mail. Retry-set uids are
             # only meaningful for this generation.
-            new_uids = [u for u in unseen if u not in seen]
+            new_uids = [u for u in unseen
+                        if u not in seen and
+                        (last_seen is None or
+                         (u.isdigit() and int(u) > last_seen))]
         else:
             # On a generation change the cursor and retry set are stale, so
             # list everything as new and ignore retry membership; bash clears

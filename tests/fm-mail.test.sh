@@ -601,6 +601,57 @@ SH
   pass "fm-mail: a rollback failure never releases a wake the drain could acknowledge without a durable record"
 }
 
+test_poll_searches_only_uids_after_cursor_and_fetches_headers() {
+  local harness out calls
+  harness="$TMP_ROOT/uid-window-harness.py"
+  calls="$TMP_ROOT/uid-window.calls"
+  cat > "$harness" <<'PYEOF'
+import os, sys
+os.environ.update({
+    'FM_MAIL_USER': 't', 'FM_MAIL_PASS': 'p',
+    'FM_IMAP_HOST': 'imap.test', 'FM_IMAP_PORT': '993',
+    'FM_SMTP_HOST': 'smtp.test', 'FM_SMTP_PORT': '465',
+    'FM_MAIL_CURSOR': sys.argv[1],
+    'FM_MAIL_RETRY': sys.argv[2],
+    'FM_MAIL_POLL_MAX_WAKES': '20',
+})
+class FakeConn:
+    untagged_responses = {'UIDVALIDITY': [b'90009']}
+    def login(self, *a):
+        pass
+    def select(self, *a):
+        return ('OK', [])
+    def uid(self, cmd, *args):
+        with open(sys.argv[4], 'a') as f:
+            f.write('%s %s\n' % (cmd, ' '.join(str(a) for a in args)))
+        if cmd == 'search':
+            return ('OK', [b'41 43 44'])
+        if cmd == 'fetch':
+            return ('OK', [(b'', b'Subject: newsletter\r\nFrom: news@letters.example\r\n\r\n')])
+    def logout(self):
+        pass
+import imaplib
+imaplib.IMAP4_SSL = lambda *a, **k: FakeConn()
+import importlib.util
+spec = importlib.util.spec_from_file_location('fm_mail', sys.argv[3])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+sys.exit(mod.cmd_poll_list())
+PYEOF
+  printf 'uidvalidity=90009\n40\n42\n' > "$HOME_DIR/state/.mail-seen"
+  : > "$HOME_DIR/state/.mail-retry"
+  : > "$calls"
+
+  out=$(python3 "$harness" "$HOME_DIR/state/.mail-seen" "$HOME_DIR/state/.mail-retry" \
+    "$ROOT/bin/fm-mail.py" "$calls" 2>&1)
+  assert_contains "$out" $'43\t\tnews@letters.example\tnewsletter\tok' "mail above the cursor is returned"
+  assert_contains "$(cat "$calls")" "search None UID 43:* UNSEEN" "the IMAP search starts above the greatest cursor uid"
+  assert_contains "$(cat "$calls")" "fetch b'43' (BODY.PEEK[HEADER])" "poll downloads only headers while deciding which senders wake"
+  assert_not_contains "$(cat "$calls")" "fetch b'41'" "poll ignores an old uid even if the server returns it outside the requested window"
+  assert_no_grep "BODY.PEEK\\[\\]\\|RFC822" "$calls" "poll never downloads message bodies"
+  pass "fm-mail: poll limits IMAP search to the new uid window and fetches headers only"
+}
+
 test_poll_retry_surfaces_under_new_mail_flood() {
   local harness out
   harness="$TMP_ROOT/retry-budget-harness.py"
@@ -2829,6 +2880,7 @@ test_poll_retry_position_not_saved_when_row_emitted
 test_poll_retry_small_window_rotates_past_unfetchable_prefix
 test_poll_cap_one_turn_not_saved_before_emit
 test_poll_cap_one_turn_not_saved_when_retry_pos_write_fails
+test_poll_searches_only_uids_after_cursor_and_fetches_headers
 test_poll_retry_surfaces_under_new_mail_flood
 test_poll_resurfaces_degraded_uid_whose_wake_never_recorded
 test_poll_cap_one_never_suppresses_new_mail
