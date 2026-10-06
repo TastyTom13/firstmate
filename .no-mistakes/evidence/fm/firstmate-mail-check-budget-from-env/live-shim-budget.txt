@@ -1,0 +1,18 @@
+== A: no budget set (baseline, default 15) rc=0 secs=15
+stdout: mail: poll did not finish within the 15s budget
+stderr: 
+== B: .env has 25, shim run as watcher child rc=0 secs=18
+stdout: 
+stderr: 
+== C: process env 10 beats .env 25 rc=0 secs=11
+stdout: mail: poll did not finish within the 10s budget
+stderr: 
+== D: process env 99 invalid rc=2 secs=0
+stdout: 
+stderr: fm-mail-check: FM_MAIL_CHECK_BUDGET must be a whole number from 5 to 25
+== E: .env invalid 30 rc=2 secs=0
+stdout: 
+stderr: fm-mail-check: FM_MAIL_CHECK_BUDGET must be a whole number from 5 to 25
+== F: .env 25 but watcher bound 12 (budget cut down) rc=0 secs=9
+stdout: mail: poll did not finish within the 9s budget
+stderr: 
