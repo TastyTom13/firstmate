@@ -166,10 +166,6 @@ file_capture() {
       append_list questions "- $(single_line "$question") ([capture](../captures/mail-$uid/capture.md))"
       location='Questions'
       ;;
-    unsorted)
-      append_list unsorted "- $text ([capture](../captures/mail-$uid/capture.md))"
-      location='Unsorted'
-      ;;
     task)
       if [ -n "$draft" ]; then
         append_list drafts "- $(single_line "$draft") ([capture](../captures/mail-$uid/capture.md))"

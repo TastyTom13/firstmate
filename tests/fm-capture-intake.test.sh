@@ -122,6 +122,12 @@ test_remaining_sort_table_routes_locally() {
   assert_grep "Which date" "$HOME_DIR/data/personal/questions.md" "unclear capture missed Questions"
   assert_grep "Calendar draft" "$HOME_DIR/data/personal/drafts.md" "calendar capture was not kept as a draft"
   assert_contains "$(cat "$TMP_ROOT/tasks.log")" "--kind scout" "research topic was not filed as reversible research"
+  local rc=0 out
+  FM_TEST_CAPTURE_TEXT="Something unclear" run_capture save --uid 15 >/dev/null
+  out=$(run_capture file --uid 15 --bucket unsorted --text "Something unclear" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "unsorted bucket was accepted"
+  assert_contains "$out" "not in the capture sorting table" "unsorted bucket gave the wrong error"
+  [ ! -e "$HOME_DIR/data/personal/unsorted.md" ] || fail "unsorted list was created"
   pass "capture intake: the remaining sort table routes to local lists, drafts, and research"
 }
 

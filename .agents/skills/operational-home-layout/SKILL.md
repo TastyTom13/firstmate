@@ -64,7 +64,7 @@ data/                personal fleet records; LOCAL, gitignored as a whole
   <id>/report.md     scout task deliverable, written by the crewmate; survives teardown
   captures/mail-<uid>/  accepted phone capture rendered mail and saved image/audio attachments; fm-capture-intake.sh owns filing markers and digest records
   captures/people/   private person-note handoff lane; capture-intake keeps its contents out of chat and digest surfaces, and only Scout's person-note intake reads it
-  personal/          markdown Reading, Watching, Places, Ideas, Names, Tasks, Drafts, Questions, and Unsorted lists written by fm-capture-intake.sh
+  personal/          markdown Reading, Watching, Places, Ideas, Names, Tasks, Drafts, and Questions lists written by fm-capture-intake.sh
 projects/            cloned repos; gitignored; read-only except under hard rule 1's concrete captain-approved project operation exception
 state/               runtime records and signals; gitignored
   <id>.status        append-only wake events, not current-state truth; bin/fm-classify-lib.sh owns their syntax
