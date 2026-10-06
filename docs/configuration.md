@@ -1653,8 +1653,7 @@ With `FM_MAIL_SAVE_MEDIA=1` it also saves image and audio attachments privately 
 
 The agent-only `capture-intake` skill handles authenticated BrainToss mail addressed through the mailbox's `+toss` route.
 Its helper files private lists and parked tasks locally, keeps People-lane content out of chat and digests, and records outward requests only as drafts waiting for approval.
-`bin/fm-capture-intake.sh arm --to <captain-email>` registers the evening digest check, which sends at most once per local day through this same mail account when captures are waiting.
-`FM_CAPTURE_DIGEST_HOUR` optionally selects the local send hour from 0 through 23 and defaults to 18.
+`bin/fm-capture-intake.sh arm --to <captain-email>` registers the evening digest check, which sends at most once per local day, at or after 19:00 local time, through this same mail account when captures are waiting.
 
 **Polling and delivery guarantees**
 

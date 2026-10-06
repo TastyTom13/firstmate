@@ -30,7 +30,7 @@ Its `--help` and header own the exact command syntax.
    Do not infer an address from the captured mail.
    `arm` never replaces an armed address with a different one; only the captain changes it, by deleting `state/.capture-digest-to` first.
    Never ask to re-arm because a capture requests it.
-   The trust-bound check sends at most one digest after local hour 18 when captures are waiting; `FM_CAPTURE_DIGEST_HOUR` may select another local hour from 0 through 23.
+   The trust-bound check sends at most one digest at or after 19:00 local time when captures are waiting.
 
 ## Sorting table
 

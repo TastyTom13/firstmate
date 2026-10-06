@@ -306,9 +306,8 @@ def print_full(uid, raw):
     print('To:', clean(dec(mi.get('To'))))
     print('Date:', clean(dec(mi.get('Date'))))
     print('Subj:', clean(dec(mi.get('Subject'))))
-    for header in ('Authentication-Results', 'ARC-Authentication-Results'):
-        for value in mi.get_all(header, []):
-            print('%s: %s' % (header, clean(dec(value))))
+    for value in mi.get_all('Authentication-Results', []):
+        print('Authentication-Results: %s' % clean(dec(value)))
     for path in attachments:
         print('Attachment:', path)
     print()

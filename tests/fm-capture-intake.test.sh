@@ -10,7 +10,17 @@ TMP_ROOT=$(fm_test_tmproot fm-capture-intake)
 HOME_DIR="$TMP_ROOT/home"
 FAKE_MAIL="$TMP_ROOT/fm-mail.sh"
 FAKE_TASKS="$TMP_ROOT/fm-tasks-axi.sh"
-mkdir -p "$HOME_DIR/data" "$HOME_DIR/state"
+mkdir -p "$HOME_DIR/data" "$HOME_DIR/state" "$TMP_ROOT/fakebin"
+cat > "$TMP_ROOT/fakebin/date" <<'SH'
+#!/usr/bin/env bash
+if [ "$*" = "+%H" ] && [ -n "${FM_TEST_HOUR:-}" ]; then
+  printf '%s\n' "$FM_TEST_HOUR"
+  exit 0
+fi
+exec /bin/date "$@"
+SH
+chmod +x "$TMP_ROOT/fakebin/date"
+PATH="$TMP_ROOT/fakebin:$PATH"
 
 cat > "$FAKE_MAIL" <<'SH'
 #!/usr/bin/env bash
@@ -256,9 +266,9 @@ test_late_captures_reach_the_next_digest() {
   assert_contains "$second" "Late book" "next digest omitted the late capture"
   assert_not_contains "$second" "Early book" "next digest repeated an already reported capture"
   rm -f "$HOME_DIR"/data/captures/digest/*.sent
-  FM_CAPTURE_DIGEST_HOUR=0 run_capture check
+  FM_TEST_HOUR=19 run_capture check
   : > "$TMP_ROOT/mail.log"
-  FM_CAPTURE_DIGEST_HOUR=0 run_capture check
+  FM_TEST_HOUR=19 run_capture check
   [ ! -s "$TMP_ROOT/mail.log" ] || fail "the check sent a digest with nothing unreported"
   pass "capture intake: a capture filed after the digest appears in the next one"
 }
@@ -270,7 +280,10 @@ test_evening_digest_check_is_armed_and_sends_once() {
   run_capture arm --to captain@example.com >/dev/null
   [ -x "$HOME_DIR/state/capture-digest.check.sh" ] || fail "evening digest check was not armed"
   [ -f "$HOME_DIR/state/capture-digest.check-trust" ] || fail "evening digest check was not trust-bound"
-  FM_CAPTURE_DIGEST_HOUR=0 FM_TEST_MAIL_LOG="$TMP_ROOT/mail.log" \
+  FM_TEST_HOUR=18 FM_TEST_MAIL_LOG="$TMP_ROOT/mail.log" \
+    FM_CAPTURE_MAIL_BIN="$FAKE_MAIL" "$HOME_DIR/state/capture-digest.check.sh" >/dev/null
+  [ ! -s "$TMP_ROOT/mail.log" ] || fail "the digest was sent before 19:00"
+  FM_TEST_HOUR=19 FM_TEST_MAIL_LOG="$TMP_ROOT/mail.log" \
     FM_CAPTURE_MAIL_BIN="$FAKE_MAIL" "$HOME_DIR/state/capture-digest.check.sh" >/dev/null
   assert_contains "$(cat "$TMP_ROOT/mail.log")" "Phone capture digest" "armed evening check did not send the digest"
   pass "capture intake: a trust-bound evening check sends the day's digest once"

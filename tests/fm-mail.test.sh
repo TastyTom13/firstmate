@@ -2810,7 +2810,7 @@ test_read_full_body_by_id_renders_html_and_forward() {
   assert_contains "$out" "Subj: Fwd: latest feedback" "full read prints the subject"
   assert_contains "$out" "To: Firstmate <info.longbird+toss@gmail.com>" "full read prints the routed recipient"
   assert_contains "$out" "Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=braintoss.app; dkim=pass header.i=@braintoss.app" "full read prints the authentication result"
-  assert_contains "$out" "ARC-Authentication-Results: i=1; mx.google.com; dkim=pass header.i=@braintoss.app" "full read prints the ARC authentication result"
+  assert_not_contains "$out" "ARC-Authentication-Results" "full read prints only the receiving server's authentication result"
   assert_not_contains "$out" "Attachment: " "full read saves no media unless asked"
   [ ! -e "$TMP_ROOT/full-body-home/data/captures/mail-42" ] || fail "full read created a capture directory without FM_MAIL_SAVE_MEDIA"
   assert_contains "$out" "Notes & fixes for the café page." "html part is converted to text with entities decoded"

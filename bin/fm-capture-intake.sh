@@ -333,12 +333,9 @@ arm_digest() {
 }
 
 check_digest() {
-  local hour=${FM_CAPTURE_DIGEST_HOUR:-18} now cursor total
-  case "$hour" in ''|*[!0-9]*) fail 'FM_CAPTURE_DIGEST_HOUR must be 0 through 23' ;; esac
-  [ "$hour" -le 23 ] || fail 'FM_CAPTURE_DIGEST_HOUR must be 0 through 23'
+  local now cursor total
   now=$(date +%H)
-  now=$((10#$now))
-  [ "$now" -ge "$hour" ] || return 0
+  [ "$((10#$now))" -ge 19 ] || return 0
   armed_recipient >/dev/null
   [ ! -e "$CAPTURES/digest/$(date +%F).sent" ] || return 0
   read -r cursor total <<< "$(unreported_range)"
