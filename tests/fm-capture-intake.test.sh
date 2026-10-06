@@ -16,6 +16,10 @@ cat > "$FAKE_MAIL" <<'SH'
 #!/usr/bin/env bash
 if [ "$1" = read ]; then
   uid=$3
+  if [ -n "${FM_TEST_DROP_CAPTURE:-}" ]; then
+    mkdir -p "$FM_HOME/data/captures/mail-$uid"
+    printf 'sender media\n' > "$FM_HOME/data/captures/mail-$uid/capture.md"
+  fi
   printf 'Uid: %s\n' "$uid"
   printf 'From: BrainToss <delivery@braintoss.app>\n'
   printf 'To: Firstmate <info.longbird+toss@gmail.com>\n'
@@ -90,6 +94,23 @@ test_rejects_spoofed_authentication() {
   out=$(FM_TEST_EXTRA_HEADER="To: other@example.com" run_capture save --uid "$uid" 2>&1) || rc=$?
   expect_code 0 "$rc" "a later To header must not affect an accepted capture: $out"
   pass "capture intake: spoofed authentication is rejected and leaves no capture directory"
+}
+
+test_rejected_mail_cannot_pose_as_accepted_capture() {
+  local rc=0 out
+  FM_TEST_DROP_CAPTURE=1 FM_TEST_AUTH="Authentication-Results: mx; dkim=fail" run_capture save --uid 60 >/dev/null 2>&1 || rc=$?
+  expect_code 1 "$rc" "a rejected mail must fail to save"
+  [ ! -e "$HOME_DIR/data/captures/mail-60" ] || fail "sender media named capture.md survived rejection"
+  FM_TEST_DROP_CAPTURE=1 FM_TEST_AUTH="Authentication-Results: mx; dkim=fail" run_capture save --uid 61 >/dev/null 2>&1 || true
+  mkdir -p "$HOME_DIR/data/captures/mail-61"
+  printf 'sender media\n' > "$HOME_DIR/data/captures/mail-61/capture.md"
+  rc=0
+  out=$(run_capture file --uid 61 --bucket watch --text "Watch this" 2>&1) || rc=$?
+  expect_code 1 "$rc" "file must not accept a capture that save did not accept"
+  assert_contains "$out" "has not been accepted" "file gave the wrong error for an unaccepted capture"
+  [ ! -e "$HOME_DIR/data/personal/watching.md" ] || fail "an unaccepted capture was filed"
+  rm -rf "$HOME_DIR/data/captures/mail-61"
+  pass "capture intake: a rejected mail leaves nothing that file will accept"
 }
 
 test_acceptance_slice_files_and_digests() {
@@ -250,6 +271,22 @@ test_time_bound_capture_emails_immediately() {
   pass "capture intake: only an explicitly time-bound capture sends an immediate notice"
 }
 
+test_time_bound_sends_nothing_when_the_call_would_fail() {
+  local rc=0
+  : > "$TMP_ROOT/mail.log"
+  FM_TEST_CAPTURE_TEXT="Book dentist" run_capture save --uid 70 >/dev/null
+  run_capture file --uid 70 --bucket calendar --text "Book dentist" --time-bound >/dev/null 2>&1 || rc=$?
+  expect_code 1 "$rc" "a calendar capture without a draft must fail"
+  rc=0
+  run_capture file --uid 70 --bucket nonsense --text "Book dentist" --time-bound >/dev/null 2>&1 || rc=$?
+  expect_code 1 "$rc" "an unknown bucket must fail"
+  rc=0
+  run_capture file --uid 70 --bucket place --text "Book dentist" --attachment "$TMP_ROOT/missing.jpg" --time-bound >/dev/null 2>&1 || rc=$?
+  expect_code 1 "$rc" "a missing attachment must fail"
+  [ ! -s "$TMP_ROOT/mail.log" ] || fail "a failing time-bound call emailed the captain"
+  pass "capture intake: a time-bound call that fails validation sends no notice"
+}
+
 test_arm_never_replaces_the_recipient() {
   local rc=0
   run_capture arm --to attacker@example.com >/dev/null 2>&1 || rc=$?
@@ -274,6 +311,7 @@ test_time_bound_without_armed_recipient_files_nothing() {
 
 test_rejects_mail_without_authenticated_braintoss_route
 test_rejects_spoofed_authentication
+test_rejected_mail_cannot_pose_as_accepted_capture
 test_acceptance_slice_files_and_digests
 test_people_stay_private_and_outward_work_waits
 test_remaining_sort_table_routes_locally
@@ -284,5 +322,6 @@ test_backlog_titles_neutralise_metadata_shapes
 test_late_captures_reach_the_next_digest
 test_evening_digest_check_is_armed_and_sends_once
 test_time_bound_capture_emails_immediately
+test_time_bound_sends_nothing_when_the_call_would_fail
 test_arm_never_replaces_the_recipient
 test_time_bound_without_armed_recipient_files_nothing

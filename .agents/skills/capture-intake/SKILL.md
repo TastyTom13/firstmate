@@ -63,7 +63,7 @@ Do not use the immediate path merely because a capture feels important.
 
 ## Digest
 
-The evening email lists each non-People capture filed that day, its destination, drafts waiting for a yes, and questions.
+The evening email lists each non-People capture filed since the last digest, its destination, drafts waiting for a yes, and questions.
 It sends through `fm-mail` from the existing configured mail account and adds no credential.
 The helper records a successful send and refuses a second digest for the same day.
 Do not quote, summarize, count, or otherwise expose People-lane content in the digest or in chat.

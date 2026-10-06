@@ -110,7 +110,7 @@ url_encode() {
 
 discard_unaccepted() { # <capture-dir> <staged-file>
   rm -f -- "$2"
-  [ -f "$1/capture.md" ] || rm -rf -- "$1"
+  [ -f "$1/.accepted" ] || rm -rf -- "$1"
 }
 
 save_capture() {
@@ -136,6 +136,8 @@ save_capture() {
   fi
   chmod 0600 "$tmp"
   mv -f -- "$tmp" "$dir/capture.md"
+  : > "$dir/.accepted"
+  chmod 0600 "$dir/.accepted"
   printf '%s\n' "$dir/capture.md"
 }
 
@@ -165,13 +167,29 @@ file_capture() {
   dir=$(capture_path "$uid")
   raw="$dir/capture.md"
   marker="$dir/.filed"
-  [ -f "$raw" ] || fail "capture $uid has not been accepted; run save first"
+  [ -f "$dir/.accepted" ] && [ -f "$raw" ] || fail "capture $uid has not been accepted; run save first"
   if [ -f "$marker" ]; then
     printf 'already filed: %s\n' "$(cat "$marker")"
     return 0
   fi
   text=$(single_line "$text")
   [ -n "$text" ] || fail '--text must not be empty'
+  case "$bucket" in
+    book|place|idea|watch|name|research|calendar|outward|question|task|person) ;;
+    *) fail '--bucket is not in the capture sorting table' ;;
+  esac
+  case "$bucket" in
+    calendar|outward) [ -n "$draft" ] || fail "--bucket $bucket requires --draft; outward work always waits for a yes" ;;
+    research) [ -x "$TASKS_BIN" ] || fail "tasks plane is not executable: $TASKS_BIN" ;;
+    idea) [ -z "$project" ] || [ -x "$TASKS_BIN" ] || fail "tasks plane is not executable: $TASKS_BIN" ;;
+    place)
+      if [ -n "$attachment" ]; then
+        [ -f "$attachment" ] && [ ! -L "$attachment" ] || fail "attachment does not exist: $attachment"
+        attachment_dir=$(cd "$(dirname "$attachment")" && pwd -P)
+        [ "$attachment_dir" = "$(cd "$dir" && pwd -P)" ] || fail '--attachment must be inside this capture directory'
+      fi
+      ;;
+  esac
   if [ "$time_bound" = 1 ]; then
     [ "$bucket" != person ] || fail 'a People capture cannot be time-bound'
     notify_to=$(armed_recipient)
@@ -190,9 +208,6 @@ file_capture() {
     place)
       line="- $text ([capture](../captures/mail-$uid/capture.md))"
       if [ -n "$attachment" ]; then
-        [ -f "$attachment" ] && [ ! -L "$attachment" ] || fail "attachment does not exist: $attachment"
-        attachment_dir=$(cd "$(dirname "$attachment")" && pwd -P)
-        [ "$attachment_dir" = "$(cd "$dir" && pwd -P)" ] || fail '--attachment must be inside this capture directory'
         line="$line ([picture](../captures/mail-$uid/$(url_encode "$(basename "$attachment")")))"
       fi
       append_list places "$line"
@@ -200,7 +215,6 @@ file_capture() {
       ;;
     idea)
       if [ -n "$project" ]; then
-        [ -x "$TASKS_BIN" ] || fail "tasks plane is not executable: $TASKS_BIN"
         task_out=$(FM_HOME="$FM_HOME" "$TASKS_BIN" add "Idea: $title" --mint --kind idea --repo "$project" --body "Captured from BrainToss uid $uid; raw: data/captures/mail-$uid/capture.md")
         location="parked $project backlog idea"
         printf '%s\n' "$task_out"
@@ -219,13 +233,11 @@ file_capture() {
       ;;
     research)
       [ -n "$project" ] || project=firstmate
-      [ -x "$TASKS_BIN" ] || fail "tasks plane is not executable: $TASKS_BIN"
       task_out=$(FM_HOME="$FM_HOME" "$TASKS_BIN" add "Research: $title" --mint --kind scout --repo "$project" --body "Captured from BrainToss uid $uid; raw: data/captures/mail-$uid/capture.md")
       location="queued $project research"
       printf '%s\n' "$task_out"
       ;;
     calendar|outward)
-      [ -n "$draft" ] || fail "--bucket $bucket requires --draft; outward work always waits for a yes"
       append_list drafts "- $(single_line "$draft") ([capture](../captures/mail-$uid/capture.md))"
       location='Drafts waiting for a yes'
       ;;
@@ -253,7 +265,6 @@ file_capture() {
       printf 'filed: People lane\n'
       return 0
       ;;
-    *) fail '--bucket is not in the capture sorting table' ;;
   esac
   if [ -n "$question" ] && [ "$bucket" != question ]; then
     append_list questions "- $(single_line "$question") ([capture](../captures/mail-$uid/capture.md))"
