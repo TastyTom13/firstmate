@@ -320,7 +320,7 @@ family_for_basename() {
     fm-supervision-events.test.sh|fm-turnend-guard.test.sh|fm-wake-daemon-lifecycle-e2e.test.sh|\
     fm-wake-drain-unread-status.test.sh|\
     fm-tool-update-check.test.sh|fm-hp-runner-check.test.sh|fm-memory-check.test.sh|\
-    fm-mail.test.sh|fm-mail-check.test.sh|\
+    fm-mail.test.sh|fm-mail-check.test.sh|fm-disk-check.test.sh|\
     fm-turnend-foreign-owner-arm-fix.test.sh|\
     fm-wake-queue.test.sh|fm-watch-arm.test.sh|fm-watch-checkpoint.test.sh|fm-watch-recovery-loop.test.sh|\
     fm-watch-triage.test.sh|fm-watch-thresholds.test.sh|fm-task-inbox.test.sh|\
@@ -751,6 +751,7 @@ tests/fm-cursor-primary.test.sh 69845
 tests/fm-daemon.test.sh 33606
 tests/fm-devin-harness.test.sh 3725
 tests/fm-devin-signals-live-e2e.test.sh 49
+tests/fm-disk-check.test.sh 11499
 tests/fm-dispatch-resolve.test.sh 10051
 tests/fm-documentation-audiences.test.sh 1301
 tests/fm-dod-lib.test.sh 2035

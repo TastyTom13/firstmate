@@ -1531,6 +1531,40 @@ Each probe is hard-bounded, and the script keeps its probe budget below `FM_CHEC
 `state/.memory-check` retains the consecutive-poll streak and report suppression state.
 Run `bin/fm-memory-check.sh disarm` to unregister the generated check and remove that poll record.
 
+## Disk leak watch (config/disk-watch)
+
+[`bin/fm-disk-check.sh`](../bin/fm-disk-check.sh) is an optional registered check that notices a disk leak while it is still small, such as anonymous Docker volumes piling up from test runs.
+Each run reads free space from `df` on `/System/Volumes/Data` (`/` where that volume does not exist), the count and total size of dangling Docker volumes, and the size of `~/.treehouse`, and appends one dated sample to `state/.disk-watch-history`, which keeps eight days of samples.
+When the docker CLI or daemon does not answer, the sample records `docker unreachable`, which is not itself a wake.
+It prints one line, which the watcher turns into a `check:` wake, only when free space is below `FREE_MIN_GB`, free space fell more than `FREE_DROP_GB` since the newest sample at least 24 hours old, dangling Docker volumes exceed `DANGLING_MAX_COUNT` or `DANGLING_MAX_GB`, or `~/.treehouse` grew more than `TREEHOUSE_GROWTH_GB` since the newest sample at least seven days old.
+An invalid config file, an unreadable `df`, or a `~/.treehouse` that cannot be listed in full or has an entry that cannot be measured is also reported, because it leaves the watch blind.
+An unchanged set of conditions is reported once and then at most once a day while it persists, and a run with no condition ends the episode.
+GB means 10^9 bytes, the unit docker prints.
+The check only reads; it never prunes, removes, or stops anything.
+
+One `du` of a large `~/.treehouse` can take longer than `FM_CHECK_TIMEOUT` allows a whole check, so the size is summed from per-entry measurements of each `~/.treehouse/<pool>/<entry>` cached in `state/.disk-watch-treehouse`.
+Each run refreshes entries older than an hour, oldest first, inside the time left in its budget, so a fresh home has a `~/.treehouse` total after a few runs and then spends a bounded share of each hour measuring it.
+
+The optional local, gitignored `config/disk-watch` file accepts these exact keys, shown with their defaults:
+
+```sh
+FREE_MIN_GB=300
+FREE_DROP_GB=30
+DANGLING_MAX_COUNT=50
+DANGLING_MAX_GB=5
+TREEHOUSE_GROWTH_GB=30
+```
+
+`DANGLING_MAX_COUNT` must be a whole number from 0 to 1000000, `DANGLING_MAX_GB` from 0 to 100000, and the other keys from 1 to 100000.
+Blank lines and lines beginning with `#` are ignored.
+Unknown keys, duplicates, and malformed values are reported instead of silently falling back.
+This file is not inherited by secondmate homes.
+
+Arm the check once in the home with `bin/fm-disk-check.sh arm`.
+That command atomically writes `state/disk.check.sh` with mode `0700` and binds its bytes with `bin/fm-check-register.sh`, so the existing watcher polls it on `FM_CHECK_INTERVAL` and turns its single report line into a `check:` wake.
+`state/.disk-watch` retains the report suppression state.
+Run `bin/fm-disk-check.sh disarm` to unregister the generated check and remove that record, the history, and the size cache.
+
 ## Watched tool updates (config/watched-tools.json)
 
 `config/watched-tools.json` is an optional local, gitignored list of the tools this home depends on.

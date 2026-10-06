@@ -145,6 +145,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-tool-update-check.sh` | Report watched tooling with an update available, and updates installed but left inert by PATH order |
 | `fm-hp-runner-check.sh` | Arm and run the registered Scout queue and HP runner outage check                    |
 | `fm-memory-check.sh`    | Arm and run the registered host low-memory early-warning check                      |
+| `fm-disk-check.sh`      | Arm and run the registered disk leak watch for free space, dangling Docker volumes, and `~/.treehouse` growth |
 | `fm-pr-lib.sh`           | Own canonical task and PR validation plus private atomic PR-poll publication, merge-notification identity, and retirement |
 | `fm-pr-poll.sh`          | Provide the byte-static watcher program for validated pull-request, merge-request, and Gerrit-change poll sidecars |
 | `fm-contributions.sh`    | Observe owned publications, retain exact-head judgments, measure required actors, and wake on maintainer signals |
