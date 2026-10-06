@@ -142,6 +142,11 @@
 # number with its proof, and write each bug's or rule's test failing first, then
 # passing, citing both runs in the PR body. local-only raises no PR to cite, so
 # it carries neither.
+# The same PR-raising briefs carry a "Failing CI checks" section: never rerun CI
+# or ask for a rerun; read a failing job's log once and fix a failure this branch
+# caused, declare a paused wait naming the base run URL when the same job is red
+# on the base branch, and rerun an infrastructure failure once at most before
+# pausing. local-only runs no CI on the work and carries none.
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
 # Both crewmate scaffolds carry one shared rule against administering the
 # infrastructure every lane shares - the no-mistakes daemon and the worktree pool
@@ -1124,6 +1129,25 @@ if [ "$MODE" != local-only ]; then
 10. This task touches the UI: before you report the work done, save a screenshot of each changed view at viewport widths 375, 768 and 1440 under `docs/evidence/'"$ID"'/`, and cite those paths in the PR body.'
 fi
 
+# Failing CI checks: a red check is read once and classified, never rerun for a
+# known cause. A base-branch red that every PR inherits is a declared wait on the
+# base fix (AGENTS.md section 7 makes the base fix its own task), so the worker
+# stops instead of spending hosted minutes and runner memory on reruns. Only
+# PR-raising modes run CI on the work, so local-only carries no such section.
+CI_FAILURE_SECTION=
+if [ "$MODE" != local-only ]; then
+  IFS= read -r -d '' CI_FAILURE_SECTION <<EOF || true
+# Failing CI checks
+Never rerun CI and never ask anyone for a rerun, except the one infrastructure rerun below: rerunning a failure changes nothing when its cause is known, and every rerun spends hosted minutes and runner memory other work is waiting for.
+When a check fails, read the failing job's log once (\`gh run view <run-id> --log-failed\`), then classify the failure and act on it:
+1. Caused by this branch: fix it on this branch.
+2. Red on the base branch too, meaning the same job failed on the base branch's latest completed run (\`gh run list --branch <base> --status completed\`): append \`$PAUSED_VERB [at=<epoch>]: base branch red: <base run URL>\` and stop; firstmate routes the base-branch fix and rings you when it lands. Unless your task is the fix for that base failure: then keep fixing it.
+3. Infrastructure failure, such as a lost runner, a refused billing or spending limit, or a network error before the job's own steps ran: rerun that job once at most; if it fails again, append \`$PAUSED_VERB [at=<epoch>]: CI infrastructure failure: <run URL> <reason>\` and stop.
+A failure whose cause you know is never retried.
+EOF
+  CI_FAILURE_SECTION=$'\n\n'"${CI_FAILURE_SECTION%$'\n'}"
+fi
+
 # The Setup sentence has to describe the worktree the worker is actually in.
 # bin/fm-spawn.sh --base leaves it on the named integration branch, so saying
 # "default branch" there would be plainly false to the worker reading it.
@@ -1172,7 +1196,7 @@ $CREWMATE_PAUSE_INSTRUCTIONS
 $ASK_USER_BLOCK
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
-$SHARED_INFRA_RULE$EVIDENCE_RULES
+$SHARED_INFRA_RULE$EVIDENCE_RULES$CI_FAILURE_SECTION
 
 $UNTRUSTED_CONTENT_SECTION
 

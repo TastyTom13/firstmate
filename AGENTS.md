@@ -192,6 +192,8 @@ Resolve the project's registered ship-branch prefix the same way, via `bin/fm-pr
 On a `no-mistakes-prod-only` project, classify the task's surface: internal-only tooling, automation, contributor or operator process, and release or submission work ships `direct-PR`, while product-facing, mixed, and uncertain work ships `no-mistakes`; never infer internal-only from file location or project name.
 An unregistered project or absent registry resolves to `no-mistakes` with yolo off, and the registration gap goes to the captain.
 Record the resulting mode, `yolo` merge posture, and the one-line reason for any deviation in the backlog item note.
+Run `bin/fm-base-green.sh <project> [<base branch>]` at every ship intake: a red base branch is a blocker filed and dispatched as its own fix task first.
+No ship that needs CI is dispatched onto a red base except that fix, because every branch cut from it inherits the red and workers can only wait on it.
 
 Treat file or subsystem overlap as a risk signal rather than an automatic reason to wait, and dispatch isolated work immediately with no concurrency cap when each change can be independently implemented and validated and the selected delivery path can reconcile ordinary rebases or conflicts.
 Serialize only for a true semantic dependency, shared mutable external state, incompatible concurrent migration, or another concrete condition that makes independent progress or reconciliation unsafe; same-file editing alone is insufficient, and genuine blockers remain durable.
@@ -245,7 +247,7 @@ Load `validation-supervision` when a ship starts or already has an active no-mis
 
 ### PR ready, landing, and teardown
 
-Load `ship-landing` when a ship reports a PR or ready branch, when deciding or monitoring landing, and before task cleanup.
+Load `ship-landing` when a ship reports a PR or ready branch, when a ship declares a wait on a red base branch, when deciding or monitoring landing, and before task cleanup.
 
 ### Scout outcome and promotion
 

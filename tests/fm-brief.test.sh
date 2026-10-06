@@ -1447,6 +1447,49 @@ test_evidence_rules_render_only_where_a_pr_exists() {
   pass "fm-brief.sh: acceptance-numbering and red-then-green rules render only for PR-raising ship briefs"
 }
 
+# A red check is classified once and never retried for a known cause: the
+# Scout dev-branch incident of October 2026 spent a month of hosted CI minutes
+# on reruns of a base-branch failure every PR had inherited. The rule renders
+# for every PR-raising ship brief and never where no CI runs on the work.
+test_ci_failures_are_classified_never_rerun() {
+  local home id brief mode
+  home="$TMP_ROOT/ci-failure-home"
+  mkdir -p "$home/data"
+
+  for mode in no-mistakes direct-PR; do
+    id="brief-ci-$mode"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1 \
+      || fail "$mode: brief should scaffold"
+    brief="$home/data/$id/brief.md"
+    assert_grep "# Failing CI checks" "$brief" "$mode: brief lost the failing-CI section"
+    assert_grep "Never rerun CI and never ask anyone for a rerun" "$brief" \
+      "$mode: brief lost the no-rerun rule"
+    assert_grep "read the failing job's log once" "$brief" "$mode: brief lost the read-once step"
+    assert_grep "Caused by this branch: fix it on this branch." "$brief" \
+      "$mode: brief lost the own-branch class"
+    assert_grep "paused [at=<epoch>]: base branch red: <base run URL>" "$brief" \
+      "$mode: brief lost the base-red declared wait"
+    assert_grep "Unless your task is the fix for that base failure: then keep fixing it." "$brief" \
+      "$mode: brief lost the base-fix worker carve-out"
+    assert_grep "rerun that job once at most" "$brief" "$mode: brief lost the infrastructure single rerun"
+    assert_grep "A failure whose cause you know is never retried." "$brief" \
+      "$mode: brief lost the known-cause rule"
+  done
+
+  id="brief-ci-local-only"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only >/dev/null 2>&1 \
+    || fail "local-only: brief should scaffold"
+  assert_no_grep "# Failing CI checks" "$home/data/$id/brief.md" \
+    "local-only: a mode with no CI must not carry the failing-CI section"
+
+  id="brief-ci-scout"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1 \
+    || fail "scout: brief should scaffold"
+  assert_no_grep "# Failing CI checks" "$home/data/$id/brief.md" \
+    "scout: a report runs no CI and must not carry the failing-CI section"
+  pass "fm-brief.sh: PR-raising ship briefs classify a failing check once and never rerun a known failure"
+}
+
 # --ui marks a UI-touching task at intake (F-b). The screenshot pre-flight names
 # one fixed output path and three fixed viewports so the pipeline has nothing left
 # to ask, and it renders ONLY when firstmate passed the flag.
@@ -2172,6 +2215,7 @@ test_pr_wait_follow_up_only_where_a_pr_exists
 test_built_by_line_reads_task_meta
 test_fable_prompting_additions_render
 test_evidence_rules_render_only_where_a_pr_exists
+test_ci_failures_are_classified_never_rerun
 test_ui_screenshot_line_is_opt_in
 test_help_documents_the_ui_flag
 test_turn_end_and_time_lines_render_for_ship_and_scout
