@@ -2840,7 +2840,7 @@ test_read_full_body_saves_media_only_when_asked() {
   assert_not_contains "$out" "ignore.txt" "full read does not save unrelated attachments"
   [ "$(cat "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg")" = "picture-bytes" ] || fail "image attachment bytes were not saved"
   [ "$(cat "$TMP_ROOT/full-body-home/data/captures/mail-42/voice note.mp3")" = "audio-bytes" ] || fail "audio attachment bytes were not saved"
-  assert_equals "600" "$(stat -f '%Lp' "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg" 2>/dev/null || stat -c '%a' "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg")" "saved attachment is private"
+  assert_equals "600" "$(stat -c '%a' "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg" 2>/dev/null || stat -f '%Lp' "$TMP_ROOT/full-body-home/data/captures/mail-42/menu photo.jpg")" "saved attachment is private"
   pass "fm-mail: read --id saves image and audio attachments only when FM_MAIL_SAVE_MEDIA=1"
 }
 
