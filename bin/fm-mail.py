@@ -10,7 +10,10 @@
 #                          links kept as text, entities decoded), followed by
 #                          any attached forwarded message, bounded to
 #                          FM_MAIL_BODY_MAX characters (default 20000) with a
-#                          truncation marker.
+#                          truncation marker. Prints routing and authentication
+#                          headers and, only when FM_MAIL_SAVE_MEDIA=1,
+#                          saves image/audio attachments under
+#                          data/captures/mail-<uid>/ in this home.
 #   send <to> <subj> <body | ->   Send one SMTP message; "-" reads stdin.
 #   poll_list              Emit unseen mail as tab-separated rows for the bash
 #                          poll, bounded to uids this home has not surfaced,
@@ -229,15 +232,84 @@ def printable(text):
     return re.sub(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]', '', text.replace('\r\n', '\n'))
 
 
+def capture_dir(uid):
+    """Private directory shared by one raw capture and its media."""
+    home = os.environ.get('FM_HOME') or os.path.dirname(os.path.dirname(__file__))
+    path = os.path.join(home, 'data', 'captures', 'mail-' + uid)
+    if os.path.lexists(path) and (os.path.islink(path) or not os.path.isdir(path)):
+        raise OSError('unsafe capture attachment directory: ' + path)
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    if os.path.islink(path):
+        raise OSError('unsafe capture attachment directory: ' + path)
+    os.chmod(path, 0o700)
+    return path
+
+
+def safe_attachment_name(part, index):
+    """Return a flat display-safe filename for an image or audio part."""
+    name = dec(part.get_filename())
+    name = os.path.basename(name.replace('\\', '/')) if name else ''
+    name = re.sub(r'[^A-Za-z0-9._ -]+', '_', name).strip(' .')[:120]
+    if name:
+        return name
+    subtype = re.sub(r'[^a-z0-9]+', '', part.get_content_subtype().lower()) or 'bin'
+    return 'attachment-%d.%s' % (index, subtype)
+
+
+def save_media_attachments(uid, msg):
+    """Save image/audio MIME attachments idempotently; return their paths."""
+    saved = []
+    try:
+        attachments = list(msg.iter_attachments())
+    except Exception:
+        attachments = []
+    directory = None
+    for index, part in enumerate(attachments, 1):
+        if part.get_content_maintype() not in ('image', 'audio'):
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            continue
+        if directory is None:
+            directory = capture_dir(uid)
+        name = safe_attachment_name(part, index)
+        stem, ext = os.path.splitext(name)
+        path = os.path.join(directory, name)
+        suffix = 2
+        while os.path.lexists(path):
+            try:
+                if not os.path.islink(path) and os.path.isfile(path):
+                    with open(path, 'rb') as existing:
+                        if existing.read() == payload:
+                            break
+            except OSError:
+                pass
+            path = os.path.join(directory, '%s-%d%s' % (stem, suffix, ext))
+            suffix += 1
+        if not os.path.exists(path):
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            fd = os.open(path, flags, 0o600)
+            with os.fdopen(fd, 'wb') as out:
+                out.write(payload)
+        os.chmod(path, 0o600)
+        saved.append(path)
+    return saved
+
+
 def print_full(uid, raw):
     mi = email.message_from_bytes(raw, policy=email.policy.default)
     body = printable(full_text(mi))
+    attachments = save_media_attachments(uid, mi) if os.environ.get('FM_MAIL_SAVE_MEDIA') == '1' else []
     limit = body_max()
     print('Uid:', uid)
     print('From:', clean(dec(mi.get('From'))))
     print('To:', clean(dec(mi.get('To'))))
     print('Date:', clean(dec(mi.get('Date'))))
     print('Subj:', clean(dec(mi.get('Subject'))))
+    for value in mi.get_all('Authentication-Results', []):
+        print('Authentication-Results: %s' % clean(dec(value)))
+    for path in attachments:
+        print('Attachment:', path)
     print()
     if not body:
         print('(body unavailable)')

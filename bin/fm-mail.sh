@@ -13,9 +13,12 @@
 #   read --id <uid>      Print the full body of the message with IMAP uid <uid>
 #                        (the number a `check: mail <uid>` wake names; seen or
 #                        not).
-#                        Prints the plain-text part, else the HTML part as
-#                        readable text, then any attached forwarded message,
-#                        bounded to FM_MAIL_BODY_MAX characters (default
+#                        Prints To, From, authentication-result headers and the
+#                        plain-text part (else readable HTML), then any attached
+#                        forwarded message. With FM_MAIL_SAVE_MEDIA=1 it also saves
+#                        image/audio attachments under
+#                        data/captures/mail-<uid>/ beside the raw capture. Output
+#                        is bounded to FM_MAIL_BODY_MAX characters (default
 #                        20000) with a truncation marker. Never marks it seen.
 #   send <to> <subject> <body | ->
 #                        Send one message. A "-" body reads plain text from
@@ -199,7 +202,7 @@ TURN="$STATE_DIR/.mail-turn"
 # Invoke the python engine with the resolved endpoints, cursor, and cap in the
 # environment so credentials never reach argv.
 run_py() {
-  FM_MAIL_USER="$FM_MAIL_USER" FM_MAIL_PASS="$FM_MAIL_PASS" \
+  FM_HOME="$FM_HOME" FM_MAIL_USER="$FM_MAIL_USER" FM_MAIL_PASS="$FM_MAIL_PASS" \
   FM_IMAP_HOST="$IMAP_HOST" FM_IMAP_PORT="$IMAP_PORT" \
   FM_SMTP_HOST="$SMTP_HOST" FM_SMTP_PORT="$SMTP_PORT" \
   FM_MAIL_CURSOR="$CURSOR" FM_MAIL_RETRY="$RETRY" \

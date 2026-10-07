@@ -62,6 +62,9 @@ data/                personal fleet records; LOCAL, gitignored as a whole
   secondmates.md      local and remote secondmate routing table; firstmate-private, maintained by the secondmate seed helpers (section 6)
   <id>/brief.md      per-task crewmate brief, or per-secondmate charter brief when kind=secondmate
   <id>/report.md     scout task deliverable, written by the crewmate; survives teardown
+  captures/mail-<uid>/  accepted phone capture rendered mail and saved image/audio attachments; fm-capture-intake.sh owns filing markers and digest records
+  captures/people/   private person-note handoff lane; capture-intake keeps its contents out of chat and digest surfaces, and only Scout's person-note intake reads it
+  personal/          markdown Reading, Watching, Places, Ideas, Names, Tasks, Drafts, and Questions lists written by fm-capture-intake.sh
 projects/            cloned repos; gitignored; read-only except under hard rule 1's concrete captain-approved project operation exception
 state/               runtime records and signals; gitignored
   <id>.status        append-only wake events, not current-state truth; bin/fm-classify-lib.sh owns their syntax
@@ -99,6 +102,7 @@ state/               runtime records and signals; gitignored
   memory.check.sh    generated host low-memory poll shim and its .check-trust binding; present only after bin/fm-memory-check.sh arm; its report record .memory-check retains the consecutive-poll streak and suppresses an unchanged low-memory episode
   disk.check.sh      generated disk leak watch poll shim and its .check-trust binding; present only after bin/fm-disk-check.sh arm; its report record .disk-watch suppresses an unchanged condition set, with .disk-watch-history and .disk-watch-treehouse holding the dated samples and the per-entry ~/.treehouse size cache
   mail.check.sh      generated received-mail poll shim and its .check-trust binding; present only after bin/fm-mail-check.sh arm; report record .mail-check (mail schema: docs/configuration.md "Mail plane")
+  capture-digest.check.sh capture-digest.check-trust .capture-digest-to  generated evening phone-capture digest check, its private content binding, and its private recipient; present only after bin/fm-capture-intake.sh arm
   .mail-seen .mail-woken .mail-retry .mail-retry-pos .mail-turn .mail-seen.lock  mail-plane poll cursor, emission journal, transient-fetch retry set, retry-scan position, contended-slot turn flag, and overlapping-poll lock; written only by bin/fm-mail.sh (mail schema: docs/configuration.md "Mail plane")
   pending-replies/   parent-owned secondmate pending-reply records (correlation id, delivery vs reply, recovery, escalation); fm-pending-reply-lib.sh
   procevent/         registered process-to-event sources, one private record per canonical source id; written only by bin/fm-procevent.sh, and their presence alone keeps supervision required (`process-event-sources` skill)
