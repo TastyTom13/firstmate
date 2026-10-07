@@ -169,7 +169,46 @@ test_steer_text_names_recovery_action() {
   pass "automatic steer tells the worker to resume through current gate help"
 }
 
+write_restart_status_with_pr() {  # <path> <run-id> <test-step-status> <ci-step-line>
+  local path=$1 run_id=$2 test_status=$3 ci_line=$4
+  write_restart_status "$path" "$run_id"
+  awk -v test_status="$test_status" -v ci_line="$ci_line" '
+    { print }
+    /^  branch: fm\/restart-task$/ { print "  pr: \"https://github.com/o/r/pull/2\"" }
+  ' "$path" | awk -v test_status="$test_status" -v ci_line="$ci_line" '
+    /^    test,failed,0,200$/ { print "    test," test_status ",0,200"; if (ci_line != "") print "    " ci_line; next }
+    { print }
+  ' > "$path.new"
+  mv "$path.new" "$path"
+}
+
+test_delivered_pr_with_orphaned_ci_is_not_steered() {
+  local dir out
+  dir=$(new_case delivered-ci)
+  write_restart_status_with_pr "$dir/status.toon" 01DELIVEREDCI00000000000000 completed 'ci,failed,0,300'
+
+  out=$(run_resume "$dir")
+
+  [ -z "$out" ] || fail "delivered PR with an orphaned ci monitor was reported as resumed: '$out'"
+  assert_send_count 0 "$dir/send.log" "delivered PR was steered into a new pipeline"
+  pass "delivered PR whose only failed step is ci is left to merge monitoring"
+}
+
+test_pr_with_failed_earlier_step_is_still_steered() {
+  local dir out
+  dir=$(new_case pr-earlier-step)
+  write_restart_status_with_pr "$dir/status.toon" 01PRTESTFAILED0000000000000 failed ''
+
+  out=$(run_resume "$dir")
+
+  [ "$out" = restart-task ] || fail "run with a PR but a failed earlier step was not resumed: '$out'"
+  assert_send_count 1 "$dir/send.log" "run with a PR but a failed earlier step was not steered"
+  pass "a PR alone does not stop the steer when an earlier step failed"
+}
+
 test_restart_signature_is_detected
+test_delivered_pr_with_orphaned_ci_is_not_steered
+test_pr_with_failed_earlier_step_is_still_steered
 test_ordinary_park_is_not_detected
 test_worker_failure_is_not_detected
 test_repeat_scan_is_idempotent

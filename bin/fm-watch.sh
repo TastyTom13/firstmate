@@ -2740,17 +2740,29 @@ while :; do
   # CHECK_INTERVAL, so most cycles skip this block and fall straight through.
   if [ "$(age_of "$STATE/.last-check")" -ge "$CHECK_INTERVAL" ]; then
     validation_restart_out=
-    if ! validation_restart_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-      "$VALIDATION_RESTART_RESUME_BIN" 2>&1); then
-      validation_restart_detail=$(printf '%s\n' "$validation_restart_out" | head -1)
+    validation_restart_err=$(mktemp "$STATE/.validation-restart-watch.XXXXXX" 2>/dev/null || true)
+    if [ -z "$validation_restart_err" ]; then
+      validation_restart_failed=1
+      validation_restart_detail='could not create diagnostic file'
+    elif validation_restart_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$VALIDATION_RESTART_RESUME_BIN" 2> "$validation_restart_err"); then
+      validation_restart_failed=0
+    else
+      validation_restart_failed=1
+      validation_restart_detail=$(grep -m1 '^fm-validation-restart-resume:' "$validation_restart_err" 2>/dev/null || true)
+      [ -n "$validation_restart_detail" ] || validation_restart_detail=$(head -1 "$validation_restart_err" 2>/dev/null || true)
       [ -n "$validation_restart_detail" ] || validation_restart_detail='reconciliation command failed without a diagnostic'
+    fi
+    [ -z "$validation_restart_err" ] || rm -f "$validation_restart_err"
+    if [ -n "$validation_restart_out" ]; then
+      validation_restart_ids=$(printf '%s\n' "$validation_restart_out" | tr '\n' ' ')
+      triage_log "validation restart auto-resumed: ${validation_restart_ids% }"
+    fi
+    if [ "$validation_restart_failed" = 1 ]; then
       reason="check: validation restart auto-resume failed: $validation_restart_detail"
       fm_wake_append check validation-restart-auto-resume "$reason" || exit 1
       touch "$STATE/.last-check"
       wake "$reason"
-    elif [ -n "$validation_restart_out" ]; then
-      validation_restart_ids=$(printf '%s\n' "$validation_restart_out" | tr '\n' ' ')
-      triage_log "validation restart auto-resumed: ${validation_restart_ids% }"
     fi
     rejected_checks=
     contribution_check_output=

@@ -759,17 +759,25 @@ else
   VALIDATION_RESTART_ERR=$(mktemp "$STATE/.validation-restart-startup.XXXXXX" 2>/dev/null || true)
   if [ -z "$VALIDATION_RESTART_ERR" ]; then
     printf 'VALIDATION_RESTART_RESUME: failed (could not create diagnostic file)\n'
-  elif VALIDATION_RESTART_OUT=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-    "$VALIDATION_RESTART_RESUME_BIN" 2> "$VALIDATION_RESTART_ERR"); then
-    if [ -n "$VALIDATION_RESTART_OUT" ]; then
-      VALIDATION_RESTART_LIST=$(printf '%s\n' "$VALIDATION_RESTART_OUT" | tr '\n' ' ')
-      printf 'VALIDATION_RESTART_RESUME: resumed %s\n' "${VALIDATION_RESTART_LIST% }"
-    else
-      printf 'VALIDATION_RESTART_RESUME: none\n'
-    fi
   else
-    printf 'VALIDATION_RESTART_RESUME: failed\n'
-    cat "$VALIDATION_RESTART_ERR"
+    VALIDATION_RESTART_STATUS=0
+    VALIDATION_RESTART_OUT=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$VALIDATION_RESTART_RESUME_BIN" 2> "$VALIDATION_RESTART_ERR") || VALIDATION_RESTART_STATUS=$?
+    if [ "$VALIDATION_RESTART_STATUS" -eq 0 ]; then
+      if [ -n "$VALIDATION_RESTART_OUT" ]; then
+        VALIDATION_RESTART_LIST=$(printf '%s\n' "$VALIDATION_RESTART_OUT" | tr '\n' ' ')
+        printf 'VALIDATION_RESTART_RESUME: resumed %s\n' "${VALIDATION_RESTART_LIST% }"
+      else
+        printf 'VALIDATION_RESTART_RESUME: none\n'
+      fi
+    else
+      printf 'VALIDATION_RESTART_RESUME: failed\n'
+      cat "$VALIDATION_RESTART_ERR"
+      if [ -n "$VALIDATION_RESTART_OUT" ]; then
+        VALIDATION_RESTART_LIST=$(printf '%s\n' "$VALIDATION_RESTART_OUT" | tr '\n' ' ')
+        printf 'VALIDATION_RESTART_RESUME: resumed before failure %s\n' "${VALIDATION_RESTART_LIST% }"
+      fi
+    fi
   fi
   [ -z "$VALIDATION_RESTART_ERR" ] || rm -f "$VALIDATION_RESTART_ERR"
 fi

@@ -8,7 +8,9 @@
 # worktree's current branch reports status=failed, outcome=failed, and the exact
 # daemon-owned error `daemon shutting down`. A parked review gate, an ordinary
 # step/agent failure, an unreadable endpoint, and every other ambiguous shape are
-# ignored rather than guessed.
+# ignored rather than guessed. A run with a PR whose every step except `ci`
+# completed is a delivered PR with an orphaned ci monitor; fm-crew-state.sh owns
+# it as merge monitoring, so it is never steered into a new pipeline.
 #
 # The steer tells the worker to invoke /no-mistakes again and follow the current
 # gate help. A receipt binds the task's preserved worktree to the failed run id,
@@ -113,6 +115,26 @@ status_field() {  # <status-output> <field>
   fm_nm_strip_quotes "$(fm_nm_field "$1" "$2")"
 }
 
+status_is_delivered_ci_orphan() {  # <status-output>
+  local out=$1
+  [ -n "$(status_field "$out" pr)" ] || return 1
+  printf '%s\n' "$out" | awk '
+    /^[[:space:]]*steps\[[0-9]+\]\{/ { hdr = index($0, "steps"); inblock = 1; next }
+    inblock {
+      if ($0 ~ /^[[:space:]]*$/) { inblock = 0; next }
+      match($0, /[^ \t]/)
+      if (RSTART <= hdr) { inblock = 0; next }
+      split($0, col, ",")
+      step = col[1]; status = col[2]
+      gsub(/^[ \t]+|[ \t]+$/, "", step)
+      gsub(/^[ \t"]+|[ \t"]+$/, "", status)
+      if (step == "ci") { if (status == "failed" || status == "cancelled") ci = 1; else bad = 1 }
+      else if (status != "completed" && !(step == "rebase" && status == "skipped")) bad = 1
+    }
+    END { exit (ci && !bad) ? 0 : 1 }
+  '
+}
+
 scan_status_is_restart() {  # <worktree> <branch>; sets RESTART_RUN_ID
   local wt=$1 branch=$2 out status outcome error run_branch run_head
   RESTART_RUN_ID=
@@ -128,6 +150,7 @@ scan_status_is_restart() {  # <worktree> <branch>; sets RESTART_RUN_ID
     && [ "$error" = 'daemon shutting down' ] \
     && [ "$run_branch" = "$branch" ] && [ -n "$RESTART_RUN_ID" ] \
     && fm_nm_head_matches_worktree "$wt" "$run_head" \
+    && ! status_is_delivered_ci_orphan "$out" \
     || { RESTART_RUN_ID=; return 1; }
   case "$RESTART_RUN_ID" in *[[:space:]]*) RESTART_RUN_ID=; return 1 ;; esac
   return 0
