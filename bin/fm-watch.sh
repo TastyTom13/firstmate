@@ -2758,12 +2758,6 @@ while :; do
       validation_restart_ids=$(printf '%s\n' "$validation_restart_out" | tr '\n' ' ')
       triage_log "validation restart auto-resumed: ${validation_restart_ids% }"
     fi
-    if [ "$validation_restart_failed" = 1 ]; then
-      reason="check: validation restart auto-resume failed: $validation_restart_detail"
-      fm_wake_append check validation-restart-auto-resume "$reason" || exit 1
-      touch "$STATE/.last-check"
-      wake "$reason"
-    fi
     rejected_checks=
     contribution_check_output=
     for c in "$STATE"/*.check.sh; do
@@ -2896,6 +2890,12 @@ EOF
     if [ -n "$rejected_checks" ]; then
       reason="check: rejected unauthenticated state checks:$rejected_checks"
       fm_wake_append check unauthenticated-state-checks "$reason" || exit 1
+      touch "$STATE/.last-check"
+      wake "$reason"
+    fi
+    if [ "$validation_restart_failed" = 1 ]; then
+      reason="check: validation restart auto-resume failed: $validation_restart_detail"
+      fm_wake_append check validation-restart-auto-resume "$reason" || exit 1
       touch "$STATE/.last-check"
       wake "$reason"
     fi
