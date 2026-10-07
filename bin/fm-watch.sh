@@ -107,6 +107,10 @@
 #                          source owned closes that episode); the queued
 #                          payload names what to check. These three kinds are
 #                          joined with `;` when more than one surfaces in a cycle
+#   check: validation restart auto-resume failed: <detail>
+#                          the slow-check reconciliation found a live worker whose
+#                          no-mistakes run ended with the exact daemon-restart
+#                          signature, but its durable resume steer or receipt failed
 #   check: rejected unauthenticated state checks: <paths>
 #                          unsafe state checks were refused without execution
 #   check: rejected unauthenticated PR poll retirement receipts: <paths>
@@ -242,6 +246,7 @@ WATCH_HOME_EXISTED=0
 WATCH_LOCK="$STATE/.watch.lock"
 WATCH_PATH="$SCRIPT_DIR/fm-watch.sh"
 WATCHER_DOWNTIME_MARKER="$STATE/.watcher-down"
+VALIDATION_RESTART_RESUME_BIN=${FM_VALIDATION_RESTART_RESUME_BIN:-$SCRIPT_DIR/fm-validation-restart-resume.sh}
 # The singleton-lock acquisition, EXIT trap, and the blocking supervision loop
 # all live below the source guard at the very bottom of this file (see "Main
 # entry"). Sourcing this file for unit tests therefore loads the functions -
@@ -2734,6 +2739,19 @@ while :; do
   # never run until the fleet went quiet. Checks are due only every
   # CHECK_INTERVAL, so most cycles skip this block and fall straight through.
   if [ "$(age_of "$STATE/.last-check")" -ge "$CHECK_INTERVAL" ]; then
+    validation_restart_out=
+    if ! validation_restart_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$VALIDATION_RESTART_RESUME_BIN" 2>&1); then
+      validation_restart_detail=$(printf '%s\n' "$validation_restart_out" | head -1)
+      [ -n "$validation_restart_detail" ] || validation_restart_detail='reconciliation command failed without a diagnostic'
+      reason="check: validation restart auto-resume failed: $validation_restart_detail"
+      fm_wake_append check validation-restart-auto-resume "$reason" || exit 1
+      touch "$STATE/.last-check"
+      wake "$reason"
+    elif [ -n "$validation_restart_out" ]; then
+      validation_restart_ids=$(printf '%s\n' "$validation_restart_out" | tr '\n' ' ')
+      triage_log "validation restart auto-resumed: ${validation_restart_ids% }"
+    fi
     rejected_checks=
     contribution_check_output=
     for c in "$STATE"/*.check.sh; do

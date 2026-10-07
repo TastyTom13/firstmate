@@ -36,6 +36,10 @@
 #                       handoff retry, X-mode artifact writes, fleet sync) also run only when
 #                       locked; the four network sweeps run in the deferred
 #                       stage rather than this synchronous bootstrap section.
+#                       A full locked start also runs the idempotent validation-
+#                       restart reconciliation and prints one
+#                       VALIDATION_RESTART_RESUME line listing every worker it
+#                       steered after a failed `daemon shutting down` run.
 #   3. wake-drain     - presents durable wakes and advances recovery handling
 #                       state, so it only runs when locked. The local bounded
 #                       inactive-outcome startup scan runs in the deferred worker.
@@ -242,6 +246,7 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 COMPLETION_FILE="$STATE/.session-start-complete"
 AGENTS_BASELINE_FILE="$STATE/.session-start-agents-baseline"
+VALIDATION_RESTART_RESUME_BIN=${FM_VALIDATION_RESTART_RESUME_BIN:-$SCRIPT_DIR/fm-validation-restart-resume.sh}
 
 REEMIT=0
 SESSION_SOURCE=
@@ -745,6 +750,28 @@ else
     FM_BOOTSTRAP_NETWORK=skip FM_TASKS_AXI_COMPATIBLE="$TASKS_AXI_COMPATIBLE" \
       "$SCRIPT_DIR/fm-bootstrap.sh" 2>&1
   )
+fi
+if [ "$READ_ONLY" -eq 1 ]; then
+  printf 'VALIDATION_RESTART_RESUME: skipped (read-only session)\n'
+elif [ "$REEMIT" -eq 1 ]; then
+  printf 'VALIDATION_RESTART_RESUME: skipped (context re-emit)\n'
+else
+  VALIDATION_RESTART_ERR=$(mktemp "$STATE/.validation-restart-startup.XXXXXX" 2>/dev/null || true)
+  if [ -z "$VALIDATION_RESTART_ERR" ]; then
+    printf 'VALIDATION_RESTART_RESUME: failed (could not create diagnostic file)\n'
+  elif VALIDATION_RESTART_OUT=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    "$VALIDATION_RESTART_RESUME_BIN" 2> "$VALIDATION_RESTART_ERR"); then
+    if [ -n "$VALIDATION_RESTART_OUT" ]; then
+      VALIDATION_RESTART_LIST=$(printf '%s\n' "$VALIDATION_RESTART_OUT" | tr '\n' ' ')
+      printf 'VALIDATION_RESTART_RESUME: resumed %s\n' "${VALIDATION_RESTART_LIST% }"
+    else
+      printf 'VALIDATION_RESTART_RESUME: none\n'
+    fi
+  else
+    printf 'VALIDATION_RESTART_RESUME: failed\n'
+    cat "$VALIDATION_RESTART_ERR"
+  fi
+  [ -z "$VALIDATION_RESTART_ERR" ] || rm -f "$VALIDATION_RESTART_ERR"
 fi
 BRIDGE_CANDIDATE_FILE=$(mktemp "${TMPDIR:-/tmp}/fm-bridge-candidates.XXXXXX" 2>/dev/null || true)
 if BRIDGE_SWEEP_OUT=$(FM_BRIDGE_CANDIDATE_FILE="$BRIDGE_CANDIDATE_FILE" \
