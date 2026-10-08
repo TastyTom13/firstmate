@@ -146,12 +146,16 @@ scan_status_is_restart() {  # <worktree> <branch>; sets RESTART_RUN_ID
   run_head=$(status_field "$out" head_sha)
   [ -n "$run_head" ] || run_head=$(status_field "$out" head)
   RESTART_RUN_ID=$(status_field "$out" id)
-  [ "$status" = failed ] && [ "$outcome" = failed ] \
+  if [ "$status" = failed ] && [ "$outcome" = failed ] \
     && [ "$error" = 'daemon shutting down' ] \
     && [ "$run_branch" = "$branch" ] && [ -n "$RESTART_RUN_ID" ] \
     && fm_nm_head_matches_worktree "$wt" "$run_head" \
-    && ! status_is_delivered_ci_orphan "$out" \
-    || { RESTART_RUN_ID=; return 1; }
+    && ! status_is_delivered_ci_orphan "$out"; then
+    :
+  else
+    RESTART_RUN_ID=
+    return 1
+  fi
   case "$RESTART_RUN_ID" in *[[:space:]]*) RESTART_RUN_ID=; return 1 ;; esac
   return 0
 }
