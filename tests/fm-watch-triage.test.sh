@@ -921,6 +921,60 @@ test_turn_ended_not_working_surfaced() {
   pass "a bare turn-end whose crew is not provably working is surfaced (the swallowed-finish fix)"
 }
 
+# --- validation-restart auto-resume failure reporting --------------------------
+
+make_failing_resume_bin() {  # <dir>
+  local bin="$1/failing-resume"
+  cat > "$bin" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' alpha-worker
+printf '%s\n' 'fm-validation-restart-resume: steer failed for beta-worker run 01RUN' >&2
+exit 1
+SH
+  chmod +x "$bin"
+  printf '%s\n' "$bin"
+}
+
+test_validation_restart_failure_names_the_failing_task() {
+  local dir state fakebin out drain_out pid resume
+  dir=$(make_case validation-restart-failure); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; drain_out="$dir/drain.out"
+  resume=$(make_failing_resume_bin "$dir")
+  watch_bg "$state" "$fakebin" "$out" env FM_CHECK_INTERVAL=0 FM_VALIDATION_RESTART_RESUME_BIN="$resume"
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "watcher did not wake on a failed validation restart auto-resume"
+  grep -F 'check: validation restart auto-resume failed: fm-validation-restart-resume: steer failed for beta-worker run 01RUN' "$out" >/dev/null \
+    || fail "wake did not name the failing task: $(cat "$out")"
+  ! grep -F 'failed: alpha-worker' "$out" >/dev/null || fail "wake named the healthy resumed task as the failure"
+  grep -F 'validation restart auto-resumed: alpha-worker' "$state/.watch-triage.log" >/dev/null \
+    || fail "tasks resumed before the failure were not logged"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$drain_out" 2>/dev/null || fail "drain after the failed auto-resume failed"
+  grep "$(printf '\tcheck\t')" "$drain_out" | grep -F 'steer failed for beta-worker run 01RUN' >/dev/null \
+    || fail "failed auto-resume wake was not queued"
+  pass "a failed validation restart auto-resume wakes with the failing task's diagnostic and logs the resumed ones"
+}
+
+test_validation_restart_failure_does_not_starve_slow_checks() {
+  local dir state fakebin out pid resume check_file
+  dir=$(make_case validation-restart-no-starve); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"
+  resume=$(make_failing_resume_bin "$dir")
+  check_file="$state/task.check.sh"
+  cat > "$check_file" <<'SH'
+#!/usr/bin/env bash
+printf 'merged: https://example.test/pr/7\n'
+SH
+  chmod 0700 "$check_file"
+  FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-check-register.sh" task >/dev/null \
+    || fail "could not register the slow check"
+  watch_bg "$state" "$fakebin" "$out" env FM_CHECK_INTERVAL=0 FM_VALIDATION_RESTART_RESUME_BIN="$resume"
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "watcher did not wake"
+  grep -F 'merged: https://example.test/pr/7' "$out" >/dev/null \
+    || fail "a failing validation restart auto-resume starved the slow checks: $(cat "$out")"
+  pass "a failing validation restart auto-resume does not starve the slow checks in the same cycle"
+}
+
 # --- bare turn-end, unverifiable harness: pane churn is the third proof --------
 # A harness whose semantic busy state has no verified source (codex) can never
 # report working, so the two proofs above are unreachable for it and EVERY worker
@@ -6830,6 +6884,8 @@ test_nonterminal_stale_pause_transitions_reclassify_unchanged_hash
 test_declared_pause_outranks_an_active_run
 test_declared_pause_outranks_a_live_background_shell
 test_declared_pause_still_rechecks_and_undeclared_silence_still_surfaces
+test_validation_restart_failure_names_the_failing_task
+test_validation_restart_failure_does_not_starve_slow_checks
 test_nonterminal_stale_repairs_missing_or_corrupt_timer
 test_wedge_escalation_deferred_while_worktree_is_written
 test_write_deferral_resurfaces_on_the_bounded_cadence

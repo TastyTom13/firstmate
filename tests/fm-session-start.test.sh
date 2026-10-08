@@ -1625,6 +1625,58 @@ SH
 
 # --- composition: real scripts run, not reimplemented ------------------------
 
+test_validation_restart_resume_is_listed_in_digest() {
+  local rec root home fakebin out resume
+  rec=$(new_world validation-restart-resume)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  resume="$fakebin/fm-validation-restart-resume"
+  cat > "$resume" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' alpha-worker beta-worker
+SH
+  chmod +x "$resume"
+
+  out=$(FM_VALIDATION_RESTART_RESUME_BIN="$resume" \
+    run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+
+  assert_contains "$out" "VALIDATION_RESTART_RESUME: resumed alpha-worker beta-worker" \
+    "session-start digest did not list the automatically resumed workers"
+  pass "session-start digest lists validation workers resumed after a daemon restart"
+}
+
+test_validation_restart_partial_failure_lists_resumed_and_error() {
+  local rec root home fakebin out resume
+  rec=$(new_world validation-restart-partial)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  resume="$fakebin/fm-validation-restart-resume"
+  cat > "$resume" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' alpha-worker
+printf '%s\n' 'fm-validation-restart-resume: steer failed for beta-worker run 01RUN' >&2
+exit 1
+SH
+  chmod +x "$resume"
+
+  out=$(FM_VALIDATION_RESTART_RESUME_BIN="$resume" \
+    run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+
+  assert_contains "$out" "VALIDATION_RESTART_RESUME: failed" \
+    "partial failure was not reported as failed"
+  assert_contains "$out" "steer failed for beta-worker run 01RUN" \
+    "partial failure dropped the failing task diagnostic"
+  assert_contains "$out" "VALIDATION_RESTART_RESUME: resumed before failure alpha-worker" \
+    "partial failure dropped the tasks already resumed"
+  pass "session-start digest reports both the failure and tasks resumed before it"
+}
+
 test_composition_invokes_real_scripts() {
   local rec root home fakebin out
   rec=$(new_world composition)
@@ -3043,6 +3095,8 @@ test_endpoint_read_hang_is_bounded_and_reported
 test_endpoint_bound_rejects_padded_zero
 test_perl_timeout_fallback_reports_signal_death_nonzero
 test_abnormal_digest_death_banners_and_exits_zero
+test_validation_restart_resume_is_listed_in_digest
+test_validation_restart_partial_failure_lists_resumed_and_error
 test_composition_invokes_real_scripts
 test_branch_outcome_replay_respects_captain_barrier_and_lease_sweep
 test_non_pi_session_start_leaves_branch_state_untouched
