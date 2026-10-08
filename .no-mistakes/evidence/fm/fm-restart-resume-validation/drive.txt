@@ -1,0 +1,14 @@
+$ (not-detected: worker-side failure) bin/fm-validation-restart-resume.sh
+exit=0
+send.log:
+(empty, no steer)
+
+$ (detected: daemon shutting down) bin/fm-validation-restart-resume.sh
+restart-task
+exit=0
+send.log:
+SEND: restart-task The validation daemon restarted and ended no-mistakes run 01RESTARTEDRUN0000000000000 with "daemon shutting down". Resume validation now by invoking /no-mistakes again, then follow the current axi gate help until the PR is ready. This restart is not a code failure.
+
+$ (repeat scan, same episode)
+exit=0
+send.log lines:        1

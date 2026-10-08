@@ -1,0 +1,23 @@
+--- ordinary failure (expect no output, no send)
+exit=0
+--- restart signature (expect t1 resumed)
+t1
+exit=0
+--- repeat scan (expect nothing, no 2nd steer)
+exit=0
+--- send.log:
+t1
+The validation daemon restarted and ended no-mistakes run RUN123 with "daemon shutting down". Resume validation now by invoking /no-mistakes again, then follow the current axi gate help until the PR is ready. This restart is not a code failure.
+--- session-start digest line check:
+t1.meta
+--- delivered PR, only ci failed (expect none, no send)
+exit=0
+--- dead worker (expect none)
+exit=0
+--- send.log exists?
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-vr.SBj3wo/send.log: No such file or directory
+--- failing send (expect exit 1 + diagnostic, no receipt)
+boom
+fm-validation-restart-resume: steer failed for t1 run RUN123
+exit=1
+no receipt

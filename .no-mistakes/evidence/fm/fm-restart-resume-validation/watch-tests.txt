@@ -1,0 +1,2 @@
+ok - a failed validation restart auto-resume wakes with the failing task's diagnostic and logs the resumed ones
+ok - a failing validation restart auto-resume does not starve the slow checks in the same cycle
