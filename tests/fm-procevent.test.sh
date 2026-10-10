@@ -3286,6 +3286,44 @@ assert_contains "$out" "complete: yes" "an attachments block made a list capture
   || fail "a list row with an attachments block lost its keyed answer"
 pass "list rows keep their keyed answers whatever shape their attachments take"
 
+UTF_TABULAR="$TMP_ROOT/lavish-utf8-tabular"
+UTF_LIST="$TMP_ROOT/lavish-utf8-list"
+cat > "$UTF_TABULAR" <<'EOF'
+session:
+  status: feedback
+prompts[2]{uid,prompt,selector,tag,text}:
+  "ua","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"q-utf\",\"selection\":\"approve\",\"note\":\"café and — dash\"}","section#a button",choice,"Approve café"
+  "ur","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"q-utf-r\",\"selection\":\"reconcile\",\"note\":\"café and — dash\"}","section#r button",choice,"Reconcile café"
+EOF
+cat > "$UTF_LIST" <<'EOF'
+session:
+  status: feedback
+prompts[2]:
+  - uid: "ua"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"q-utf\",\"selection\":\"approve\",\"note\":\"café and — dash\"}"
+    selector: "section#a button"
+    tag: choice
+    text: "Approve café"
+  - uid: "ur"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"q-utf-r\",\"selection\":\"reconcile\",\"note\":\"café and — dash\"}"
+    selector: "section#r button"
+    tag: choice
+    text: "Reconcile café"
+EOF
+for command in read answers reconciles; do
+  tabular_out=$("$ROOT/bin/fm-procevent-lavish.sh" "$command" "$UTF_TABULAR" 2>&1) \
+    || fail "$command failed on a non-ASCII tabular result"
+  list_out=$("$ROOT/bin/fm-procevent-lavish.sh" "$command" "$UTF_LIST" 2>&1) \
+    || fail "$command failed on a non-ASCII list result"
+  [ "$list_out" = "$tabular_out" ] \
+    || fail "$command differs between non-ASCII tabular and list results"
+done
+[ "$("$ROOT/bin/fm-procevent-lavish.sh" answers "$UTF_LIST")" = $'q-utf\tapprove\tApprove café' ] \
+  || fail "a non-ASCII list result lost its keyed answer or mangled its label"
+[ "$("$ROOT/bin/fm-procevent-lavish.sh" reconciles "$UTF_LIST")" = $'q-utf-r\tcafé and — dash' ] \
+  || fail "a non-ASCII list result lost its keyed reconciliation or mangled its note"
+pass "non-ASCII list results keep byte-identical keyed answers and reconciliations"
+
 FEEDBACK_RESULT="$TMP_ROOT/lavish-feedback-list-result"
 cat > "$FEEDBACK_RESULT" <<'EOF'
 session:

@@ -701,6 +701,7 @@ LAVISH_RESULT_READER='
         $$bad_ref = 1;
         return "";
       }
+      utf8::encode($value);
       return $value;
     }
     return $raw;
