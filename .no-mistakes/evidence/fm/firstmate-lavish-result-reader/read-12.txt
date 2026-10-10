@@ -1,0 +1,386 @@
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 52
+presented_items: 52
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: true
+annotation_count: 52
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 52
+element_uid: 1
+element_selector: div#bb-call > div:nth-of-type(1) > div > form
+tag: choice
+text:
+| Qinecsa: confirm the reseeds ran -> done
+ANNOTATION 2 of 52
+element_uid: 2
+element_selector: div#bb-call > div:nth-of-type(2) > div > form
+tag: choice
+text:
+| Website copy: sign-off answered, close this -> done
+ANNOTATION 3 of 52
+element_uid: 3
+element_selector: div:nth-of-type(3) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| The sector deep dive and CEO/COO target company map is complete and waiting for your look.
+prompt:
+| Believe this lies at the foundation of the plan that we created, which in terms of design is much more advanced. So, I wonder to which extent we should keep or close this research
+ANNOTATION 4 of 52
+element_uid: 5
+element_selector: div#bb-call > div:nth-of-type(3) > div > form
+tag: choice
+text:
+| Qinecsa PV sector map: close the board -> closed
+ANNOTATION 5 of 52
+element_uid: 6
+element_selector: div:nth-of-type(4) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Phone capture and the app rebuild both need full Xcode to build the audio library. This Mac has only the command line tools. Two tasks sit parked on it.
+prompt:
+| I need to update my Mac OS software before I can install Xcode. I will do that tonight and then proceed with installing Xcode
+ANNOTATION 6 of 52
+element_uid: 7
+element_selector: div:nth-of-type(5) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| 397 GB is leftover Docker test databases, 135 GB is 63 finished worker copies, all merged or on GitHub. A not-used proof runs before each removal.
+prompt:
+| We already pruned this so it feels like this is old news
+ANNOTATION 7 of 52
+element_uid: 8
+element_selector: div#bb-call > div:nth-of-type(5) > div > form
+tag: choice
+text:
+| Disk: free about 530 GB -> both
+ANNOTATION 8 of 52
+element_uid: 9
+element_selector: div#bb-call > div:nth-of-type(6) > div > form
+tag: choice
+text:
+| Runners: 12 down to 8 -> yes
+ANNOTATION 9 of 52
+element_uid: 11
+element_selector: div:nth-of-type(7) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Report at data/forge-guide-library-provider-pick/report.md. Capture flow is blocked until these are set.
+prompt:
+| They can't find the report that you're talking about and this is not enough context for me to know if I agree. So you need to give me enough info so I can make that decision. This is feedback I've given you more often already on other cards. So I want you to make sure that every time in the future when you give me such questions, you give me the context and relevant info I need to make an informed decision
+ANNOTATION 10 of 52
+element_uid: 12
+element_selector: div#bb-call > div:nth-of-type(7) > div > form
+tag: choice
+text:
+| Guide library: four answers and MailerLite -> answers
+ANNOTATION 11 of 52
+element_uid: 13
+element_selector: div:nth-of-type(8) > div > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(2)
+tag: span
+text:
+| Judge the cover on http://127.0.0.1:4387/session/cbb0a37a58db1786, upload it, and say whether the same design becomes the website share card.
+prompt:
+| I made some comments on the deck that designed the cover, and we'll go through one last iteration for the final version
+ANNOTATION 12 of 52
+element_uid: 14
+element_selector: div#bb-call > div:nth-of-type(8) > div > form
+tag: choice
+text:
+| LinkedIn: cover and company page -> changes
+ANNOTATION 13 of 52
+element_uid: 15
+element_selector: div:nth-of-type(9) > div > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(2)
+tag: span
+text:
+| Runbook http://127.0.0.1:4387/session/6ee88eef026f6b28, then cd /Users/tomas/firstmate/projects/mentum && pnpm vendors:check
+prompt:
+| I can complete this only after we have bought the new domain name, since Mentum is no longer an option because someone else has recently created a mentorship platform with the Mentum name, which by the way, I find very suspicious. It feels like AI has given them the same suggestion I came up with Because of this info then becoming accessible to others by being shared with the anthropic server
+ANNOTATION 14 of 52
+element_uid: 16
+element_selector: div#bb-call > div:nth-of-type(9) > div > form
+tag: choice
+text:
+| Mentum: vendor keys and admin -> later
+ANNOTATION 15 of 52
+element_uid: 17
+element_selector: div:nth-of-type(10) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Runbook data/runbooks-2026-10-02/1-send-lillian-and-rich-emails.md. Only you can send.
+prompt:
+| I sent the email to both of them, but neither of them replied. Can you check if these decks that were shared were opened? I know that we created some kind of admin or analytics panel so that we could view this across the different decks, but I can't find it anymore. Can you make it easier accessible based on whether the decks were opened or not? I will need to send the follow-up email either referring to us seeing that they've opened the deck or sending the email from a different account if this email is still not warmed up properly enough yet. Which I'm also curious about if you can see that what the spam score or indicator is. I believe that should be visible somewhere
+ANNOTATION 16 of 52
+element_uid: 19
+element_selector: div#bb-call > div:nth-of-type(10) > div > form
+tag: choice
+text:
+| Send Lillian and Rich from Zoho -> later
+ANNOTATION 17 of 52
+element_uid: 20
+element_selector: div:nth-of-type(11) > div > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(2)
+tag: span
+text:
+| From Doc Creator: pnpm seed:thijs-verheul-proposal -- --apply --force, then open https://decks.mindshake.io/thijs-verheul
+prompt:
+| I looked at the deck and I still have a few comments. For instance, I wonder if the companies that you're highlighting we worked with are the most relevant companies to Mentum given the industries that this investor is active in, and also given the companies that we want to highlight based on our client list for which I would refer you to so the website. We've recently added a few companies to the client list, so maybe that would also affect the companies that you Mentum here. For example, I noticed that Giga storage is missing. So think that the title on the first slide is a bit confusing because I haven't actually seen a vacancy for a CFO. So I'm not entirely sure if it makes sense to Mention "then the first CFO" in the title: "Hippie, hacker, hustler. Then the first CFO."  We need to come up with something better
+ANNOTATION 18 of 52
+element_uid: 21
+element_selector: div#bb-call > div:nth-of-type(12) > div > form
+tag: choice
+text:
+| Philippe deck: one reseed -> done
+ANNOTATION 19 of 52
+element_uid: 22
+element_selector: div#bb-call > div:nth-of-type(13) > div > form
+tag: choice
+text:
+| Cockpit: rerun the installer -> done
+ANNOTATION 20 of 52
+element_uid: 23
+element_selector: div:nth-of-type(14) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Needed for approve-by-email. Create firstmate@mindshake.io, enable IMAP, app password, four values into the home .env.
+prompt:
+| I don't fully understand why this idea keeps returning when we already discussed that this idea might not be possible because I am only able to create aliases for the main email tomas@mindshake.io And in order to create a separate user account, I need to pay for an additional subscription, which at this point I'm not convinced is enough added value to pay for, considering we already have the separate Gmail account that our first mate can read and mail from (info.longbird@gmail.com). If you think we still need it, please explain why. Otherwise, come up with an alternative solution
+ANNOTATION 21 of 52
+element_uid: 24
+element_selector: div:nth-of-type(15) > div > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(2)
+tag: span
+text:
+| http://127.0.0.1:4387/session/c6fed7b115f3a711
+prompt:
+| These ones don't work: Tech Funding News, 10X EBITDA, 
+| 
+| This one only has an rss feed, no newsletter: https://irishtechnews.ie/feed/
+| 
+| Some of the signups are for substack pages. Can you read Substacks posts as well? 
+| 
+| Are you sure you didn't miss any other relevant newsletters in our signups? Fo example some mentioned here (for inspiration, but there might be more:) https://dupple.com/blog/best-tech-newsletters  https://www.thebilig.com/blog/navigating-the-transformation-top-10-tech-newsletters-to-stay-ahead-in-2026 https://resources.plainenglish.io/best-tech-newsletters 
+| 
+| I signed up to all the others
+ANNOTATION 22 of 52
+element_uid: 25
+element_selector: div#bb-call > div:nth-of-type(15) > div > form
+tag: choice
+text:
+| 29 newsletter sign-ups -> skip
+ANNOTATION 23 of 52
+element_uid: 26
+element_selector: div:nth-of-type(16) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Which newsletters, journals or feeds to ingest, and which past interviews first.
+prompt:
+| The way I'm seeing it is that there should be a PhD level researcher that is reading every newsletter, every book, every resource, every interview, and constantly tries to interpret the information, store it in the knowledge base in a way that we can retrieve it over time and basically expand our memory and our understanding of the market, the industries, the solutions, and this information should be used anywhere where it can be helpful. Writing our own newsletters, creating social media content, improving proposals, making them more specific, improving the questions we asked from clients or candidates or anywhere else where it could be useful
+ANNOTATION 24 of 52
+element_uid: 27
+element_selector: div#bb-call > div:nth-of-type(16) > div > form
+tag: choice
+text:
+| Knowledge library: which feeds -> list
+ANNOTATION 25 of 52
+element_uid: 28
+element_selector: div#bb-call > div:nth-of-type(17) > div > form
+tag: choice
+text:
+| Lens: pilot topic and first push -> sunscreen
+ANNOTATION 26 of 52
+element_uid: 29
+element_selector: div#bb-call > div:nth-of-type(18) > div > form
+tag: choice
+text:
+| Soma domain and Majid go -> wait
+ANNOTATION 27 of 52
+element_uid: 30
+element_selector: div:nth-of-type(18) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Soma has Vercel set up and no domain. Majid has no hosting and majid.fit is unreachable.
+prompt:
+| Consider these two projects to be benched until I tell you. You don't have to service them as work until I remind you to work on them
+ANNOTATION 28 of 52
+element_uid: 31
+element_selector: div#bb-call > div:nth-of-type(19) > div > form
+tag: choice
+text:
+| Cockpit phone: calls C2 to C6 -> recommended
+ANNOTATION 29 of 52
+element_uid: 32
+element_selector: div#bb-call > div:nth-of-type(20) > div > form
+tag: choice
+text:
+| Scout: may confidence ever skip a click -> recommended
+ANNOTATION 30 of 52
+element_uid: 33
+element_selector: div:nth-of-type(21) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| You chose to change some of the D9 to D16 defaults but not which.
+prompt:
+| I don't remember which choices you are referring to, so I can provide enough input to make a decision. Again, like I said in one of the previous cards, you need to give me enough context to make an informed decision always
+ANNOTATION 31 of 52
+element_uid: 34
+element_selector: div#bb-call > div:nth-of-type(21) > div > form
+tag: choice
+text:
+| Scout intelligence lane B: which defaults change -> list
+ANNOTATION 32 of 52
+element_uid: 35
+element_selector: div#bb-call > div:nth-of-type(22) > div > form
+tag: choice
+text:
+| Value creator: preview scope -> three
+ANNOTATION 33 of 52
+element_uid: 36
+element_selector: div:nth-of-type(23) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Optional now that Mentum CI runs on the Mac. Needs the laptop in hand.
+prompt:
+| I  thought this was already running and working. If it isn't, please tell me how to fix it or fix it for me
+ANNOTATION 34 of 52
+element_uid: 37
+element_selector: div:nth-of-type(24) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| The two briefing links are readable slugs. Before a candidate gets one, they must move to unguessable ones.
+prompt:
+| I don't know if these need to be unguessable links to be honest. If you think they should be, please explain why
+ANNOTATION 35 of 52
+element_uid: 38
+element_selector: div#bb-call > div:nth-of-type(24) > div > form
+tag: choice
+text:
+| Qinecsa briefings: before any candidate send -> not_yet
+ANNOTATION 36 of 52
+element_uid: 39
+element_selector: div:nth-of-type(25) > div > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(2)
+tag: span
+text:
+| Open http://127.0.0.1:4387/session/ee6c68a88f857539 and choose, or type the headline and title here.
+prompt:
+| I give feedback within the deck servicing the copy suggestions itself
+ANNOTATION 37 of 52
+element_uid: 41
+element_selector: div#bb-call > div:nth-of-type(25) > div > form
+tag: choice
+text:
+| Website: pick the home headline and page title -> typed
+ANNOTATION 38 of 52
+element_uid: 42
+element_selector: div#bb-call > div:nth-of-type(26) > div > form
+tag: choice
+text:
+| Mailbox check fix: already merged, close -> done
+ANNOTATION 39 of 52
+element_uid: 43
+element_selector: div#bb-call > div:nth-of-type(27) > div > form
+tag: choice
+text:
+| Qinecsa fact check: read and close -> done
+ANNOTATION 40 of 52
+element_uid: 44
+element_selector: div:nth-of-type(28) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Hosted GitHub runners were refused on 5 October over payment or spending limit. All CI now runs on your Mac runners, so this only matters if you want hosted runners back.
+prompt:
+| We made a mistake which caused us to use all our Github tokens spent for the month within four days. We should have fixed the issue that caused this problem so that it doesn't happen again next month, and you should have stored the memory that the tokens reset each month at the beginning of the new month, and in that moment in time, we can use both Github CI runners as runners on our Mac and the HP laptop as a second backup. For now and the rest of this month, and anytime Github tokens run out, the Mac is our main way to run CI runners with the HP laptop being the backup still
+ANNOTATION 41 of 52
+element_uid: 45
+element_selector: div#bb-call > div:nth-of-type(28) > div > form
+tag: choice
+text:
+| GitHub billing: still needed? -> skip
+ANNOTATION 42 of 52
+element_uid: 46
+element_selector: div#bb-call > div:nth-of-type(29) > div > form
+tag: choice
+text:
+| Scout: merge the nodemailer security upgrade? -> merge
+ANNOTATION 43 of 52
+element_uid: 47
+element_selector: div:nth-of-type(30) > div > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(2)
+tag: span
+text:
+| Follow the runbook at http://127.0.0.1:4387/session/6ee88eef026f6b28, then run pnpm vendors:check in the Mentum folder.
+prompt:
+| Who already asked me this question, I think, in an earlier card in this deck. I can only continue this once we have bought the new domain, which we haven't yet. And given that we now are sure that we need to change the Mentum name, we need to do that first before we can continue with this
+ANNOTATION 44 of 52
+element_uid: 48
+element_selector: div:nth-of-type(31) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| The page pack is ready to paste. Defaults applied: industry Executive Search Services, tagline A headline-first, type Privately held, post 3 waits for the site.
+prompt:
+| I can't see from here which changes you are referring to exactly. I don't have enough context
+ANNOTATION 45 of 52
+element_uid: 50
+element_selector: div:nth-of-type(32) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| The final cover file is ready in the Forge task folder (1512 by 256). Uploading to LinkedIn is your step.
+prompt:
+| I gave feedback to the agent that is working on this design in its own deck, and it seems to still be busy with the final adjustments and redesign
+ANNOTATION 46 of 52
+element_uid: 51
+element_selector: div:nth-of-type(33) > div > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(2)
+tag: span
+text:
+| Review at http://127.0.0.1:4387/session/cbb0a37a58db1786 and answer there, or here.
+prompt:
+| I am still waiting on the final redesign based on the comments I made in this deck: http://127.0.0.1:4387/session/cbb0a37a58db1786
+ANNOTATION 47 of 52
+element_uid: 52
+element_selector: div#bb-call > div:nth-of-type(33) > div > form
+tag: choice
+text:
+| LinkedIn cover round 13: your judgement -> changes
+ANNOTATION 48 of 52
+element_uid: 53
+element_selector: div:nth-of-type(34) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Replace the home page link preview image with the LinkedIn cover design. The site headline still differs from the card's line.
+prompt:
+| We should only ship this after I have confirmed I'm 100% happy with the cover design
+ANNOTATION 49 of 52
+element_uid: 54
+element_selector: div:nth-of-type(35) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Three details before building: is the 60-day free window per subscriber or one global window; the legal controller name, address and reply mailbox; the full guide price and checkout route. Recommendation: one global window, MailerLite for w
+prompt:
+| They don't understand these comments and don't know how to answer them because again, I don't have enough context to answer this and make an informed decision
+ANNOTATION 50 of 52
+element_uid: 55
+element_selector: div:nth-of-type(36) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| BrainToss intake is merged but asleep. It wakes once you add the +toss destination inside the BrainToss app. Then captures flow in and the 19:00 digest starts.
+prompt:
+| To be more clear in your instructions because I don't exactly understand and I am not entirely sure this would work based on my understanding. So be more explicit
+ANNOTATION 51 of 52
+element_uid: 56
+element_selector: div:nth-of-type(37) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| 4,208 test-database volumes since 8 September, because Scout and Bull test scripts remove containers without their volumes. About 13 GB a day on busy days.
+prompt:
+| I thought we already fixed this prune. Please verify again if this is indeed still relevant and we haven't already cleaned this up. If we haven't, then go ahead and follow your recommendation
+ANNOTATION 52 of 52
+element_uid: 57
+element_selector: div:nth-of-type(38) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| All 63 are merged or on GitHub. Also three scratch copies (2.7 GB), a retention rule for the data folder, and the logged-in Facebook Chrome profile (1.5 GB). Overlaps the 530 GB card: that one is the big sweep, this one is the task-copy par
+prompt:
+| I also thought we had already cleaned this up. Please investigate also if this is still relevant. And if yes, then take the recommended next steps
+END ANNOTATIONS
+END LAVISH RESULT (52 of 52)

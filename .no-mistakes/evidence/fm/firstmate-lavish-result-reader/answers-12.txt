@@ -1,0 +1,26 @@
+qinecsa-reseed-captain-step	done	Qinecsa: confirm the reseeds ran -> done	done
+website-copy-version-pick	done	Website copy: sign-off answered, close this -> done	done
+qinecsa-pv-map-board-close	closed	Qinecsa PV sector map: close the board -> closed	done
+disk-reclaim-approval	both	Disk: free about 530 GB -> both	done
+mac-runner-reduction-approval	yes	Runners: 12 down to 8 -> yes	done
+forge-guide-library-captain-decisions	answers	Guide library: four answers and MailerLite -> answers	done
+linkedin-cover-r12-judge	changes	LinkedIn: cover and company page -> changes	done
+mentum-vendor-keys-captain-add	later	Mentum: vendor keys and admin -> later	done
+captain-run-r1-send-lillian-rich-emails	later	Send Lillian and Rich from Zoho -> later	done
+philippe-deck-reseed-and-check	done	Philippe deck: one reseed -> done	done
+cockpit-install-captain-step	done	Cockpit: rerun the installer -> done	done
+captain-newsletter-signups-batch	skip	29 newsletter sign-ups -> skip	done
+knowledge-sources-list	list	Knowledge library: which feeds -> list	done
+lens-pilot-topic-and-push	sunscreen	Lens: pilot topic and first push -> sunscreen	done
+forge-soma-domain-majid-go	wait	Soma domain and Majid go -> wait	done
+cockpit-mobile-c2-c6-calls	recommended	Cockpit phone: calls C2 to C6 -> recommended	done
+scout-learning-loop-autonomy-policy	recommended	Scout: may confidence ever skip a click -> recommended	done
+scout-intelligence-lane-b-build	list	Scout intelligence lane B: which defaults change -> list	release
+brain-valuecreator-preview	three	Value creator: preview scope -> three	release
+doc-creator-qinecsa-briefings-unguessable-slugs	not_yet	Qinecsa briefings: before any candidate send -> not_yet	release
+forge-website-copy-polish-two-versions	typed	Website: pick the home headline and page title -> typed	release
+firstmate-mail-check-merge-word	done	Mailbox check fix: already merged, close -> done	done
+qinecsa-plan-v3-final-fact-check	done	Qinecsa fact check: read and close -> done	done
+captain-github-billing-fix	skip	GitHub billing: still needed? -> skip	done
+scout-nodemailer-merge-word	merge	Scout: merge the nodemailer security upgrade? -> merge	done
+forge-mindshake-linkedin-page-pack-r6	changes	LinkedIn cover round 13: your judgement -> changes	done

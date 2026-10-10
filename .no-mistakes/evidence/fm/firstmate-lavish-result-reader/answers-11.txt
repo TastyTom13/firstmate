@@ -1,0 +1,4 @@
+ci-workflow-calls	path-based	Scout CI policy: how browser tests run from now on -> path-based	release
+forge-ninkz-share-link-captain-step	later	Ninkz: mint the share link so the showcase can go to the owner -> later	release
+forge-arootah-first-email-captain-step	send	Arootah: send the president the first email -> send	release
+mentum-name-captain-merge	board	Mentum: pick the final name -> board

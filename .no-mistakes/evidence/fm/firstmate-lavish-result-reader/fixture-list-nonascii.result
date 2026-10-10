@@ -1,0 +1,26 @@
+session:
+  file: /x/b.html
+  status: feedback
+  session_ended: true
+  ended_by: user
+prompts[3]:
+  - uid: "1"
+    prompt: "Captain's Call answer - Approve café: approve\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"q-approve\",\n  \"selection\": \"approve\",\n  \"note\": \"café and — dash “q”\",\n  \"close\": \"done\"\n}"
+    selector: "div > form"
+    tag: choice
+    attachments[0]:
+    text: "Approve café -> approve"
+  - uid: "2"
+    prompt: "Captain's Call answer - x: reconcile\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"q-recon\",\n  \"selection\": \"reconcile\",\n  \"note\": \"café\",\n  \"close\": \"done\"\n}"
+    selector: "div > form"
+    tag: choice
+    attachments[1]:
+      - kind: "img"
+    text: "x -> reconcile"
+  - uid: "3"
+    prompt: "Captain's Call answer - plain: done\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"q-plain\",\n  \"selection\": \"done\",\n  \"note\": \"\",\n  \"close\": \"done\"\n}"
+    selector: "div > form"
+    tag: choice
+    attachments[1]{name,path}:
+      a.png,/tmp/a.png
+    text: "plain -> done"

@@ -1,0 +1,9 @@
+session:
+  file: /x/b.html
+  status: feedback
+  session_ended: true
+  ended_by: user
+prompts[3]{uid,prompt,selector,tag,text}:
+  1,"Captain's Call answer - Approve café: approve\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"q-approve\",\n  \"selection\": \"approve\",\n  \"note\": \"café and — dash “q”\",\n  \"close\": \"done\"\n}","div > form",choice,"Approve café -> approve"
+  2,"Captain's Call answer - x: reconcile\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"q-recon\",\n  \"selection\": \"reconcile\",\n  \"note\": \"café\",\n  \"close\": \"done\"\n}","div > form",choice,"x -> reconcile"
+  3,"Captain's Call answer - plain: done\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"q-plain\",\n  \"selection\": \"done\",\n  \"note\": \"\",\n  \"close\": \"done\"\n}","div > form",choice,"plain -> done"

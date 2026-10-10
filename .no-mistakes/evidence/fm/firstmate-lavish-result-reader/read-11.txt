@@ -1,0 +1,83 @@
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 9
+presented_items: 9
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 9
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 9
+element_uid: 1
+element_selector: div#bb-call > div:nth-of-type(1) > div > form
+tag: choice
+text:
+| Scout CI policy: how browser tests run from now on -> path-based
+ANNOTATION 2 of 9
+element_uid: 2
+element_selector: div:nth-of-type(2) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| The latest InPost report records your answers: one deck not two; six-month replacement; keep her "replacing one solution" quote; full search not map-and-shortlist; stated Italian test method with SOW and DPA; 20 percent fee in thirds. The b
+prompt:
+| When I open the live link it already looks like it's correct and updated so I think your records are stale please verify: https://decks.mindshake.io/inpost
+ANNOTATION 3 of 9
+element_uid: 4
+element_selector: div:nth-of-type(3) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Three polished Ninkz concepts are built and tested on a protected Vercel preview. By design Ninkz is never public; the owner sees it through one "anyone with the link" URL that only you can create in Vercel. After that the worker verifies f
+prompt:
+| I already used this shareable link option for the deck that I shared with the CEO Rich Bello. Is there another way we can share this link in a safe way with that CEO? And also, I don't see the project published at all on Vercel. So, even if I wanted to, I don't see how I could create a shareable link. So, you have to be more specific or think of a better solution
+ANNOTATION 4 of 9
+element_uid: 5
+element_selector: div#bb-call > div:nth-of-type(3) > div > form
+tag: choice
+text:
+| Ninkz: mint the share link so the showcase can go to the owner -> later
+ANNOTATION 5 of 9
+element_uid: 6
+element_selector: div:nth-of-type(4) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| The Arootah concept site is finished and sits behind a login. The president has never received it. A fresh protected link plus one email from you is all that stands between the work and client value.
+prompt:
+| I already sent the email to the CEO
+ANNOTATION 6 of 9
+element_uid: 7
+element_selector: div#bb-call > div:nth-of-type(4) > div > form
+tag: choice
+text:
+| Arootah: send the president the first email -> send
+ANNOTATION 7 of 9
+element_uid: 9
+element_selector: div:nth-of-type(5) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| The live link still shows the old "2 partners" claim and the old ending. The corrected deck is merged. One command from the Doc Creator folder fixes it: pnpm seed:thijs-verheul-proposal -- --apply --force. The force flag replaces any studio
+prompt:
+| I'm getting this error when trying to run this command: ➜  scout git:(dev) npm seed:thijs-verheul-proposal -- --apply --force.
+| Unknown command: "seed:thijs-verheul-proposal"
+| 
+| To see a list of supported npm commands, run:
+|   npm help
+| ➜  scout git:(dev)
+ANNOTATION 8 of 9
+element_uid: 11
+element_selector: div:nth-of-type(6) > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)
+tag: span
+text:
+| Vendor branding, domains and the launch all wait on the name. Research shortlist: LivedWay (recommended by the research), Fellowward, BetterAsked, OnwardKin, WhoWentFirst. Your hearts on the brainstorm board add to it. Domain availability i
+prompt:
+| I went through all of the names and I picked my favorites but this is nowhere near as extensive of a list as I expected and it also doesn't contain the type of names that I think we should be looking for. So you need to do a much better job here are the words that I liked continue and do what you think a branding expert and naming expert would do and I've provided you resources to understand what this means in the past when we were trying to do this for what became Mindshake.
+ANNOTATION 9 of 9
+element_uid: 12
+element_selector: div#bb-call > div:nth-of-type(6) > div > form
+tag: choice
+text:
+| Mentum: pick the final name -> board
+END ANNOTATIONS
+END LAVISH RESULT (9 of 9)
