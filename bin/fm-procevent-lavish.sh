@@ -650,14 +650,14 @@ LAVISH_RESULT_READER='
         push @parsed, \%row;
       }
     } else {
-      my (@rows, $row, $bad, $nested_rows);
+      my (@rows, $row, $bad, $in_attachments);
       for my $i ($start .. $#lines) {
         my $line = $lines[$i];
         last if $line !~ /^\s/;
-        if ($nested_rows && $line =~ /^      /) {
-          $nested_rows--;
+        if ($in_attachments && $line =~ /^      /) {
           next;
         }
+        $in_attachments = 0;
         if ($line =~ /^  - ([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/) {
           push @rows, [$row, $bad] if defined $row;
           last if @rows >= $want;
@@ -670,8 +670,8 @@ LAVISH_RESULT_READER='
           my ($field, $raw) = ($1, $2);
           $bad = 1 if exists $row->{$field};
           $row->{$field} = parse_list_scalar($raw, \$bad);
-        } elsif (defined($row) && $line =~ /^    attachments\[(\d+)\]\{[^}]*\}:\s*$/) {
-          $nested_rows = $1;
+        } elsif (defined($row) && $line =~ /^    attachments\[\d+\](?:\{[^}]*\})?:\s*$/) {
+          $in_attachments = 1;
         } elsif ($line =~ /^\s*$/) {
           next;
         } else {

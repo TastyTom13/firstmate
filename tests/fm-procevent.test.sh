@@ -3248,6 +3248,59 @@ assert_contains "$("$ROOT/bin/fm-procevent-lavish.sh" read "$LIST_RESULT")" "| S
   || fail "a list result did not produce its keyed reconciliation"
 pass "tabular and list Lavish results have identical read, classify, answer, and reconcile behavior"
 
+ATTACH_RESULT="$TMP_ROOT/lavish-attachments-result"
+cat > "$ATTACH_RESULT" <<'EOF'
+session:
+  status: feedback
+prompts[3]:
+  - uid: "empty"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"q-empty\",\"selection\":\"approve\",\"note\":\"\"}"
+    selector: "section#a button"
+    tag: choice
+    text: "Approve empty"
+    attachments[0]:
+  - uid: "dashed"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"q-dashed\",\"selection\":\"approve\",\"note\":\"\"}"
+    selector: "section#b button"
+    tag: choice
+    text: "Approve dashed"
+    attachments[2]:
+      - id: "artifact-a"
+        path: "/synthetic/a"
+      - id: "artifact-b"
+        path: "/synthetic/b"
+  - uid: "tabular"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"q-tabular\",\"selection\":\"approve\",\"note\":\"\"}"
+    selector: "section#c button"
+    tag: choice
+    text: "Approve tabular"
+    attachments[1]{id,type,path}:
+      "artifact-c","text","/synthetic/c"
+EOF
+out=$("$ROOT/bin/fm-procevent-lavish.sh" read "$ATTACH_RESULT") \
+  || fail "read failed on list rows carrying attachments"
+assert_contains "$out" "presented_items: 3" "an attachments block cost a list row its place"
+assert_contains "$out" "malformed_items: 0" "an attachments block made a list row malformed"
+assert_contains "$out" "complete: yes" "an attachments block made a list capture incomplete"
+[ "$("$ROOT/bin/fm-procevent-lavish.sh" answers "$ATTACH_RESULT")" = "$(printf 'q-empty\tapprove\tApprove empty\nq-dashed\tapprove\tApprove dashed\nq-tabular\tapprove\tApprove tabular')" ] \
+  || fail "a list row with an attachments block lost its keyed answer"
+pass "list rows keep their keyed answers whatever shape their attachments take"
+
+FEEDBACK_RESULT="$TMP_ROOT/lavish-feedback-list-result"
+cat > "$FEEDBACK_RESULT" <<'EOF'
+session:
+  status: feedback
+feedback[1]:
+  - uid: "choice-f"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"q-feedback\",\"selection\":\"approve\",\"note\":\"\"}"
+    selector: "section#f button"
+    tag: choice
+    text: "Approve feedback block"
+EOF
+[ "$("$ROOT/bin/fm-procevent-lavish.sh" answers "$FEEDBACK_RESULT")" = $'q-feedback\tapprove\tApprove feedback block' ] \
+  || fail "a list result under a feedback block lost its keyed answer"
+pass "answers are read from list rows under a feedback block as well as a prompts block"
+
 cat > "$TABULAR_RESULT" <<'EOF'
 session:
   status: feedback
