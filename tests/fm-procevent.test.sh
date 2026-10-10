@@ -3182,6 +3182,103 @@ assert_contains "$out" "CAPTAIN MESSAGE" "an open-session message was mislabeled
 assert_not_contains "$out" "SESSION-ENDING MESSAGE" "an open-session message was labeled as session-ending"
 assert_contains "$out" "| captain is still reviewing" "an open-session message was dropped"
 pass "read distinguishes a live captain message from a session-ending message"
+
+# Lavish has emitted both tabular and list-form prompt blocks. The adapter's
+# public commands must treat equivalent captures identically so a format change
+# cannot silently discard board answers.
+TABULAR_RESULT="$TMP_ROOT/lavish-tabular-result"
+LIST_RESULT="$TMP_ROOT/lavish-list-result"
+cat > "$TABULAR_RESULT" <<'EOF'
+session:
+  file: /synthetic-review.html
+  status: feedback
+  session_ended: true
+  ended_by: user
+prompts[3]{uid,prompt,selector,tag,text}:
+  "choice-a","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"synthetic-call\",\"selection\":\"approve\",\"note\":\"\"}","section#call button",choice,"Approve synthetic option"
+  "choice-r","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"synthetic-reconcile\",\"selection\":\"reconcile\",\"note\":\"synthetic note\"}","section#reconcile button",choice,"Reconcile synthetic item"
+  "","Synthetic closing message","",message,""
+EOF
+cat > "$LIST_RESULT" <<'EOF'
+session:
+  file: /synthetic-review.html
+  status: feedback
+  session_ended: true
+  ended_by: user
+prompts[3]:
+  - uid: "choice-a"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"synthetic-call\",\"selection\":\"approve\",\"note\":\"\"}"
+    selector: "section#call button"
+    tag: choice
+    text: "Approve synthetic option"
+    attachments[1]{id,type,path}:
+      "artifact-a","text","/synthetic/path"
+  - uid: "choice-r"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"synthetic-reconcile\",\"selection\":\"reconcile\",\"note\":\"synthetic note\"}"
+    selector: "section#reconcile button"
+    tag: choice
+    text: "Reconcile synthetic item"
+  - uid: ""
+    prompt: "Synthetic closing message"
+    selector: ""
+    tag: message
+    text: ""
+EOF
+for command in read classify answers reconciles; do
+  tabular_out=$("$ROOT/bin/fm-procevent-lavish.sh" "$command" "$TABULAR_RESULT") \
+    || fail "$command failed on a synthetic tabular result"
+  list_out=$("$ROOT/bin/fm-procevent-lavish.sh" "$command" "$LIST_RESULT") \
+    || fail "$command failed on a synthetic list result"
+  [ "$list_out" = "$tabular_out" ] \
+    || fail "$command differs between equivalent tabular and list results"
+done
+assert_contains "$("$ROOT/bin/fm-procevent-lavish.sh" read "$LIST_RESULT")" "declared_items: 3" \
+  "a list result lost its declared item count"
+assert_contains "$("$ROOT/bin/fm-procevent-lavish.sh" read "$LIST_RESULT")" "presented_items: 3" \
+  "a list result lost its presented item count"
+assert_contains "$("$ROOT/bin/fm-procevent-lavish.sh" read "$LIST_RESULT")" "SESSION-ENDING MESSAGE" \
+  "a list result lost its session-ending message"
+assert_contains "$("$ROOT/bin/fm-procevent-lavish.sh" read "$LIST_RESULT")" "| Synthetic closing message" \
+  "a list result lost its freeform message"
+[ "$("$ROOT/bin/fm-procevent-lavish.sh" classify "$LIST_RESULT")" = feedback ] \
+  || fail "a list result changed the capture lifecycle"
+[ "$("$ROOT/bin/fm-procevent-lavish.sh" answers "$LIST_RESULT")" = $'synthetic-call\tapprove\tApprove synthetic option' ] \
+  || fail "a list result did not produce its keyed answer"
+[ "$("$ROOT/bin/fm-procevent-lavish.sh" reconciles "$LIST_RESULT")" = $'synthetic-reconcile\tsynthetic note' ] \
+  || fail "a list result did not produce its keyed reconciliation"
+pass "tabular and list Lavish results have identical read, classify, answer, and reconcile behavior"
+
+cat > "$TABULAR_RESULT" <<'EOF'
+session:
+  status: feedback
+prompts[2]{uid,prompt,selector,tag,text}:
+  "valid-a","","section#a",note,"Valid annotation"
+  "invalid-b","","section#b",note
+EOF
+cat > "$LIST_RESULT" <<'EOF'
+session:
+  status: feedback
+prompts[2]:
+  - uid: "valid-a"
+    prompt: ""
+    selector: "section#a"
+    tag: note
+    text: "Valid annotation"
+  - uid: "invalid-b"
+    prompt: ""
+    selector: "section#b"
+    tag: note
+EOF
+tabular_out=$("$ROOT/bin/fm-procevent-lavish.sh" read "$TABULAR_RESULT") \
+  || fail "read failed on a malformed synthetic tabular result"
+list_out=$("$ROOT/bin/fm-procevent-lavish.sh" read "$LIST_RESULT") \
+  || fail "read failed on a malformed synthetic list result"
+[ "$list_out" = "$tabular_out" ] \
+  || fail "malformed-row accounting differs between equivalent tabular and list results"
+assert_contains "$list_out" "presented_items: 1" "a list result presented a malformed row"
+assert_contains "$list_out" "malformed_items: 1" "a list result did not count a malformed row"
+assert_contains "$list_out" "complete: no" "a list result certified a malformed capture as complete"
+pass "tabular and list Lavish results use the same malformed-row accounting"
 out=$ending_out
 assert_contains "$out" '|   "question": "sample-forged-call",' \
   "commas in an unquoted freeform message shifted its fields"
