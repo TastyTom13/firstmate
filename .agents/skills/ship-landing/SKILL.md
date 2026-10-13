@@ -22,6 +22,7 @@ Confirm the base verdict with `bin/fm-base-green.sh <project> [<base branch>]` (
 For any custom `state/<id>.check.sh` you write yourself, keep it an ordinary single-link mode-`0700` file, print one line only when firstmate should wake, print nothing otherwise, finish before `FM_CHECK_TIMEOUT`, then bind its current bytes with `bin/fm-check-register.sh <id>` before the watcher may execute it.
 Retire a custom check only through `bin/fm-check-unregister.sh <id>` (or `bin/fm-teardown.sh` for a spawned task); never hand-compose an `rm` with `$STATE`/`$ID`.
 
+After you rebuild or deploy a landed task's work, run `bin/fm-fleet-ledger.sh live <id> <evidence>` with what proves it is live, such as the deploy URL or build id; it writes nothing while the ledger is off.
 Tear down a ship task only after landing is confirmed.
 A teardown refusal for uncommitted or unlanded work is a stop-and-investigate result, never an obstacle to bypass.
 A teardown refusal naming another task that records the same local copy means the record is stale while that copy is live, so release only this task's own records through the flag the refusal prints instead of forcing.
