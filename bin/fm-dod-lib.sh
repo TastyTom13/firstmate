@@ -46,6 +46,11 @@
 # any runtime environment variable; omitted, no "Built by:" line is rendered.
 # The optional sixth argument <base-branch> renders a "Base branch:" line for a
 # task that ships onto an integration branch rather than the default branch.
+# The optional seventh argument <done-when> is the brief's one-line runnable
+# finish check (bin/fm-brief.sh --done-when owns where Firstmate supplies it):
+# the block repeats it as a "Done when:" line under the contract lines and names
+# it as the task's acceptance check, to be run and cited where the work is
+# reported. Omitted, as a scout promotion does today, the block is unchanged.
 # The block opens with the fixed machine-readable "Delivery contract: mode=<mode>"
 # line that bin/fm-spawn.sh checks a ship brief against; a forge=gerrit block
 # appends " forge=gerrit shape=squash" to that line. The "Ship branch: <branch>"
@@ -407,16 +412,26 @@ There is no pull request, no \`gh-axi\` call, and no forge CI result to report: 
 EOF
 }
 
-fm_dod_block() {  # <mode> <task-id> [branch] [<forge>] [<meta-path>] [<base-branch>]
-  local mode=$1 id=$2 forge=${4:-none} meta=${5:-} base=${6:-}
+fm_dod_block() {  # <mode> <task-id> [branch] [<forge>] [<meta-path>] [<base-branch>] [<done-when>]
+  local mode=$1 id=$2 forge=${4:-none} meta=${5:-} base=${6:-} done_when=${7:-}
   local branch=${3:-fm/$id}
   local paused=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}
   fm_forge_valid_for_mode "$forge" "$mode" fm_dod_block || return 1
   # Each heredoc expands these as ${line:+$line<newline>} glued to the front of
-  # the next line, so an absent base or meta path leaves the block byte-identical
-  # rather than emitting a blank line where the fork line would have gone.
-  local base_line='' built_by_pr='' built_by_nm=''
-  [ -z "$base" ] || base_line="Base branch: $base"
+  # the next line, so an absent base, meta path, or Done when line leaves the
+  # block byte-identical rather than emitting a blank line where it would have gone.
+  local contract_lines='' built_by_pr='' built_by_nm=''
+  [ -z "$base" ] || contract_lines="Base branch: $base"
+  if [ -n "$done_when" ]; then
+    case "$mode" in
+      local-only) contract_lines="${contract_lines:+$contract_lines
+}Done when: $done_when
+This line is this task's acceptance check: before you report it ready, run it on your branch and cite what it showed in your ready report." ;;
+      *) contract_lines="${contract_lines:+$contract_lines
+}Done when: $done_when
+This line is this task's acceptance check: before you report done, run it and cite what it showed in the PR or change description, so the reviewer can treat it as acceptance." ;;
+    esac
+  fi
   if [ -n "$meta" ]; then
     built_by_pr="Before opening the PR, read $meta and turn its \`harness=\`, \`model=\`, and \`effort=\` fields into a trailing PR-body line \`Built by: <harness>/<model> at <effort>\` (an unset model or effort reads back as the literal \`default\`, matching how it was recorded); for example: \`awk -F= '\$1==\"harness\"{h=\$2} \$1==\"model\"{m=\$2} \$1==\"effort\"{e=\$2} END{printf \"Built by: %s/%s at %s\", h, m, e}' $meta\`. Include that exact line, on its own line, in the PR body you pass to \`gh-axi\`."
     built_by_nm="Once no-mistakes reports the PR, read $meta and turn its \`harness=\`, \`model=\`, and \`effort=\` fields into a trailing PR-body line \`Built by: <harness>/<model> at <effort>\` (an unset model or effort reads back as the literal \`default\`, matching how it was recorded); for example: \`awk -F= '\$1==\"harness\"{h=\$2} \$1==\"model\"{m=\$2} \$1==\"effort\"{e=\$2} END{printf \"Built by: %s/%s at %s\", h, m, e}' $meta\`. Append that exact line, on its own line, to the PR body before you report done, where \`<number>\` is the trailing path segment of the PR url: \`body=\$(mktemp) && gh pr view <number> --json body -q .body > \"\$body\"\`, append the \`Built by:\` line to that file, then \`gh-axi pr edit <number> --body-file \"\$body\"\`. Use a fresh \`mktemp\` path, never a fixed name like /tmp/pr-body.md: crewmates ship concurrently on one host, and a shared scratch file lets another task's body overwrite yours."
@@ -427,7 +442,7 @@ fm_dod_block() {  # <mode> <task-id> [branch] [<forge>] [<meta-path>] [<base-bra
 # Definition of done
 Delivery contract: mode=direct-PR forge=gerrit shape=squash
 Ship branch: $branch
-${base_line:+$base_line
+${contract_lines:+$contract_lines
 }This task ships **direct-PR** to a Gerrit review server: you publish the change yourself, without the no-mistakes pipeline.
 Gerrit has no pull requests, so there is nothing to open; publishing creates the change.
 The task is complete only when committed on your branch.
@@ -443,7 +458,7 @@ EOF
 # Definition of done
 Delivery contract: mode=no-mistakes forge=gerrit shape=squash
 Ship branch: $branch
-${base_line:+$base_line
+${contract_lines:+$contract_lines
 }This project's review server is Gerrit: it has no pull requests and no forge CI the pipeline can watch, so **no-mistakes runs here as a review pass that ends at a ready branch**, and you then publish that branch as one change.
 Pass \`--skip push,pr,ci\` on every \`no-mistakes axi run\` for this task, and skip nothing else: \`review\`, \`test\`, \`document\`, and \`lint\` are the whole point of the run.
 Those three are the only steps that reach a forge, and skipping them is a supported outcome, not a degraded one.
@@ -475,7 +490,7 @@ EOF
 # Definition of done
 Delivery contract: mode=direct-PR
 Ship branch: $branch
-${base_line:+$base_line
+${contract_lines:+$contract_lines
 }This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
 Before you push, verify the acceptance criteria with a fresh read of the diff against the task - no subagent - and fix what it finds; nobody else reviews this work before merge.
@@ -495,7 +510,7 @@ EOF
 # Definition of done
 Delivery contract: mode=local-only
 Ship branch: $branch
-${base_line:+$base_line
+${contract_lines:+$contract_lines
 }This task ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`$branch\`. Do NOT push, do NOT open a PR, do NOT merge.
 A \`done:\` is accepted when the named head is on this project's shared local branch, not only on a detached copy; the check tests that head, not merely that a branch moved.
@@ -510,7 +525,7 @@ EOF
 # Definition of done
 Delivery contract: mode=no-mistakes
 Ship branch: $branch
-${base_line:+$base_line
+${contract_lines:+$contract_lines
 }The task is complete only when committed on your branch.
 Before you report it done, run a cheap pre-flight only: the project's typecheck and the test files you touched, plus a production build only when the change adds routes, dependencies, or client/server boundaries.
 Do not run the full test suite, a self-review subagent, or any audit skill: the review pipeline and CI own the full suite, the production build, and the code review.

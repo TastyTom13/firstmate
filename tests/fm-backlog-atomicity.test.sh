@@ -615,6 +615,7 @@ run_ship_spawn() {  # <case-dir> <id>
 run_teardown() {  # <case-dir> <id> [args...]
   local case_dir=$1
   shift
+  fm_test_followups_none "$(home_of "$case_dir")/state/$1.meta"
   FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$(home_of "$case_dir")" \
     PATH="$case_dir/fakebin:$PATH" \
     "$TEARDOWN" "$@" 2>&1
@@ -1089,6 +1090,7 @@ test_completion_targets_a_nested_relative_data_directory() {
   tasks-axi add "$id" "item for $id" --kind ship --file "$backlog" >/dev/null
   tasks-axi start "$id" --file "$backlog" >/dev/null
   write_task_meta "$case_dir" "$id" ship local-only "spawn_gen=spawn-relative-data"
+  fm_test_followups_none "$(home_of "$case_dir")/state/$id.meta"
 
   out=$(cd "$case_dir" && \
     FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$(home_of "$case_dir")" \

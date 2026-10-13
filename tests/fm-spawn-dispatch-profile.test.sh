@@ -1576,9 +1576,9 @@ test_worker_launch_delivers_role_scope() {
       fi
     else
       if [ "$kind" = scout ]; then
-        FM_HOME="$HOME_DIR" "$ROOT/bin/fm-brief.sh" "$id" arbitrary-project-name --scout >/dev/null || fail "scout scaffold failed"
+        FM_HOME="$HOME_DIR" "$ROOT/bin/fm-brief.sh" "$id" arbitrary-project-name --scout --done-when "fixture question" >/dev/null || fail "scout scaffold failed"
       else
-        FM_HOME="$HOME_DIR" "$ROOT/bin/fm-brief.sh" "$id" arbitrary-project-name --mode "$kind" >/dev/null || fail "$kind scaffold failed"
+        FM_HOME="$HOME_DIR" "$ROOT/bin/fm-brief.sh" "$id" arbitrary-project-name --mode "$kind" --done-when "fixture check passes" >/dev/null || fail "$kind scaffold failed"
       fi
       brief="$HOME_DIR/data/$id/brief.md"
       content=$(cat "$brief")

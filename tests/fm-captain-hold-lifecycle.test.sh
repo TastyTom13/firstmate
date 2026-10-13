@@ -69,6 +69,7 @@ run_bearings() {  # <home> [extra args]
 
 run_teardown() {  # <home> <id>
   local home=$1 id=$2
+  fm_test_followups_none "$home/state/$id.meta"
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_CONFIG_OVERRIDE="$home/config" "$TEARDOWN" "$id"
@@ -3209,6 +3210,7 @@ EOF
     "$ROOT/bin/fm-captain-hold.sh" complete "$id" "$id" >/dev/null \
     || fail "completion gate failed for the relocated captain hold"
 
+  fm_test_followups_none "$home/state/$id.meta"
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$data" \
     FM_CONFIG_OVERRIDE="$home/config" "$TEARDOWN" "$id" \
