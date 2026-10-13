@@ -21,10 +21,22 @@ set -u
 PF="$ROOT/bin/fm-public-followup.sh"
 EMIT="$ROOT/bin/fm-public-followup-emit.sh"
 POLL="$ROOT/bin/fm-x-poll.sh"
-TEARDOWN="$ROOT/bin/fm-teardown.sh"
 PROMOTE="$ROOT/bin/fm-promote.sh"
 SESSION_START="$ROOT/bin/fm-session-start.sh"
 TMP_ROOT=$(fm_test_tmproot fm-public-followup)
+# These cases exercise the public-reply guard, not the follow-ups gate
+# bin/fm-teardown.sh applies first, so each teardown here records the task's
+# --none escape on its existing record before running the real script.
+TEARDOWN="$TMP_ROOT/fm-teardown-followups-none.sh"
+cat > "$TEARDOWN" <<SH
+#!/usr/bin/env bash
+meta="\${FM_STATE_OVERRIDE:-\${FM_HOME:-$ROOT}/state}/\$1.meta"
+if [ -f "\$meta" ] && [ ! -L "\$meta" ] && ! grep -q '^followups=' "\$meta"; then
+  printf 'followups=none\\n' >> "\$meta"
+fi
+exec '$ROOT/bin/fm-teardown.sh' "\$@"
+SH
+chmod +x "$TEARDOWN"
 PF_TEST_NOW=1787539200
 PF_TEST_LOCK_HOLDER=
 
