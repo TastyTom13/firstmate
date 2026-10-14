@@ -44,6 +44,7 @@ The worker does not invent a component when the system already provides one.
 
 Copy must be professional, warm, human and direct, in the captain's own voice, and never AI-sounding.
 Where the task writes copy, the worker uses the copywriting skill.
+A review board never caps, slices or truncates text the captain types in any field; a real transport bound is refused visibly with the character count before sending, never cut silently.
 
 Before the done line, the worker performs an editor pass by walking the finished surface end to end as its user in a real browser.
 The worker records that walk in the PR body for PR work, the report for scout work, or the ready-branch summary for local-only work, and names the one surprising detail added and why.
