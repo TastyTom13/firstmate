@@ -1,0 +1,64 @@
+=== old .11 answers
+/tmp/old-lavish.sh: line 148: /tmp/fm-pr-lib.sh: No such file or directory
+/tmp/old-lavish.sh: line 150: /tmp/fm-wake-lib.sh: No such file or directory
+/tmp/old-lavish.sh: line 152: /tmp/fm-procevent-lib.sh: No such file or directory
+       4
+=== old .11 reconciles
+/tmp/old-lavish.sh: line 148: /tmp/fm-pr-lib.sh: No such file or directory
+/tmp/old-lavish.sh: line 150: /tmp/fm-wake-lib.sh: No such file or directory
+/tmp/old-lavish.sh: line 152: /tmp/fm-procevent-lib.sh: No such file or directory
+       0
+=== old .11 read (head)
+declared_items: 9
+presented_items: 9
+malformed_items: 0
+complete: yes
+annotation_count: 9
+session_ending_message_count: 0
+=== old .12 answers
+/tmp/old-lavish.sh: line 148: /tmp/fm-pr-lib.sh: No such file or directory
+/tmp/old-lavish.sh: line 150: /tmp/fm-wake-lib.sh: No such file or directory
+/tmp/old-lavish.sh: line 152: /tmp/fm-procevent-lib.sh: No such file or directory
+       0
+=== old .12 reconciles
+/tmp/old-lavish.sh: line 148: /tmp/fm-pr-lib.sh: No such file or directory
+/tmp/old-lavish.sh: line 150: /tmp/fm-wake-lib.sh: No such file or directory
+/tmp/old-lavish.sh: line 152: /tmp/fm-procevent-lib.sh: No such file or directory
+       0
+=== old .12 read (head)
+declared_items: 0
+presented_items: 0
+malformed_items: 0
+complete: yes
+annotation_count: 0
+session_ending_message_count: 0
+=== new .11 answers
+       4
+=== new .11 reconciles
+       0
+=== new .11 read (head)
+declared_items: 9
+presented_items: 9
+malformed_items: 0
+complete: yes
+annotation_count: 9
+session_ending_message_count: 0
+=== new .12 answers
+      26
+=== new .12 reconciles
+       0
+=== new .12 read (head)
+declared_items: 52
+presented_items: 52
+malformed_items: 0
+complete: yes
+annotation_count: 52
+session_ending_message_count: 0
+| The sector deep dive and CEO/COO target company map is complete and waiting for your look.
+| I can complete this only after we have bought the new domain name, since Mentum is no longer an option because someone else has recently created a mentorship platform with the Mentum name, which by the way, I find very suspicious. It feels like AI has given them the same suggestion I came up with Because of this info then becoming accessible to others by being shared with the anthropic server
+| I sent the email to both of them, but neither of them replied. Can you check if these decks that were shared were opened? I know that we created some kind of admin or analytics panel so that we could view this across the different decks, but I can't find it anymore. Can you make it easier accessible based on whether the decks were opened or not? I will need to send the follow-up email either referring to us seeing that they've opened the deck or sending the email from a different account if this email is still not warmed up properly enough yet. Which I'm also curious about if you can see that what the spam score or indicator is. I believe that should be visible somewhere
+| I don't fully understand why this idea keeps returning when we already discussed that this idea might not be possible because I am only able to create aliases for the main email tomas@mindshake.io And in order to create a separate user account, I need to pay for an additional subscription, which at this point I'm not convinced is enough added value to pay for, considering we already have the separate Gmail account that our first mate can read and mail from (info.longbird@gmail.com). If you think we still need it, please explain why. Otherwise, come up with an alternative solution
+old .12 answers:        0  read: declared_items: 0 complete: yes 
+qinecsa-reseed-captain-step	done	Qinecsa: confirm the reseeds ran -> done	done
+website-copy-version-pick	done	Website copy: sign-off answered, close this -> done	done
+qinecsa-pv-map-board-close	closed	Qinecsa PV sector map: close the board -> closed	done

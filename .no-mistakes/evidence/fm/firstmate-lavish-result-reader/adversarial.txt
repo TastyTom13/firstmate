@@ -1,0 +1,9 @@
+cafe-q	approve	Approve café	done
+---
+declared_items: 3
+presented_items: 3
+malformed_items: 0
+complete: yes
+---
+0
+valid-utf8
