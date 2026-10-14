@@ -1,0 +1,1 @@
+A board must never cap, slice or truncate text the captain types in any board field; if a real transport bound exists, refuse visibly with the character count before sending, never cut silently.
