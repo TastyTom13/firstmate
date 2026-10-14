@@ -82,7 +82,8 @@
 # item carrying the project's repo name and an "Origin: <task-id>" body, then
 # proceeds; with neither a non-empty record nor the escape it REFUSES and changes
 # nothing. A blank line and a leading "- ", "* ", or "[ ] " list marker are
-# ignored, and a record with no titles is not a declaration of none. Each filed
+# ignored, and a record with no titles is not a declaration of none. Recorded
+# titles win over the escape: a record written after --none still gets filed. Each filed
 # title advances followups_filed= in the meta, and followups=filed ends the
 # filing, so a teardown retried after a partial failure never files a title
 # twice. The record itself survives in data/<task-id>/. Where no automatic
@@ -1768,7 +1769,7 @@ follow_up_titles() {  # <record>
 teardown_file_follow_ups() {
   local record="$DATA/$ID/follow-ups.md" state titles total filed=0 n=0 title repo
   state=$(fm_meta_get "$META" followups)
-  case "$state" in none|filed) return 0 ;; esac
+  [ "$state" != filed ] || return 0
   titles=
   [ ! -f "$record" ] || titles=$(follow_up_titles "$record")
   if [ "$TEARDOWN_BACKLOG_APPLIES" != 1 ]; then
@@ -1776,6 +1777,7 @@ teardown_file_follow_ups() {
     return 0
   fi
   if [ -z "$titles" ]; then
+    [ "$state" != none ] || return 0
     echo "REFUSED: task $ID has not recorded its follow-ups." >&2
     echo "Have the worker write each one as a line in $record, or record that there are none with: $SCRIPT_DIR/fm-followups.sh $ID --none" >&2
     return 1

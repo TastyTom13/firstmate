@@ -7,6 +7,8 @@
 # or firstmate runs this command; it appends `followups=none` to the task's own
 # state/<task-id>.meta under that record's lock, so the escape lives in the task
 # record teardown reads, not in a file that could be mistaken for a list.
+# Titles written to follow-ups.md after this command still get filed: the
+# escape only stands while the record has no titles.
 # It never creates a task record: a task with no meta is refused.
 # Usage: fm-followups.sh <task-id> --none
 set -eu

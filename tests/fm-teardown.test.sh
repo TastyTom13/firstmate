@@ -997,6 +997,25 @@ test_teardown_none_escape_recorded_in_meta() {
   pass "the --none escape is recorded in the task's meta and lets teardown proceed"
 }
 
+test_teardown_files_follow_ups_recorded_after_none() {
+  local case_dir out rc
+  case_dir=$(make_case followups-none-then-record)
+  write_meta "$case_dir" no-mistakes ship
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/7' >> "$case_dir/state/task-x1.meta"
+  seed_backlog_rows "$case_dir"
+  out=$(FM_STATE_OVERRIDE="$case_dir/state" "$ROOT/bin/fm-followups.sh" task-x1 --none 2>&1) \
+    || fail "fm-followups.sh --none failed: $out"
+  mkdir -p "$case_dir/data/task-x1"
+  printf '%s\n' 'Gap found after the escape' > "$case_dir/data/task-x1/follow-ups.md"
+
+  rc=0; out=$(run_teardown "$case_dir" 2>&1) || rc=$?
+  [ "$rc" -eq 0 ] || fail "teardown failed with a record written after --none: $out"
+  assert_grep ' - Gap found after the escape (repo: project) (kind: follow-up)' \
+    "$case_dir/data/backlog.md" "a follow-up recorded after --none was dropped"
+  assert_contains "$out" "filed 1 follow-ups from task-x1" "teardown did not report filing the late follow-up"
+  pass "a follow-up recorded after --none is still filed"
+}
+
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator() {
   local case_dir out backlog_path
   case_dir=$(make_case tasks-axi-manual-optout)
@@ -4668,6 +4687,7 @@ test_teardown_refuses_until_follow_ups_are_recorded
 test_teardown_files_follow_ups_before_cleanup
 test_teardown_retry_never_files_a_follow_up_twice
 test_teardown_none_escape_recorded_in_meta
+test_teardown_files_follow_ups_recorded_after_none
 test_local_only_truly_unpushed_refuses
 test_local_only_merged_to_local_main_allows
 test_no_mistakes_origin_remote_allows
