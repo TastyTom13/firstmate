@@ -3252,7 +3252,20 @@ ATTACH_RESULT="$TMP_ROOT/lavish-attachments-result"
 cat > "$ATTACH_RESULT" <<'EOF'
 session:
   status: feedback
-prompts[3]:
+prompts[5]:
+  - uid: "extra"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"q-extra\",\"selection\":\"approve\",\"note\":\"\"}"
+    selector: "section#x button"
+    tag: choice
+    text: "Approve extra"
+    future_flag: true
+    attachments: []
+  - uid: "inline"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"q-inline\",\"selection\":\"approve\",\"note\":\"\"}"
+    selector: "section#y button"
+    tag: choice
+    text: "Approve inline"
+    attachments[2]: a,b
   - uid: "empty"
     prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"q-empty\",\"selection\":\"approve\",\"note\":\"\"}"
     selector: "section#a button"
@@ -3279,12 +3292,12 @@ prompts[3]:
 EOF
 out=$("$ROOT/bin/fm-procevent-lavish.sh" read "$ATTACH_RESULT") \
   || fail "read failed on list rows carrying attachments"
-assert_contains "$out" "presented_items: 3" "an attachments block cost a list row its place"
+assert_contains "$out" "presented_items: 5" "an attachments block cost a list row its place"
 assert_contains "$out" "malformed_items: 0" "an attachments block made a list row malformed"
 assert_contains "$out" "complete: yes" "an attachments block made a list capture incomplete"
-[ "$("$ROOT/bin/fm-procevent-lavish.sh" answers "$ATTACH_RESULT")" = "$(printf 'q-empty\tapprove\tApprove empty\nq-dashed\tapprove\tApprove dashed\nq-tabular\tapprove\tApprove tabular')" ] \
+[ "$("$ROOT/bin/fm-procevent-lavish.sh" answers "$ATTACH_RESULT")" = "$(printf 'q-extra\tapprove\tApprove extra\nq-inline\tapprove\tApprove inline\nq-empty\tapprove\tApprove empty\nq-dashed\tapprove\tApprove dashed\nq-tabular\tapprove\tApprove tabular')" ] \
   || fail "a list row with an attachments block lost its keyed answer"
-pass "list rows keep their keyed answers whatever shape their attachments take"
+pass "list rows keep their keyed answers whatever shape their attachments take or extra keys they carry"
 
 UTF_TABULAR="$TMP_ROOT/lavish-utf8-tabular"
 UTF_LIST="$TMP_ROOT/lavish-utf8-list"

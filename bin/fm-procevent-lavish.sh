@@ -670,7 +670,7 @@ LAVISH_RESULT_READER='
           my ($field, $raw) = ($1, $2);
           $bad = 1 if exists $row->{$field};
           $row->{$field} = parse_list_scalar($raw, \$bad);
-        } elsif (defined($row) && $line =~ /^    attachments\[\d+\](?:\{[^}]*\})?:\s*$/) {
+        } elsif (defined($row) && $line =~ /^    [A-Za-z_][A-Za-z0-9_]*\[\d+\](?:\{[^}]*\})?:/) {
           $in_attachments = 1;
         } elsif ($line =~ /^\s*$/) {
           next;
@@ -681,8 +681,6 @@ LAVISH_RESULT_READER='
       push @rows, [$row, $bad] if defined($row) && @rows < $want;
       for my $entry (@rows) {
         my ($values, $bad_row) = @$entry;
-        my %allowed = map { $_ => 1 } @fields;
-        $bad_row ||= grep { !$allowed{$_} } keys %$values;
         $bad_row ||= grep { !exists $values->{$_} } @fields;
         if ($bad_row) {
           $malformed++;
