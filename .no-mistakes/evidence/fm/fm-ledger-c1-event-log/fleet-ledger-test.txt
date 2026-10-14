@@ -1,0 +1,17 @@
+ok - flag on: dispatch, polled status lines, the local merge after its task's pending lines, and cleanup are recorded in order
+ok - flag on: a PR merge is recorded once, as task.merged then item.landed, after the task's pending status lines
+ok - flag on: registering a PR records task.pr_ready with its full URL after the task's pending status lines, and the merge-time re-record adds nothing
+ok - flag on: a worker's status command records its line at once, and the watcher backstop does not record it again
+ok - flag on, state override outside the home: the worker's status command records its line at once, in both copies
+ok - flag on, relative config override: a worker running elsewhere still records its line at once
+ok - append failing: the worker's status command exits nonzero and records nothing
+ok - ledger failing: the worker's status line still lands exactly, quietly, and the backstop records it later
+ok - flag off: the worker's status command is a plain append and leaves no ledger file, offset, or lock
+ok - flag on: a status command from a brief written before the durable copy still records into both copies
+ok - flag on: clearing state/ loses nothing from the append-only copy under data/
+ok - flag on: linked, landed, live, check, and verdict each write their documented members, after the task's pending status lines
+ok - flag on: said records the captain's exact words with a fresh word id, and prints that id
+ok - flag on: the new writers refuse malformed arguments with a usage error and write nothing
+ok - flag on: a captain hold records hold.opened, its answer records hold.answered with the exact words once
+ok - flag off: the new writers write nothing and print no word id
+ok - flag off: the whole lifecycle leaves no ledger file, offset, or lock

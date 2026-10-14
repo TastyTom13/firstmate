@@ -1,0 +1,2 @@
+{"v":1,"ts":1791986893,"event":"hold.opened","task":"lab-hold1","reason":"which plan","until":"2026-11-01"}
+{"v":1,"ts":1791986895,"event":"hold.answered","task":"lab-hold1","mode":"answered","decision":"Go with plan B."}
