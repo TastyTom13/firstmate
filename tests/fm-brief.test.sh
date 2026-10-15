@@ -1960,14 +1960,21 @@ ROWS
   sed -i.bak "s#$TMP_ROOT/visual-flagged#$TMP_ROOT/visual-plain#g" "$flagged" && rm -f "$flagged.bak"
   assert_no_grep "# Visual work contract" "$plain" "a brief without --visual carried the visual contract"
   stripped="$TMP_ROOT/visual-stripped.md"
+  plain_stripped="$TMP_ROOT/visual-plain-stripped.md"
   awk '
-    $0 == "# Visual work contract" { skip=1; next }
+    $0 == "# Visual work contract" || $0 == "# Knowledge library" { skip=1; next }
     skip && $0 == "" { skip=0; next }
     skip { next }
     { print }
   ' "$flagged" > "$stripped"
-  cmp -s "$plain" "$stripped" \
-    || fail "--visual changed bytes outside its own contract block"$'\n'"$(diff "$plain" "$stripped")"
+  awk '
+    $0 == "# Knowledge library" { skip=1; next }
+    skip && $0 == "" { skip=0; next }
+    skip { next }
+    { print }
+  ' "$plain" > "$plain_stripped"
+  cmp -s "$plain_stripped" "$stripped" \
+    || fail "--visual changed bytes outside its own contract block"$'\n'"$(diff "$plain_stripped" "$stripped")"
 
   while IFS='|' read -r label args expect; do
     [ -n "$label" ] || continue
@@ -1985,12 +1992,82 @@ ROWS
   pass "fm-brief.sh: --visual is surface-bound, shared by ship/scout, and byte-neutral when absent"
 }
 
+# Every ship and scout brief names the distilled knowledge library and its
+# two-stage route with no flag; --visual briefs (all four surfaces) get the
+# fuller required-input paragraph; secondmate charters carry no such section.
+test_knowledge_library_section_renders_in_every_ship_and_scout_brief() {
+  local surface home brief lib plain mode stripped
+  lib="$TMP_ROOT/knowledge-lib"
+  for surface in decks scout website email; do
+    home="$TMP_ROOT/knowledge-visual-$surface"
+    brief=$(SCOUT_LIBRARY_DIR="$lib" scaffold_in_home "$home" "knowledge-$surface" some-proj --mode no-mistakes --visual --surface "$surface" 2>/dev/null) \
+      || fail "$surface: --visual brief failed"
+    assert_grep "# Knowledge library" "$brief" "$surface: visual brief lost the Knowledge library section"
+    assert_grep "Read \`$lib/INTEGRATION.md\` once" "$brief" "$surface: brief did not require reading INTEGRATION.md"
+    assert_grep "first \`$lib/themes.json\`" "$brief" "$surface: brief did not route through themes.json first"
+    assert_grep "\`$lib/index.json\` and \`$lib/frameworks.json\`" "$brief" "$surface: brief did not name index.json and frameworks.json"
+    assert_grep "required input" "$brief" "$surface: brief did not make the library a required input"
+    assert_grep "exposure: client-ok" "$brief" "$surface: brief lost the client-ok exposure filter"
+    assert_grep "Never copy quotes or locators" "$brief" "$surface: brief did not forbid quotes and locators"
+    assert_grep "claim, framework, and theme ids" "$brief" "$surface: brief did not carry the chosen ids"
+    assert_grep "knowledge library unavailable at $lib" "$brief" "$surface: brief did not say what to do when the library is absent"
+  done
+
+  for mode in no-mistakes direct-PR local-only scout; do
+    if [ "$mode" = scout ]; then
+      brief=$(SCOUT_LIBRARY_DIR="$lib" scaffold_in_home "$TMP_ROOT/knowledge-plain-$mode" "knowledge-plain-$mode" some-proj --scout) \
+        || fail "$mode: plain brief failed"
+    else
+      brief=$(SCOUT_LIBRARY_DIR="$lib" scaffold_in_home "$TMP_ROOT/knowledge-plain-$mode" "knowledge-plain-$mode" some-proj --mode "$mode") \
+        || fail "$mode: plain brief failed"
+    fi
+    assert_grep "# Knowledge library" "$brief" "$mode: a plain brief lost the Knowledge library section"
+    assert_grep "If any part of this task writes words people will read (copy, decks, proposals, job profiles, question scripts, course text, emails), route through" "$brief" \
+      "$mode: plain brief did not carry the conditional words-for-people trigger"
+    assert_grep "Read \`$lib/INTEGRATION.md\` once" "$brief" "$mode: plain brief did not require reading INTEGRATION.md"
+    assert_grep "\`$lib/themes.json\`, then \`$lib/index.json\` and \`$lib/frameworks.json\`" "$brief" "$mode: plain brief did not name the two-stage route"
+    assert_grep "exposure: client-ok" "$brief" "$mode: plain brief lost the client-ok exposure filter"
+    assert_grep "Never copy quotes or locators" "$brief" "$mode: plain brief did not forbid quotes and locators"
+    assert_grep "When this task routes through the library and its directory or \`INTEGRATION.md\` cannot be read, append \`blocked" "$brief" \
+      "$mode: plain brief did not scope the blocked line to tasks that route through the library"
+    assert_grep "knowledge library unavailable at $lib" "$brief" "$mode: plain brief did not say what to do when the library is absent"
+    assert_no_grep "# Visual work contract" "$brief" "$mode: the library section must not add the visual contract"
+    assert_no_grep "required input" "$brief" "$mode: plain brief carried the fuller visual paragraph"
+  done
+
+  brief=$(unset SCOUT_LIBRARY_DIR; scaffold_in_home "$TMP_ROOT/knowledge-default" knowledge-default some-proj --mode direct-PR) \
+    || fail "direct-PR: default-library brief failed"
+  assert_grep "Read \`/Users/tomas/firstmate/projects/brain/library/INTEGRATION.md\` once" "$brief" \
+    "unset SCOUT_LIBRARY_DIR did not fall back to the primary home library"
+
+  plain=$(SCOUT_LIBRARY_DIR="$lib" scaffold_in_home "$TMP_ROOT/knowledge-bytes-a" knowledge-bytes some-proj --mode no-mistakes) \
+    || fail "plain knowledge-control scaffold failed"
+  stripped="$TMP_ROOT/knowledge-stripped.md"
+  awk '
+    $0 == "# Knowledge library" { skip=1; next }
+    skip && $0 == "" { skip=0; next }
+    skip { next }
+    { print }
+  ' "$plain" > "$stripped"
+  assert_no_grep "themes.json" "$stripped" "the library route leaked outside the Knowledge library section"
+  assert_no_grep "INTEGRATION.md" "$stripped" "the library route leaked outside the Knowledge library section"
+
+  mkdir -p "$TMP_ROOT/knowledge-mate-home/data"
+  FM_HOME="$TMP_ROOT/knowledge-mate-home" FM_SECONDMATE_CHARTER='ops' FM_SECONDMATE_SCOPE='ops work' \
+    "$ROOT/bin/fm-brief.sh" knowledge-mate --secondmate --no-projects >/dev/null 2>&1 \
+    || fail "secondmate charter scaffold failed"
+  assert_no_grep "Knowledge library" "$TMP_ROOT/knowledge-mate-home/data/knowledge-mate/brief.md" \
+    "a secondmate charter carried the Knowledge library section"
+  pass "fm-brief.sh: every ship and scout brief renders the Knowledge library route; visual briefs get the fuller paragraph"
+}
+
 test_help_documents_visual_work() {
   local help
   help=$("$ROOT/bin/fm-brief.sh" --help)
   assert_contains "$help" "--visual" "fm-brief.sh --help does not mention --visual"
   assert_contains "$help" "--surface <decks|scout|website|email>" "fm-brief.sh --help does not list the known visual surfaces"
   assert_contains "$help" "Visual work contract" "fm-brief.sh --help does not name the generated contract"
+  assert_contains "$help" "Knowledge library" "fm-brief.sh --help does not name the Knowledge library section"
   pass "fm-brief.sh: --help documents the visual-work flag and surface selector"
 }
 
@@ -2325,6 +2402,7 @@ test_turn_end_and_time_lines_render_for_ship_and_scout
 test_pasted_file_is_opt_in_and_marked
 test_design_block_is_opt_in
 test_visual_work_contract_is_surface_bound_and_opt_in
+test_knowledge_library_section_renders_in_every_ship_and_scout_brief
 test_help_documents_visual_work
 test_help_documents_prompting_flags
 test_workers_wait_without_spending_turns

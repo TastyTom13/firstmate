@@ -112,6 +112,19 @@
 # --surface is refused rather than ignored. Omitted, the brief is byte-identical
 # to what it was before the flag existed. The visual-work skill owns firstmate's
 # intake procedure and bin/fm-brief.sh owns the rendered worker contract.
+# Every ship and scout brief, with or without --visual, carries a "Knowledge library"
+# section, because workers use only what their brief names. Without
+# --visual it is short and conditional: if any part of the task writes words
+# people will read (copy, decks, proposals, job profiles, question scripts,
+# course text, emails), route through the library first. With --visual it is the
+# fuller required-input paragraph. Both read the library's INTEGRATION.md once, run
+# its two-stage route (themes.json, then index.json and frameworks.json), apply
+# the client-ok exposure filter, carry the chosen claim and framework ids into the
+# PR body or report, and never copy quotes or locators. The library dir is
+# SCOUT_LIBRARY_DIR when set at scaffold time, else
+# /Users/tomas/firstmate/projects/brain/library; when it is absent the worker
+# reports it and does not guess another location. Secondmate charters carry no
+# such section.
 # --pasted-file <path> takes a file holding text the captain pasted in from
 # somewhere else (an email, a web page, another tool's output). Its text is
 # placed under `## Captain's intent`, after the {TASK} slot Firstmate still
@@ -809,6 +822,40 @@ EOF
   VISUAL_SECTION=${VISUAL_SECTION%$'\n'}
 fi
 
+# Knowledge library. Workers use only what their brief names, so every ship and
+# scout brief names the distilled library; its INTEGRATION.md owns the read-only
+# routing contract. --visual briefs get the fuller required-input paragraph.
+KNOWLEDGE_LIB=${SCOUT_LIBRARY_DIR:-/Users/tomas/firstmate/projects/brain/library}
+if [ "$VISUAL" -eq 1 ]; then
+  IFS= read -r -d '' KNOWLEDGE_SECTION <<EOF || true
+
+
+# Knowledge library
+The distilled knowledge library at \`$KNOWLEDGE_LIB\` is a required input for this task's ideas, structure, and words.
+Read \`$KNOWLEDGE_LIB/INTEGRATION.md\` once and follow its read-only contract, starting with its \`manifest.json\` preflight.
+Run its two-stage route for this task's topic: first \`$KNOWLEDGE_LIB/themes.json\` for a house-level stance, then, whether or not a theme matched, \`$KNOWLEDGE_LIB/index.json\` and \`$KNOWLEDGE_LIB/frameworks.json\` by tag, conversation type, and output.
+Open only what you select: a theme body, a claim's compact form, or a framework's Steps section.
+For anything client-facing, keep only records with \`exposure: client-ok\`; \`internal\` and \`restricted\` records never enter the output or its prompt.
+Never copy quotes or locators into the output or any prompt.
+Carry the chosen claim, framework, and theme ids, with the manifest's \`canon_version\`, into the PR body, the report for scout work, or the ready-branch summary for local-only work.
+If the library directory or its \`INTEGRATION.md\` cannot be read, append \`blocked [at=<epoch>]: knowledge library unavailable at $KNOWLEDGE_LIB\` and stop; do not guess another location or write as if you had read it.
+EOF
+else
+  IFS= read -r -d '' KNOWLEDGE_SECTION <<EOF || true
+
+
+# Knowledge library
+If any part of this task writes words people will read (copy, decks, proposals, job profiles, question scripts, course text, emails), route through the distilled knowledge library at \`$KNOWLEDGE_LIB\` first:
+Read \`$KNOWLEDGE_LIB/INTEGRATION.md\` once and follow its read-only contract, starting with its \`manifest.json\` preflight.
+Then read \`$KNOWLEDGE_LIB/themes.json\`, then \`$KNOWLEDGE_LIB/index.json\` and \`$KNOWLEDGE_LIB/frameworks.json\`, and open only what you select.
+For anything client-facing, keep only records with \`exposure: client-ok\`.
+Never copy quotes or locators into the output or any prompt.
+Carry the chosen claim and framework ids into the PR body, the report for scout work, or the ready-branch summary for local-only work.
+When this task routes through the library and its directory or \`INTEGRATION.md\` cannot be read, append \`blocked [at=<epoch>]: knowledge library unavailable at $KNOWLEDGE_LIB\` and stop; do not guess another location. A task with no words-for-people work ignores this section.
+EOF
+fi
+KNOWLEDGE_SECTION=${KNOWLEDGE_SECTION%$'\n'}
+
 # Untrusted content guard: shared by ship and scout so the two cannot drift.
 # Crewmates read fetched web/GitHub content routinely (WebFetch, gh-axi, PR and
 # issue bodies); this closes the gap where an instruction riding in on that
@@ -1130,7 +1177,7 @@ $UNTRUSTED_CONTENT_SECTION
 
 $WORKING_DISCIPLINE_SECTION
 
-$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION
+$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION$KNOWLEDGE_SECTION
 
 $TOOLKIT_SECTION
 
@@ -1269,7 +1316,7 @@ $UNTRUSTED_CONTENT_SECTION
 
 $WORKING_DISCIPLINE_SECTION
 
-$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION
+$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION$KNOWLEDGE_SECTION
 
 $TOOLKIT_SECTION
 
