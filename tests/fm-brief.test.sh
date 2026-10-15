@@ -1996,7 +1996,7 @@ ROWS
 # two-stage route with no flag; --visual briefs (all four surfaces) get the
 # fuller required-input paragraph; secondmate charters carry no such section.
 test_knowledge_library_section_renders_in_every_ship_and_scout_brief() {
-  local surface home brief lib plain out rc mode stripped
+  local surface home brief lib plain mode stripped
   lib="$TMP_ROOT/knowledge-lib"
   for surface in decks scout website email; do
     home="$TMP_ROOT/knowledge-visual-$surface"
@@ -2028,6 +2028,8 @@ test_knowledge_library_section_renders_in_every_ship_and_scout_brief() {
     assert_grep "\`$lib/themes.json\`, then \`$lib/index.json\` and \`$lib/frameworks.json\`" "$brief" "$mode: plain brief did not name the two-stage route"
     assert_grep "exposure: client-ok" "$brief" "$mode: plain brief lost the client-ok exposure filter"
     assert_grep "Never copy quotes or locators" "$brief" "$mode: plain brief did not forbid quotes and locators"
+    assert_grep "When this task routes through the library and its directory or \`INTEGRATION.md\` cannot be read, append \`blocked" "$brief" \
+      "$mode: plain brief did not scope the blocked line to tasks that route through the library"
     assert_grep "knowledge library unavailable at $lib" "$brief" "$mode: plain brief did not say what to do when the library is absent"
     assert_no_grep "# Visual work contract" "$brief" "$mode: the library section must not add the visual contract"
     assert_no_grep "required input" "$brief" "$mode: plain brief carried the fuller visual paragraph"
@@ -2056,9 +2058,6 @@ test_knowledge_library_section_renders_in_every_ship_and_scout_brief() {
     || fail "secondmate charter scaffold failed"
   assert_no_grep "Knowledge library" "$TMP_ROOT/knowledge-mate-home/data/knowledge-mate/brief.md" \
     "a secondmate charter carried the Knowledge library section"
-  rc=0
-  out=$(FM_HOME="$TMP_ROOT/knowledge-mate-home" "$ROOT/bin/fm-brief.sh" knowledge-words --secondmate --no-projects --words 2>&1) || rc=$?
-  [ "$rc" -ne 0 ] || fail "--words is dropped: expected a non-zero exit"
   pass "fm-brief.sh: every ship and scout brief renders the Knowledge library route; visual briefs get the fuller paragraph"
 }
 

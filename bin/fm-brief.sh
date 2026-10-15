@@ -851,7 +851,7 @@ Then read \`$KNOWLEDGE_LIB/themes.json\`, then \`$KNOWLEDGE_LIB/index.json\` and
 For anything client-facing, keep only records with \`exposure: client-ok\`.
 Never copy quotes or locators into the output or any prompt.
 Carry the chosen claim and framework ids into the PR body, the report for scout work, or the ready-branch summary for local-only work.
-If the library directory or its \`INTEGRATION.md\` cannot be read, append \`blocked [at=<epoch>]: knowledge library unavailable at $KNOWLEDGE_LIB\` and stop; do not guess another location.
+When this task routes through the library and its directory or \`INTEGRATION.md\` cannot be read, append \`blocked [at=<epoch>]: knowledge library unavailable at $KNOWLEDGE_LIB\` and stop; do not guess another location. A task with no words-for-people work ignores this section.
 EOF
 fi
 KNOWLEDGE_SECTION=${KNOWLEDGE_SECTION%$'\n'}
