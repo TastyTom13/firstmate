@@ -14,8 +14,8 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> --done-when <check> [--base <branch>] [--branch-prefix <prefix>] [--forge <none|gerrit> [--shape squash]] [--ui] [--design] [--visual --surface <decks|scout|website|email>] [--words] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
-#        fm-brief.sh <task-id> <repo-name> --scout --done-when <question> [--design] [--visual --surface <decks|scout|website|email>] [--words] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> --done-when <check> [--base <branch>] [--branch-prefix <prefix>] [--forge <none|gerrit> [--shape squash]] [--ui] [--design] [--visual --surface <decks|scout|website|email>] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
+#        fm-brief.sh <task-id> <repo-name> --scout --done-when <question> [--design] [--visual --surface <decks|scout|website|email>] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -112,17 +112,19 @@
 # --surface is refused rather than ignored. Omitted, the brief is byte-identical
 # to what it was before the flag existed. The visual-work skill owns firstmate's
 # intake procedure and bin/fm-brief.sh owns the rendered worker contract.
-# --words marks a non-visual task that writes words for people: a proposal, job
-# profile, question script, course text, or email. Every --visual brief and every
-# --words brief carries a "Knowledge library" section: read the library's
-# INTEGRATION.md once, run its two-stage route for the task's topic (themes.json,
-# then index.json and frameworks.json), carry the chosen claim and framework ids
-# into the PR body or report, apply the client-ok exposure filter, and never copy
-# quotes or locators. The library dir is SCOUT_LIBRARY_DIR when set at scaffold
-# time, else /Users/tomas/firstmate/projects/brain/library; when it is absent the
-# worker reports it and does not guess another location. --words is refused on
-# secondmate scaffolds. Omitted with --visual also omitted, the brief is
-# byte-identical to what it was before the flag existed.
+# Every ship and scout brief, with or without --visual, carries a "Knowledge library"
+# section, because workers use only what their brief names. Without
+# --visual it is short and conditional: if any part of the task writes words
+# people will read (copy, decks, proposals, job profiles, question scripts,
+# course text, emails), route through the library first. With --visual it is the
+# fuller required-input paragraph. Both read the library's INTEGRATION.md once, run
+# its two-stage route (themes.json, then index.json and frameworks.json), apply
+# the client-ok exposure filter, carry the chosen claim and framework ids into the
+# PR body or report, and never copy quotes or locators. The library dir is
+# SCOUT_LIBRARY_DIR when set at scaffold time, else
+# /Users/tomas/firstmate/projects/brain/library; when it is absent the worker
+# reports it and does not guess another location. Secondmate charters carry no
+# such section.
 # --pasted-file <path> takes a file holding text the captain pasted in from
 # somewhere else (an email, a web page, another tool's output). Its text is
 # placed under `## Captain's intent`, after the {TASK} slot Firstmate still
@@ -327,7 +329,6 @@ NO_PROJECTS=0
 UI=0
 DESIGN=0
 VISUAL=0
-WORDS=0
 SURFACE=
 SURFACE_SET=0
 PASTED_FILE=
@@ -375,7 +376,6 @@ for a in "$@"; do
     --ui) UI=1 ;;
     --design) DESIGN=1 ;;
     --visual) VISUAL=1 ;;
-    --words) WORDS=1 ;;
     --surface) want_value=surface ;;
     --surface=*) SURFACE=${a#--surface=}; SURFACE_SET=1 ;;
     --pasted-file) want_value=pasted-file ;;
@@ -519,10 +519,6 @@ if [ "$VISUAL" -eq 1 ]; then
   esac
 elif [ "$SURFACE_SET" -eq 1 ]; then
   echo "error: --surface applies only with --visual" >&2
-  exit 1
-fi
-if [ "$WORDS" -eq 1 ] && [ "$KIND" = secondmate ]; then
-  echo "error: --words applies only to crewmate ship or scout briefs" >&2
   exit 1
 fi
 
@@ -826,12 +822,11 @@ EOF
   VISUAL_SECTION=${VISUAL_SECTION%$'\n'}
 fi
 
-# Knowledge library (--visual or --words). Workers use only what their brief
-# names, so every brief that writes words or designs for people names the
-# distilled library; its INTEGRATION.md owns the read-only routing contract.
-KNOWLEDGE_SECTION=
-if [ "$VISUAL" -eq 1 ] || [ "$WORDS" -eq 1 ]; then
-  KNOWLEDGE_LIB=${SCOUT_LIBRARY_DIR:-/Users/tomas/firstmate/projects/brain/library}
+# Knowledge library. Workers use only what their brief names, so every ship and
+# scout brief names the distilled library; its INTEGRATION.md owns the read-only
+# routing contract. --visual briefs get the fuller required-input paragraph.
+KNOWLEDGE_LIB=${SCOUT_LIBRARY_DIR:-/Users/tomas/firstmate/projects/brain/library}
+if [ "$VISUAL" -eq 1 ]; then
   IFS= read -r -d '' KNOWLEDGE_SECTION <<EOF || true
 
 
@@ -845,8 +840,21 @@ Never copy quotes or locators into the output or any prompt.
 Carry the chosen claim, framework, and theme ids, with the manifest's \`canon_version\`, into the PR body, the report for scout work, or the ready-branch summary for local-only work.
 If the library directory or its \`INTEGRATION.md\` cannot be read, append \`blocked [at=<epoch>]: knowledge library unavailable at $KNOWLEDGE_LIB\` and stop; do not guess another location or write as if you had read it.
 EOF
-  KNOWLEDGE_SECTION=${KNOWLEDGE_SECTION%$'\n'}
+else
+  IFS= read -r -d '' KNOWLEDGE_SECTION <<EOF || true
+
+
+# Knowledge library
+If any part of this task writes words people will read (copy, decks, proposals, job profiles, question scripts, course text, emails), route through the distilled knowledge library at \`$KNOWLEDGE_LIB\` first:
+Read \`$KNOWLEDGE_LIB/INTEGRATION.md\` once and follow its read-only contract, starting with its \`manifest.json\` preflight.
+Then read \`$KNOWLEDGE_LIB/themes.json\`, then \`$KNOWLEDGE_LIB/index.json\` and \`$KNOWLEDGE_LIB/frameworks.json\`, and open only what you select.
+For anything client-facing, keep only records with \`exposure: client-ok\`.
+Never copy quotes or locators into the output or any prompt.
+Carry the chosen claim and framework ids into the PR body, the report for scout work, or the ready-branch summary for local-only work.
+If the library directory or its \`INTEGRATION.md\` cannot be read, append \`blocked [at=<epoch>]: knowledge library unavailable at $KNOWLEDGE_LIB\` and stop; do not guess another location.
+EOF
 fi
+KNOWLEDGE_SECTION=${KNOWLEDGE_SECTION%$'\n'}
 
 # Untrusted content guard: shared by ship and scout so the two cannot drift.
 # Crewmates read fetched web/GitHub content routinely (WebFetch, gh-axi, PR and

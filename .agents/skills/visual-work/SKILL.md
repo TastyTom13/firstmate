@@ -46,7 +46,7 @@ Copy must be professional, warm, human and direct, in the captain's own voice, a
 Where the task writes copy, the worker uses the copywriting skill.
 A review board never caps, slices or truncates text the captain types in any field; a real transport bound is refused visibly with the character count before sending, never cut silently.
 
-Every `--visual` brief, and every non-visual brief scaffolded with `--words` for words written for people, also carries a generated `# Knowledge library` section.
+Every ship and scout brief carries a generated `# Knowledge library` section with no flag; a `--visual` brief gets the fuller required-input paragraph.
 The worker reads the library's `INTEGRATION.md` once, runs its two-stage route for the task's topic (`themes.json`, then `index.json` and `frameworks.json` under the library dir), applies the `exposure: client-ok` filter for anything client-facing, never copies quotes or locators, and carries the chosen claim and framework ids into the PR body or report.
 The library dir is `SCOUT_LIBRARY_DIR` when set, else `/Users/tomas/firstmate/projects/brain/library`, and an unreadable library is reported as a blocker rather than guessed around.
 

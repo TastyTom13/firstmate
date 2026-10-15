@@ -1960,14 +1960,21 @@ ROWS
   sed -i.bak "s#$TMP_ROOT/visual-flagged#$TMP_ROOT/visual-plain#g" "$flagged" && rm -f "$flagged.bak"
   assert_no_grep "# Visual work contract" "$plain" "a brief without --visual carried the visual contract"
   stripped="$TMP_ROOT/visual-stripped.md"
+  plain_stripped="$TMP_ROOT/visual-plain-stripped.md"
   awk '
     $0 == "# Visual work contract" || $0 == "# Knowledge library" { skip=1; next }
     skip && $0 == "" { skip=0; next }
     skip { next }
     { print }
   ' "$flagged" > "$stripped"
-  cmp -s "$plain" "$stripped" \
-    || fail "--visual changed bytes outside its own contract block"$'\n'"$(diff "$plain" "$stripped")"
+  awk '
+    $0 == "# Knowledge library" { skip=1; next }
+    skip && $0 == "" { skip=0; next }
+    skip { next }
+    { print }
+  ' "$plain" > "$plain_stripped"
+  cmp -s "$plain_stripped" "$stripped" \
+    || fail "--visual changed bytes outside its own contract block"$'\n'"$(diff "$plain_stripped" "$stripped")"
 
   while IFS='|' read -r label args expect; do
     [ -n "$label" ] || continue
@@ -1985,11 +1992,11 @@ ROWS
   pass "fm-brief.sh: --visual is surface-bound, shared by ship/scout, and byte-neutral when absent"
 }
 
-# Every --visual brief (all four surfaces) and every --words brief names the
-# distilled knowledge library and its two-stage route; a brief with neither
-# flag carries no such section.
-test_knowledge_library_section_renders_for_visual_and_words() {
-  local surface home brief lib plain out rc
+# Every ship and scout brief names the distilled knowledge library and its
+# two-stage route with no flag; --visual briefs (all four surfaces) get the
+# fuller required-input paragraph; secondmate charters carry no such section.
+test_knowledge_library_section_renders_in_every_ship_and_scout_brief() {
+  local surface home brief lib plain out rc mode stripped
   lib="$TMP_ROOT/knowledge-lib"
   for surface in decks scout website email; do
     home="$TMP_ROOT/knowledge-visual-$surface"
@@ -2006,25 +2013,53 @@ test_knowledge_library_section_renders_for_visual_and_words() {
     assert_grep "knowledge library unavailable at $lib" "$brief" "$surface: brief did not say what to do when the library is absent"
   done
 
-  brief=$(SCOUT_LIBRARY_DIR="$lib" scaffold_in_home "$TMP_ROOT/knowledge-words-scout" knowledge-words some-proj --scout --words) \
-    || fail "scout: --words brief failed"
-  assert_grep "# Knowledge library" "$brief" "scout: --words brief lost the Knowledge library section"
-  assert_no_grep "# Visual work contract" "$brief" "--words must not add the visual contract"
-  brief=$(unset SCOUT_LIBRARY_DIR; scaffold_in_home "$TMP_ROOT/knowledge-words-default" knowledge-default some-proj --mode direct-PR --words) \
-    || fail "direct-PR: --words brief failed"
-  assert_grep "first \`/Users/tomas/firstmate/projects/brain/library/themes.json\`" "$brief" \
+  for mode in no-mistakes direct-PR local-only scout; do
+    if [ "$mode" = scout ]; then
+      brief=$(SCOUT_LIBRARY_DIR="$lib" scaffold_in_home "$TMP_ROOT/knowledge-plain-$mode" "knowledge-plain-$mode" some-proj --scout) \
+        || fail "$mode: plain brief failed"
+    else
+      brief=$(SCOUT_LIBRARY_DIR="$lib" scaffold_in_home "$TMP_ROOT/knowledge-plain-$mode" "knowledge-plain-$mode" some-proj --mode "$mode") \
+        || fail "$mode: plain brief failed"
+    fi
+    assert_grep "# Knowledge library" "$brief" "$mode: a plain brief lost the Knowledge library section"
+    assert_grep "If any part of this task writes words people will read (copy, decks, proposals, job profiles, question scripts, course text, emails), route through" "$brief" \
+      "$mode: plain brief did not carry the conditional words-for-people trigger"
+    assert_grep "Read \`$lib/INTEGRATION.md\` once" "$brief" "$mode: plain brief did not require reading INTEGRATION.md"
+    assert_grep "\`$lib/themes.json\`, then \`$lib/index.json\` and \`$lib/frameworks.json\`" "$brief" "$mode: plain brief did not name the two-stage route"
+    assert_grep "exposure: client-ok" "$brief" "$mode: plain brief lost the client-ok exposure filter"
+    assert_grep "Never copy quotes or locators" "$brief" "$mode: plain brief did not forbid quotes and locators"
+    assert_grep "knowledge library unavailable at $lib" "$brief" "$mode: plain brief did not say what to do when the library is absent"
+    assert_no_grep "# Visual work contract" "$brief" "$mode: the library section must not add the visual contract"
+    assert_no_grep "required input" "$brief" "$mode: plain brief carried the fuller visual paragraph"
+  done
+
+  brief=$(unset SCOUT_LIBRARY_DIR; scaffold_in_home "$TMP_ROOT/knowledge-default" knowledge-default some-proj --mode direct-PR) \
+    || fail "direct-PR: default-library brief failed"
+  assert_grep "Read \`/Users/tomas/firstmate/projects/brain/library/INTEGRATION.md\` once" "$brief" \
     "unset SCOUT_LIBRARY_DIR did not fall back to the primary home library"
 
-  plain=$(scaffold_in_home "$TMP_ROOT/knowledge-plain" knowledge-plain some-proj --mode no-mistakes) \
+  plain=$(SCOUT_LIBRARY_DIR="$lib" scaffold_in_home "$TMP_ROOT/knowledge-bytes-a" knowledge-bytes some-proj --mode no-mistakes) \
     || fail "plain knowledge-control scaffold failed"
-  assert_no_grep "# Knowledge library" "$plain" "a brief without --visual or --words carried the Knowledge library section"
-  assert_no_grep "themes.json" "$plain" "a brief without --visual or --words named the library route"
+  stripped="$TMP_ROOT/knowledge-stripped.md"
+  awk '
+    $0 == "# Knowledge library" { skip=1; next }
+    skip && $0 == "" { skip=0; next }
+    skip { next }
+    { print }
+  ' "$plain" > "$stripped"
+  assert_no_grep "themes.json" "$stripped" "the library route leaked outside the Knowledge library section"
+  assert_no_grep "INTEGRATION.md" "$stripped" "the library route leaked outside the Knowledge library section"
 
+  mkdir -p "$TMP_ROOT/knowledge-mate-home/data"
+  FM_HOME="$TMP_ROOT/knowledge-mate-home" FM_SECONDMATE_CHARTER='ops' FM_SECONDMATE_SCOPE='ops work' \
+    "$ROOT/bin/fm-brief.sh" knowledge-mate --secondmate --no-projects >/dev/null 2>&1 \
+    || fail "secondmate charter scaffold failed"
+  assert_no_grep "Knowledge library" "$TMP_ROOT/knowledge-mate-home/data/knowledge-mate/brief.md" \
+    "a secondmate charter carried the Knowledge library section"
   rc=0
-  out=$(FM_HOME="$TMP_ROOT/knowledge-refusals" "$ROOT/bin/fm-brief.sh" knowledge-mate --secondmate --no-projects --words 2>&1) || rc=$?
-  [ "$rc" -ne 0 ] || fail "--words on a secondmate charter: expected a non-zero exit"
-  assert_contains "$out" "--words applies only to crewmate ship or scout briefs" "--words secondmate refusal did not explain itself"
-  pass "fm-brief.sh: --visual and --words render the Knowledge library route; absent otherwise"
+  out=$(FM_HOME="$TMP_ROOT/knowledge-mate-home" "$ROOT/bin/fm-brief.sh" knowledge-words --secondmate --no-projects --words 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "--words is dropped: expected a non-zero exit"
+  pass "fm-brief.sh: every ship and scout brief renders the Knowledge library route; visual briefs get the fuller paragraph"
 }
 
 test_help_documents_visual_work() {
@@ -2033,7 +2068,6 @@ test_help_documents_visual_work() {
   assert_contains "$help" "--visual" "fm-brief.sh --help does not mention --visual"
   assert_contains "$help" "--surface <decks|scout|website|email>" "fm-brief.sh --help does not list the known visual surfaces"
   assert_contains "$help" "Visual work contract" "fm-brief.sh --help does not name the generated contract"
-  assert_contains "$help" "--words" "fm-brief.sh --help does not mention --words"
   assert_contains "$help" "Knowledge library" "fm-brief.sh --help does not name the Knowledge library section"
   pass "fm-brief.sh: --help documents the visual-work flag and surface selector"
 }
@@ -2369,7 +2403,7 @@ test_turn_end_and_time_lines_render_for_ship_and_scout
 test_pasted_file_is_opt_in_and_marked
 test_design_block_is_opt_in
 test_visual_work_contract_is_surface_bound_and_opt_in
-test_knowledge_library_section_renders_for_visual_and_words
+test_knowledge_library_section_renders_in_every_ship_and_scout_brief
 test_help_documents_visual_work
 test_help_documents_prompting_flags
 test_workers_wait_without_spending_turns

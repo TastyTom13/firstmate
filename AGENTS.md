@@ -387,6 +387,7 @@ Fill `## Firstmate spec` (`{FIRSTMATE_SPEC}`) with only the build instructions t
 `bin/fm-dod-lib.sh` owns intent authoring without added speaker labels or direct address, its provenance markers, what a no-mistakes worker may pass as `--intent`, and the string's self-sufficiency rule.
 Keep additions task-specific rather than repeating lifecycle instructions, and alter generated sections only when the task genuinely differs from the standard shape.
 For every visual task, load `visual-work` and scaffold with `--visual --surface <decks|scout|website|email>`; that skill owns surface selection and the visual quality contract.
+Every ship and scout brief carries a generated `# Knowledge library` section, and the library is a required input for any words-for-people work.
 
 Every ship brief must retain the worktree-isolation assertion and stop if launched in the primary checkout.
 If a ship task touches firstmate's shared tracked material, explicitly require `firstmate-coding-guidelines` before editing.
