@@ -682,6 +682,15 @@ fm_write_meta() {
   done
 }
 
+# fm_test_followups_none <meta>: record the follow-ups --none escape on an
+# existing task record that has not declared its follow-ups, for suites whose
+# teardowns exercise something other than bin/fm-teardown.sh's follow-ups gate.
+fm_test_followups_none() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 0
+  ! grep -q '^followups=' "$1" || return 0
+  printf 'followups=none\n' >> "$1"
+}
+
 # fm_write_secondmate_meta <file> <home> [window] [projects] [harness]: write the
 # standard kind=secondmate meta block used across the secondmate suites. Window
 # defaults to firstmate:fm-<id>, projects defaults to alpha, and harness defaults

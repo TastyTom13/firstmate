@@ -73,6 +73,23 @@
 # declared scratch and the report at data/<task-id>/report.md is the work
 # product. Teardown proceeds only once the report exists and the shared
 # unresolved-decision completion gate verifies its captain-held inventory.
+# Follow-ups before cleanup: a ship or scout task's worker records work it found
+# but did not do as one title per line in data/<task-id>/follow-ups.md, or
+# records that there is none with bin/fm-followups.sh <task-id> --none, which
+# writes followups=none into the task's meta. Once every landed-work and report
+# refusal has passed, and before the backlog close is recorded, teardown files
+# each recorded title through bin/fm-tasks-axi.sh add as a queued kind=follow-up
+# item carrying the project's repo name and an "Origin: <task-id>" body, then
+# proceeds; with neither a non-empty record nor the escape it REFUSES and changes
+# nothing. A blank line and a leading "- ", "* ", or "[ ] " list marker are
+# ignored, and a record with no titles is not a declaration of none. Recorded
+# titles win over the escape: a record written after --none still gets filed. Each filed
+# title advances followups_filed= in the meta, and followups=filed ends the
+# filing, so a teardown retried after a partial failure never files a title
+# twice. The record itself survives in data/<task-id>/. Where no automatic
+# backlog transition applies (a manual backend, or a markdown home with no
+# backlog file), the titles are printed for the operator and nothing refuses.
+# --force skips this step with the other work checks.
 # Before destructive cleanup, teardown validates task check artifacts as
 # ordinary single-link files on the state device. It refuses and preserves
 # task state when that proof fails; otherwise it removes the task's check,
@@ -187,7 +204,7 @@
 # alternative below.
 # Usage: fm-teardown.sh <task-id> [--force | --release-shared-record] [--legacy-record]
 #   --force skips ordinary-task dirty and landed-work checks, skips scout report
-#   checks, and discards secondmate child work for kind=secondmate. Only use it
+#   and follow-up checks, and discards secondmate child work for kind=secondmate. Only use it
 #   when the captain has explicitly said to discard the work.
 #   --release-shared-record is the answer to that shared-worktree refusal, and is
 #   accepted ONLY while another task record in this home still names this task's
@@ -1734,6 +1751,58 @@ backlog_done_args() {
       fi
       ;;
   esac
+}
+
+# Print the follow-up titles in data/<id>/follow-ups.md, one per line: blank
+# lines are skipped and a leading "- ", "* ", or "[ ] " list marker is dropped.
+follow_up_titles() {  # <record>
+  sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+    -e 's/^[-*][[:space:]]\{1,\}//' -e 's/^\[[ xX]\][[:space:]]\{1,\}//' "$1" | grep -v '^$' || true
+}
+
+# File the worker's follow-ups as backlog items before the task record goes,
+# or refuse until it has recorded them or declared none (script header). Each
+# filed title advances followups_filed= in the record already locked here, so a
+# teardown retried after a partial failure never files the same title twice;
+# followups=filed then marks the whole record done. Where no automatic backlog
+# applies, the titles are printed for the operator instead and nothing refuses.
+teardown_file_follow_ups() {
+  local record="$DATA/$ID/follow-ups.md" state titles total filed=0 n=0 title repo
+  state=$(fm_meta_get "$META" followups)
+  [ "$state" != filed ] || return 0
+  titles=
+  [ ! -f "$record" ] || titles=$(follow_up_titles "$record")
+  if [ "$TEARDOWN_BACKLOG_APPLIES" != 1 ]; then
+    [ -z "$titles" ] || printf 'Manual follow-up: file these follow-ups from %s by hand:\n%s\n' "$ID" "$titles"
+    return 0
+  fi
+  if [ -z "$titles" ]; then
+    [ "$state" != none ] || return 0
+    echo "REFUSED: task $ID has not recorded its follow-ups." >&2
+    echo "Have the worker write each one as a line in $record, or record that there are none with: $SCRIPT_DIR/fm-followups.sh $ID --none" >&2
+    return 1
+  fi
+  total=$(printf '%s\n' "$titles" | wc -l | tr -d ' ')
+  filed=$(fm_meta_get "$META" followups_filed)
+  case "$filed" in ''|*[!0-9]*) filed=0 ;; esac
+  repo=$(basename "${PROJ:-$ID}")
+  if [ -s "$META" ] && [ -n "$(tail -c 1 -- "$META")" ]; then
+    printf '\n' >> "$META" || return 1
+  fi
+  while IFS= read -r title; do
+    n=$((n + 1))
+    [ "$n" -gt "$filed" ] || continue
+    if ! FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-tasks-axi.sh" add "$title" --mint \
+        --kind follow-up --repo "$repo" --body "Origin: $ID" >/dev/null; then
+      echo "REFUSED: could not file follow-up $n of $total from $record; $((n - 1)) are filed, and a retried teardown resumes at this one." >&2
+      return 1
+    fi
+    printf 'followups_filed=%s\n' "$n" >> "$META" || return 1
+  done <<EOF
+$titles
+EOF
+  printf 'followups=filed\n' >> "$META" || return 1
+  echo "filed $total follow-ups from $ID into the backlog"
 }
 
 # Closing the backlog item is this script's own last act on the record, not a
@@ -3645,6 +3714,13 @@ if [ "$BACKEND" = herdr ]; then
   fm_backend_herdr_parse_target "$T" || exit 1
   TEARDOWN_HERDR_SESSION=$FM_BACKEND_HERDR_SESSION
   TEARDOWN_HERDR_PANE=$FM_BACKEND_HERDR_PANE
+fi
+
+# Follow-ups before cleanup (script header). Runs once every landed-work and
+# report refusal has passed and before the backlog close is recorded, so a
+# refusal here leaves every record, the endpoint, and the worktree in place.
+if [ "$KIND" != secondmate ] && [ "$FORCE" != "--force" ]; then
+  teardown_file_follow_ups || exit 1
 fi
 
 BACKLOG_CLOSED=0

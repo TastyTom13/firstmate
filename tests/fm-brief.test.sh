@@ -202,7 +202,7 @@ test_ship_modes_generate_clean_briefs() {
   for id_mode in "brief-nomistakes-a1:no-mistakes" "brief-directpr-a2:direct-PR" "brief-localonly-a3:local-only"; do
     id=${id_mode%%:*}
     mode=${id_mode##*:}
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1; status=$?
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "fixture check passes" >/dev/null 2>&1; status=$?
     expect_code 0 "$status" "fm-brief.sh $id --mode $mode should exit 0"
     brief="$home/data/$id/brief.md"
     assert_present "$brief" "$id: brief was not scaffolded"
@@ -272,7 +272,7 @@ test_ship_mode_is_explicit_not_registry() {
   local home brief
   home="$TMP_ROOT/explicit-over-registry-home"
   write_registry "$home"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-explicit-a5 direct-proj --mode no-mistakes >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-explicit-a5 direct-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1 \
     || fail "explicit no-mistakes brief on a direct-PR project should scaffold"
   brief="$home/data/brief-explicit-a5/brief.md"
   grep -qx "Delivery contract: mode=no-mistakes" "$brief" \
@@ -281,11 +281,109 @@ test_ship_mode_is_explicit_not_registry() {
     "explicit no-mistakes brief did not render the pipeline definition of done"
 
   # An unregistered project is not a blocker either, because nothing is looked up.
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-explicit-a6 never-registered --mode local-only >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-explicit-a6 never-registered --mode local-only --done-when "fixture check passes" >/dev/null 2>&1 \
     || fail "unregistered project should still scaffold from the explicit mode"
   grep -qx "Delivery contract: mode=local-only" "$home/data/brief-explicit-a6/brief.md" \
     || fail "unregistered project did not honour the explicit --mode"
   pass "fm-brief.sh: the explicit ship mode wins over the registered posture"
+}
+
+# Every ship and scout brief carries one "Done when" line Firstmate fills at
+# scaffold time; a missing, empty, or multi-line value refuses before anything
+# is written, the same way a missing --mode does.
+test_done_when_is_required_on_ship_and_scout() {
+  local home id out status label flag expect
+  home="$TMP_ROOT/done-when-required-home"
+  mkdir -p "$home/data"
+  id=0
+  while IFS='|' read -r label flag expect; do
+    [ -n "$label" ] || continue
+    id=$((id + 1))
+    # shellcheck disable=SC2086  # flag is an intentional word-split arg list
+    out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "done-when-required-$id" some-proj $flag 2>&1)
+    status=$?
+    [ "$status" -ne 0 ] || fail "$label: expected a non-zero exit"
+    assert_contains "$out" "$expect" "$label: refusal did not explain the contract"
+    assert_absent "$home/data/done-when-required-$id/brief.md" "$label: refused scaffold still wrote a brief"
+  done <<'ROWS'
+ship without --done-when|--mode direct-PR|briefs require --done-when
+scout without --done-when|--scout|briefs require --done-when
+ship with an empty --done-when value|--mode direct-PR --done-when=|briefs require --done-when
+ROWS
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" done-when-blank some-proj --mode local-only --done-when '   ' 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a whitespace-only --done-when was accepted"
+  assert_contains "$out" "briefs require --done-when" "whitespace-only --done-when refusal did not explain the contract"
+  assert_absent "$home/data/done-when-blank/brief.md" "whitespace-only --done-when still wrote a brief"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" done-when-multi some-proj --mode local-only --done-when "$(printf 'one\ntwo')" 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a multi-line --done-when was accepted"
+  assert_contains "$out" "one line" "multi-line --done-when refusal did not explain the one-line rule"
+  assert_absent "$home/data/done-when-multi/brief.md" "multi-line --done-when still wrote a brief"
+  out=$(FM_HOME="$home" FM_SECONDMATE_CHARTER='ops' "$ROOT/bin/fm-brief.sh" done-when-mate --secondmate app --done-when 'x' 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "--done-when was accepted on a secondmate charter"
+  assert_contains "$out" "--done-when applies only to crewmate ship or scout briefs" \
+    "secondmate --done-when refusal did not explain where it applies"
+  assert_absent "$home/data/done-when-mate/brief.md" "secondmate --done-when refusal still wrote a charter"
+  pass "fm-brief.sh: ship and scout briefs require one non-empty --done-when line"
+}
+
+# The Done when line lands in the Task section and is repeated by the
+# Definition of done as the acceptance check, in every ship mode; a scout gets
+# it phrased as the question its report must answer.
+test_done_when_renders_in_task_and_definition_of_done() {
+  local home id mode brief check dod task
+  home="$TMP_ROOT/done-when-render-home"
+  mkdir -p "$home/data"
+  # shellcheck disable=SC2016  # literal backticks prove the line is not re-expanded
+  check='bash tests/foo.test.sh prints PASS for the `bar` case'
+  for mode in no-mistakes direct-PR local-only; do
+    id="done-when-$mode"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "$check" >/dev/null 2>&1 \
+      || fail "$mode: scaffold with --done-when failed"
+    brief="$home/data/$id/brief.md"
+    task=$(awk '/^# Task$/{on=1;next} /^# /{on=0} on' "$brief")
+    assert_contains "$task" "## Done when" "$mode: Task section has no Done when subsection"
+    assert_contains "$task" "Done when: $check" "$mode: Task section does not carry the Done when line verbatim"
+    dod=$(awk '/^# Definition of done$/{on=1} on' "$brief")
+    assert_contains "$dod" "Done when: $check" "$mode: Definition of done does not repeat the Done when line"
+    assert_contains "$dod" "acceptance check" "$mode: Definition of done does not name the line as the acceptance check"
+    grep -qx "{FIRSTMATE_SPEC}" "$brief" || fail "$mode: Done when line merged into the Firstmate spec placeholder"
+  done
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" done-when-scout some-proj --scout --done-when "fixture question" \
+    --done-when 'which cache layer drops the session cookie?' >/dev/null 2>&1 \
+    || fail "scout scaffold with --done-when failed"
+  brief="$home/data/done-when-scout/brief.md"
+  task=$(awk '/^# Task$/{on=1;next} /^# /{on=0} on' "$brief")
+  assert_contains "$task" "Done when: the report answers which cache layer drops the session cookie?" \
+    "scout Task section does not phrase Done when as the report's question"
+  dod=$(awk '/^# Definition of done$/{on=1} on' "$brief")
+  assert_contains "$dod" "Done when: the report answers which cache layer drops the session cookie?" \
+    "scout Definition of done does not repeat the report's question"
+  pass "fm-brief.sh: the Done when line renders in the Task section and the Definition of done"
+}
+
+# Workers record follow-ups in a durable per-task file, or declare none, so
+# cleanup can file them before the task record goes away.
+test_follow_ups_section_renders_for_ship_and_scout() {
+  local home kind id brief
+  home="$TMP_ROOT/follow-ups-home"
+  mkdir -p "$home/data"
+  for kind in ship scout; do
+    id="follow-ups-$kind"
+    if [ "$kind" = ship ]; then
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode direct-PR --done-when 'check' >/dev/null 2>&1
+    else
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout --done-when 'question' >/dev/null 2>&1
+    fi || fail "$kind: scaffold failed"
+    brief="$home/data/$id/brief.md"
+    grep -qx "# Follow-ups" "$brief" || fail "$kind: brief has no Follow-ups section"
+    assert_grep "$home/data/$id/follow-ups.md" "$brief" "$kind: brief does not name the follow-ups record"
+    assert_grep "bin/fm-followups.sh' $id --none" "$brief" "$kind: brief does not name the --none escape"
+    assert_grep "split it off, never shrink" "$brief" "$kind: brief does not carry the split-never-shrink rule"
+  done
+  pass "fm-brief.sh: ship and scout briefs name the follow-ups record and its --none escape"
 }
 
 # yolo is firstmate's merge authority and never reaches the worker, and a scout
@@ -330,7 +428,7 @@ test_ship_base_branch_line_renders_only_when_given() {
 
   for mode in no-mistakes direct-PR; do
     id="brief-base-${mode}"
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --base integration >/dev/null 2>&1 \
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "fixture check passes" --base integration >/dev/null 2>&1 \
       || fail "$mode: a ship brief with an explicit base should scaffold"
     brief="$home/data/$id/brief.md"
     grep -qx "Delivery contract: mode=$mode" "$brief" \
@@ -351,7 +449,7 @@ test_ship_base_branch_line_renders_only_when_given() {
   done
 
   id="brief-base-absent"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1 \
     || fail "a ship brief with no explicit base should still scaffold"
   brief="$home/data/$id/brief.md"
   assert_no_grep "Base branch:" "$brief" \
@@ -366,14 +464,14 @@ test_faster_paths_use_configured_authority_without_stacked_review() {
   home="$TMP_ROOT/configured-authority-home"
   write_registry "$home"
   id="brief-direct-authority-a4"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" direct-proj --mode direct-PR >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" direct-proj --mode direct-PR --done-when "fixture check passes" >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   assert_grep "The configured merge authority decides whether to merge the PR; firstmate relays the outcome." "$brief" \
     "direct-PR brief lost configured merge authority"
   assert_no_grep "The captain reviews and merges the PR" "$brief" \
     "direct-PR brief hard-coded captain-only authority"
   id="brief-local-authority-a4"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" local-proj --mode local-only >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" local-proj --mode local-only --done-when "fixture check passes" >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   assert_grep "The configured merge authority approves the ready branch, then firstmate merges it into local \`main\` through the guarded fast-forward path." "$brief" \
     "local-only brief lost configured merge authority and guarded landing"
@@ -384,7 +482,7 @@ test_faster_paths_use_configured_authority_without_stacked_review() {
   assert_no_grep "pass \`--intent\` as only this brief's \`## Captain's intent\`" "$home/data/$id/brief.md" \
     "local-only brief must not include the no-mistakes --intent contract"
   id="brief-direct-intent-a4"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" direct-proj --mode direct-PR >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" direct-proj --mode direct-PR --done-when "fixture check passes" >/dev/null 2>&1
   assert_no_grep "pass \`--intent\` as only this brief's \`## Captain's intent\`" "$home/data/$id/brief.md" \
     "direct-PR brief must not include the no-mistakes --intent contract"
   pass "fm-brief.sh: faster paths use configured authority without stacked review"
@@ -399,7 +497,7 @@ test_pr_based_dod_requires_non_draft() {
   mkdir -p "$home/data"
   for mode in no-mistakes direct-PR local-only; do
     id="brief-draft-$mode"
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "fixture check passes" >/dev/null 2>&1
     brief="$home/data/$id/brief.md"
     assert_present "$brief" "$mode: brief was not scaffolded"
     if [ "$mode" = local-only ]; then
@@ -425,7 +523,7 @@ test_no_mistakes_dod_wording() {
   home="$TMP_ROOT/wording-home"
   mkdir -p "$home/data"
   id="brief-wording-b1"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   assert_present "$brief" "brief was not scaffolded"
   for spelling in 'Captain:' "Captain's words:" "Captain's ask:" "Captain's intent:" 'Captain,'; do
@@ -481,7 +579,7 @@ test_no_mistakes_dod_green_detection() {
   home="$TMP_ROOT/green-detection-home"
   mkdir -p "$home/data"
   id="brief-green-b1"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   assert_present "$brief" "brief was not scaffolded"
   assert_grep "Only a drive call's return reports the green PR" "$brief" \
@@ -504,7 +602,7 @@ test_ask_user_escalation_format() {
   home="$TMP_ROOT/ask-user-home"
   mkdir -p "$home/data"
   id="brief-ask-user-d1"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   assert_present "$brief" "brief was not scaffolded"
 
@@ -533,14 +631,14 @@ test_ask_user_escalation_format() {
     "no-mistakes DOD ask-user paragraph still uses the old bare rule-6 pointer"
 
   other_id="brief-no-ask-user-scout"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$other_id" some-proj --scout >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$other_id" some-proj --scout --done-when "fixture question" >/dev/null 2>&1
   other_brief="$home/data/$other_id/brief.md"
   assert_no_grep "destructive actions, ask-user findings" "$other_brief" \
     "scout brief received a no-mistakes-only decision case"
 
   for mode in direct-PR local-only; do
     other_id="brief-no-ask-user-$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')"
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$other_id" some-proj --mode "$mode" >/dev/null 2>&1
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$other_id" some-proj --mode "$mode" --done-when "fixture check passes" >/dev/null 2>&1
     other_brief="$home/data/$other_id/brief.md"
     assert_no_grep "nm-<run>-findings.txt" "$other_brief" \
       "$mode brief received a no-mistakes-only escalation format"
@@ -560,7 +658,7 @@ test_ship_project_memory_wording() {
   home="$TMP_ROOT/project-memory-home"
   mkdir -p "$home/data"
   id="brief-memory-c1"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   assert_present "$brief" "brief was not scaffolded"
   assert_grep "loaded into every agent session" "$brief" \
@@ -583,7 +681,7 @@ test_herdr_lab_contract_is_explicit_and_complete() {
   home="$TMP_ROOT/herdr-lab-home"
   mkdir -p "$home/data"
   id="brief-herdr-lab-d1"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --herdr-lab >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --done-when "fixture check passes" --herdr-lab >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   assert_present "$brief" "Herdr lab brief was not scaffolded"
   assert_grep "# Herdr isolation - HARD SAFETY CONTRACT" "$brief" \
@@ -617,7 +715,7 @@ test_herdr_lab_contract_quotes_foreign_firstmate_path() {
   id="brief-herdr-lab-foreign-d2"
   helper=$(printf '%s' "$foreign_root/bin/fm-herdr-lab.sh" | sed "s/'/'\\\\''/g")
   helper="'$helper'"
-  FM_HOME="$home" FM_ROOT_OVERRIDE="$foreign_root" "$ROOT/bin/fm-brief.sh" "$id" foreign --scout --herdr-lab >/dev/null 2>&1
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$foreign_root" "$ROOT/bin/fm-brief.sh" "$id" foreign --scout --done-when "fixture question" --herdr-lab >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   assert_grep "HERDR_LAB_HELPER=$helper" "$brief" \
     "Herdr lab brief must shell-quote an absolute Firstmate helper path"
@@ -633,9 +731,9 @@ test_herdr_lab_omission_is_loud_for_ship_and_scout() {
   for kind in ship scout; do
     id="brief-herdr-gate-$kind"
     if [ "$kind" = scout ]; then
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout >/dev/null 2>&1
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout --done-when "fixture question" >/dev/null 2>&1
     else
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes >/dev/null 2>&1
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1
     fi
     brief="$home/data/$id/brief.md"
     assert_grep "# Herdr lifecycle declaration - NOT ENABLED" "$brief" \
@@ -662,9 +760,9 @@ test_documented_global_replace_leaves_the_herdr_gate_intact() {
   for kind in ship scout; do
     id="brief-fill-site-$kind"
     if [ "$kind" = scout ]; then
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout >/dev/null 2>&1
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout --done-when "fixture question" >/dev/null 2>&1
     else
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes >/dev/null 2>&1
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1
     fi
     brief="$home/data/$id/brief.md"
     assert_present "$brief" "$kind brief was not scaffolded"
@@ -885,7 +983,7 @@ test_herdr_lab_contract_applies_to_scouts_but_not_secondmates() {
   local home brief status=0
   home="$TMP_ROOT/herdr-kind-home"
   mkdir -p "$home/data"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" herdr-scout firstmate --scout --herdr-lab >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" herdr-scout firstmate --scout --done-when "fixture question" --herdr-lab >/dev/null 2>&1
   brief="$home/data/herdr-scout/brief.md"
   assert_grep "# Herdr isolation - HARD SAFETY CONTRACT" "$brief" \
     "scout --herdr-lab brief missing the contract"
@@ -907,11 +1005,11 @@ test_pause_verb_override_renders_all_brief_scaffolds() {
     case "$kind" in
       ship:*)
         FM_HOME="$home" FM_CLASSIFY_PAUSED_VERB=awaiting \
-          "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode "${kind#ship:}" >/dev/null 2>&1
+          "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode "${kind#ship:}" --done-when "fixture check passes" >/dev/null 2>&1
         ;;
       scout)
         FM_HOME="$home" FM_CLASSIFY_PAUSED_VERB=awaiting \
-          "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout >/dev/null 2>&1
+          "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout --done-when "fixture question" >/dev/null 2>&1
         ;;
       secondmate)
         FM_HOME="$home" FM_CLASSIFY_PAUSED_VERB=awaiting \
@@ -993,9 +1091,9 @@ test_ship_and_scout_teach_validation_round_pause() {
   for kind in ship scout; do
     id="brief-validation-round-pause-$kind"
     if [ "$kind" = scout ]; then
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout >/dev/null 2>&1
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout --done-when "fixture question" >/dev/null 2>&1
     else
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes >/dev/null 2>&1
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1
     fi
     brief="$home/data/$id/brief.md"
     assert_grep "your own validation round, which you declare once just before its blocking hold" "$brief" \
@@ -1023,7 +1121,7 @@ test_scout_and_secondmate_load_decision_hold_policy() {
   home="$TMP_ROOT/decision-policy-home"
   mkdir -p "$home/data"
   FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
-    "$ROOT/bin/fm-brief.sh" sample-investigation sample --scout >/dev/null 2>&1
+    "$ROOT/bin/fm-brief.sh" sample-investigation sample --scout --done-when "fixture question" >/dev/null 2>&1
   scout="$home/data/sample-investigation/brief.md"
   assert_grep "$ROOT/.agents/skills/captain-hold-lifecycle/SKILL.md" "$scout" \
     "scout brief did not load the captain-call policy before done"
@@ -1054,7 +1152,7 @@ test_scout_lavish_line_follows_presentation_floor() {
     fakebin=$(fm_fakebin "$case_dir")
     [ "$version" = absent ] || fm_fake_version_tool "$fakebin" lavish-axi FM_FAKE_LAVISH_AXI_VERSION "$version"
     PATH="$fakebin:$base" FM_HOME="$case_dir/home" \
-      "$ROOT/bin/fm-brief.sh" scout-lavish alpha --scout >/dev/null \
+      "$ROOT/bin/fm-brief.sh" scout-lavish alpha --scout --done-when "fixture question" >/dev/null \
       || fail "$label: scout scaffold failed"
     brief="$case_dir/home/data/scout-lavish/brief.md"
     if [ "$expect" = hosting ]; then
@@ -1083,7 +1181,7 @@ ROWS
 # Scout and secondmate paths still scaffold well-formed briefs.
 test_scout_and_secondmate_scaffold() {
   local brief
-  FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-scout-q6 alpha --scout >/dev/null 2>&1 \
+  FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-scout-q6 alpha --scout --done-when "fixture question" >/dev/null 2>&1 \
     || fail "fm-brief.sh scout scaffold exited non-zero"
   brief="$BRIEF_HOME/data/brief-scout-q6/brief.md"
   assert_present "$brief" "scout brief was not scaffolded"
@@ -1118,8 +1216,8 @@ test_orientation_sections_render_for_ship_and_scout() {
   for kind in ship scout; do
     id="brief-orientation-$kind"
     case "$kind" in
-      ship)  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1 ;;
-      scout) FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1 ;;
+      ship)  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1 ;;
+      scout) FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout --done-when "fixture question" >/dev/null 2>&1 ;;
     esac
     brief="$home/data/$id/brief.md"
     assert_present "$brief" "$kind: brief was not scaffolded"
@@ -1156,17 +1254,17 @@ test_env_file_block_is_opt_in_and_self_explaining() {
   home="$TMP_ROOT/env-file-home"
   mkdir -p "$home/data"
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e1 some-proj --mode no-mistakes >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e1 some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1 \
     || fail "ship brief without --env-file should scaffold"
   assert_no_grep "# Setup: environment" "$home/data/brief-env-e1/brief.md" \
     "a brief with no --env-file must carry no environment step"
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e2 some-proj --scout >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e2 some-proj --scout --done-when "fixture question" >/dev/null 2>&1 \
     || fail "scout brief without --env-file should scaffold"
   assert_no_grep "# Setup: environment" "$home/data/brief-env-e2/brief.md" \
     "a scout with no --env-file must carry no environment step"
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e3 some-proj --mode no-mistakes \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e3 some-proj --mode no-mistakes --done-when "fixture check passes" \
     --env-file /primary/some-proj/.env.local >/dev/null 2>&1 \
     || fail "ship brief with --env-file should scaffold"
   brief="$home/data/brief-env-e3/brief.md"
@@ -1181,14 +1279,14 @@ test_env_file_block_is_opt_in_and_self_explaining() {
   assert_grep "never print its contents" "$brief" "environment step lost the secret-handling rule"
 
   # The scout path takes it too: reproducing a bug can need the app to run.
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e4 some-proj --scout \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e4 some-proj --scout --done-when "fixture question" \
     --env-file /primary/some-proj/.env >/dev/null 2>&1 \
     || fail "scout brief with --env-file should scaffold"
   assert_grep "ln -sfn '/primary/some-proj/.env' '.env'" "$home/data/brief-env-e4/brief.md" \
     "scout environment step did not render the link command"
 
   # A path containing a space must still render a command the worker can run.
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e8 some-proj --mode no-mistakes \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e8 some-proj --mode no-mistakes --done-when "fixture check passes" \
     --env-file "/primary/My Projects/some-proj/.env" >/dev/null 2>&1 \
     || fail "ship brief with a spaced --env-file path should scaffold"
   assert_grep "ln -sfn '/primary/My Projects/some-proj/.env' '.env'" "$home/data/brief-env-e8/brief.md" \
@@ -1196,7 +1294,7 @@ test_env_file_block_is_opt_in_and_self_explaining() {
 
   # Optional ':<dest>' for an env file the app loads from a sub-directory: the
   # link lands there, and the block creates the missing parent first.
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e9 some-proj --mode no-mistakes \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e9 some-proj --mode no-mistakes --done-when "fixture check passes" \
     --env-file "/primary/some-proj/.env.site:sites/alpha/.env" >/dev/null 2>&1 \
     || fail "ship brief with a nested env destination should scaffold"
   assert_grep "mkdir -p 'sites/alpha'" "$home/data/brief-env-e9/brief.md" \
@@ -1206,7 +1304,7 @@ test_env_file_block_is_opt_in_and_self_explaining() {
 
   # A destination ending in '/' names a directory: the link goes inside it under
   # the source basename, and that directory is the one created.
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e14 some-proj --mode no-mistakes \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-env-e14 some-proj --mode no-mistakes --done-when "fixture check passes" \
     --env-file "/primary/some-proj/.env.local:sites/alpha/" >/dev/null 2>&1 \
     || fail "ship brief with a directory env destination should scaffold"
   assert_grep "mkdir -p 'sites/alpha'" "$home/data/brief-env-e14/brief.md" \
@@ -1241,28 +1339,28 @@ test_pr_wait_follow_up_only_where_a_pr_exists() {
   home="$TMP_ROOT/pr-wait-home"
   mkdir -p "$home/data"
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f1 some-proj --mode no-mistakes >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f1 some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1
   brief="$home/data/brief-wait-f1/brief.md"
   # shellcheck disable=SC2016  # Literal backticks and braces must remain unexpanded.
   assert_grep 'follow it with `paused [at=<epoch>]: awaiting merge of PR {url}`' "$brief" \
     "no-mistakes done line lost its declared merge wait"
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f2 some-proj --mode direct-PR >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f2 some-proj --mode direct-PR --done-when "fixture check passes" >/dev/null 2>&1
   # shellcheck disable=SC2016  # Literal backticks and braces must remain unexpanded.
   assert_grep 'follow it with `paused [at=<epoch>]: awaiting merge of PR {url}`' "$home/data/brief-wait-f2/brief.md" \
     "direct-PR done line lost its declared merge wait"
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f3 some-proj --mode local-only >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f3 some-proj --mode local-only --done-when "fixture check passes" >/dev/null 2>&1
   assert_no_grep "awaiting merge of PR" "$home/data/brief-wait-f3/brief.md" \
     "local-only raises no PR and must not instruct a merge wait"
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f4 some-proj --scout >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-f4 some-proj --scout --done-when "fixture question" >/dev/null 2>&1
   assert_no_grep "awaiting merge of PR" "$home/data/brief-wait-f4/brief.md" \
     "a scout raises no PR and must not instruct a merge wait"
 
   # The wait verb is configurable fleet-wide, so this line must follow it too.
   FM_HOME="$home" FM_CLASSIFY_PAUSED_VERB=awaiting \
-    "$ROOT/bin/fm-brief.sh" brief-wait-f5 some-proj --mode no-mistakes >/dev/null 2>&1
+    "$ROOT/bin/fm-brief.sh" brief-wait-f5 some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1
   # shellcheck disable=SC2016  # Literal backticks and braces must remain unexpanded.
   assert_grep 'follow it with `awaiting [at=<epoch>]: awaiting merge of PR {url}`' "$home/data/brief-wait-f5/brief.md" \
     "the merge-wait line ignored the configured declared-external-wait verb"
@@ -1281,7 +1379,7 @@ test_built_by_line_reads_task_meta() {
   mkdir -p "$home/data"
 
   id="brief-builtby-nm1"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   meta_quoted="'$home/state/$id.meta'"
   # shellcheck disable=SC2016  # Literal backticks must remain unexpanded.
@@ -1294,7 +1392,7 @@ test_built_by_line_reads_task_meta() {
     "no-mistakes DOD did not tell the worker which meta fields to read"
 
   id="brief-builtby-dp1"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode direct-PR >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode direct-PR --done-when "fixture check passes" >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   meta_quoted="'$home/state/$id.meta'"
   assert_grep 'Built by: <harness>/<model> at <effort>' "$brief" \
@@ -1303,7 +1401,7 @@ test_built_by_line_reads_task_meta() {
     "direct-PR DOD did not point at this task's own state/<id>.meta"
 
   id="brief-builtby-lo1"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --done-when "fixture check passes" >/dev/null 2>&1
   assert_no_grep "Built by:" "$home/data/$id/brief.md" \
     "local-only raises no PR and must not carry a Built-by instruction"
 
@@ -1324,7 +1422,7 @@ test_fable_prompting_additions_render() {
 
   for mode in no-mistakes direct-PR local-only; do
     id="brief-fable-ship-$mode"
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "fixture check passes" >/dev/null 2>&1
     brief="$home/data/$id/brief.md"
     assert_present "$brief" "ship ($mode): brief was not scaffolded"
     # The captain's intent and firstmate's build spec are the two Task
@@ -1372,7 +1470,7 @@ test_fable_prompting_additions_render() {
   done
 
   id="brief-fable-scout"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout --done-when "fixture question" >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   assert_present "$brief" "scout: brief was not scaffolded"
   assert_grep "## Captain's intent" "$brief" "scout: Task section lost the Captain's intent subsection"
@@ -1422,7 +1520,7 @@ test_evidence_rules_render_only_where_a_pr_exists() {
 
   for mode in no-mistakes direct-PR; do
     id="brief-evidence-$mode"
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1 \
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "fixture check passes" >/dev/null 2>&1 \
       || fail "$mode: brief should scaffold"
     brief="$home/data/$id/brief.md"
     assert_grep "Acceptance: number each criterion; the PR body cites each number with its proof." "$brief" \
@@ -1433,7 +1531,7 @@ test_evidence_rules_render_only_where_a_pr_exists() {
   done
 
   id="brief-evidence-local-only"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --done-when "fixture check passes" >/dev/null 2>&1 \
     || fail "local-only: brief should scaffold"
   brief="$home/data/$id/brief.md"
   assert_no_grep "Acceptance: number each criterion" "$brief" \
@@ -1442,7 +1540,7 @@ test_evidence_rules_render_only_where_a_pr_exists() {
     "local-only: a mode that raises no PR must not be told to cite one"
 
   id="brief-evidence-scout"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout --done-when "fixture question" >/dev/null 2>&1 \
     || fail "scout: brief should scaffold"
   assert_no_grep "Acceptance: number each criterion" "$home/data/$id/brief.md" \
     "scout: a report is not a PR and must not carry the ship evidence rules"
@@ -1460,7 +1558,7 @@ test_ci_failures_are_classified_never_rerun() {
 
   for mode in no-mistakes direct-PR; do
     id="brief-ci-$mode"
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1 \
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "fixture check passes" >/dev/null 2>&1 \
       || fail "$mode: brief should scaffold"
     brief="$home/data/$id/brief.md"
     assert_grep "# Failing CI checks" "$brief" "$mode: brief lost the failing-CI section"
@@ -1479,13 +1577,13 @@ test_ci_failures_are_classified_never_rerun() {
   done
 
   id="brief-ci-local-only"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --done-when "fixture check passes" >/dev/null 2>&1 \
     || fail "local-only: brief should scaffold"
   assert_no_grep "# Failing CI checks" "$home/data/$id/brief.md" \
     "local-only: a mode with no CI must not carry the failing-CI section"
 
   id="brief-ci-scout"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout --done-when "fixture question" >/dev/null 2>&1 \
     || fail "scout: brief should scaffold"
   assert_no_grep "# Failing CI checks" "$home/data/$id/brief.md" \
     "scout: a report runs no CI and must not carry the failing-CI section"
@@ -1502,7 +1600,7 @@ test_ui_screenshot_line_is_opt_in() {
 
   for mode in no-mistakes direct-PR; do
     id="brief-ui-$mode"
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --ui >/dev/null 2>&1 \
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "fixture check passes" --ui >/dev/null 2>&1 \
       || fail "$mode: a --ui ship brief should scaffold"
     brief="$home/data/$id/brief.md"
     assert_grep "viewport widths 375, 768 and 1440" "$brief" \
@@ -1514,7 +1612,7 @@ test_ui_screenshot_line_is_opt_in() {
     assert_no_grep "EOF" "$brief" "$mode: --ui brief leaked a heredoc EOF marker"
 
     id="brief-noui-$mode"
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1 \
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "fixture check passes" >/dev/null 2>&1 \
       || fail "$mode: a brief without --ui should scaffold"
     brief="$home/data/$id/brief.md"
     assert_no_grep "viewport widths" "$brief" \
@@ -1544,9 +1642,9 @@ test_workers_wait_without_spending_turns() {
   home="$TMP_ROOT/wait-home"
   mkdir -p "$home/data" "$home/config"
   : > "$home/config/wait-no-turns"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-ship some-proj --mode no-mistakes >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-ship some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1 \
     || fail "fm-brief.sh ship scaffold exited non-zero"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-scout some-proj --scout >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-scout some-proj --scout --done-when "fixture question" >/dev/null 2>&1 \
     || fail "fm-brief.sh scout scaffold exited non-zero"
   for id in brief-wait-ship brief-wait-scout; do
     brief="$home/data/$id/brief.md"
@@ -1586,7 +1684,7 @@ test_wait_no_turns_absent_keeps_the_previous_brief() {
   home="$TMP_ROOT/wait-off"
   mkdir -p "$home/data"
   [ ! -e "$home/config/wait-no-turns" ]
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-off some-proj --mode no-mistakes >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-wait-off some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null 2>&1 \
     || fail "fm-brief.sh ship scaffold exited non-zero"
   brief="$home/data/brief-wait-off/brief.md"
   assert_no_grep "end your turn at once" "$brief" "an absent flag still added the waiting section"
@@ -1603,9 +1701,9 @@ test_worker_role_scope() {
   home="$TMP_ROOT/worker-role"
   for kind in no-mistakes direct-PR local-only scout; do
     if [ "$kind" = scout ]; then
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$kind" arbitrary-project-name --scout >/dev/null || fail "scout scaffold failed"
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$kind" arbitrary-project-name --scout --done-when "fixture question" >/dev/null || fail "scout scaffold failed"
     else
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$kind" arbitrary-project-name --mode "$kind" >/dev/null || fail "$kind scaffold failed"
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$kind" arbitrary-project-name --mode "$kind" --done-when "fixture check passes" >/dev/null || fail "$kind scaffold failed"
     fi
     brief="$home/data/$kind/brief.md"
     assert_no_grep '# Current worker role contract' "$brief" "$kind scaffolded a second owner of the role scope fm-spawn.sh delivers"
@@ -1630,9 +1728,9 @@ test_turn_end_and_time_lines_render_for_ship_and_scout() {
   mkdir -p "$home/data"
   for kind in no-mistakes direct-PR local-only scout; do
     if [ "$kind" = scout ]; then
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "turn-$kind" some-proj --scout >/dev/null 2>&1 || fail "scout scaffold failed"
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "turn-$kind" some-proj --scout --done-when "fixture question" >/dev/null 2>&1 || fail "scout scaffold failed"
     else
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "turn-$kind" some-proj --mode "$kind" >/dev/null 2>&1 || fail "$kind scaffold failed"
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "turn-$kind" some-proj --mode "$kind" --done-when "fixture check passes" >/dev/null 2>&1 || fail "$kind scaffold failed"
     fi
     brief="$home/data/turn-$kind/brief.md"
     assert_grep "# Turn ends" "$brief" "$kind: brief lost the turn-ends section"
@@ -1667,7 +1765,7 @@ scaffold_in_home() {  # <home> <id> <args...>
   local home=$1 id=$2
   shift 2
   mkdir -p "$home/data"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" "$@" >/dev/null || return 1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" "$@" --done-when "fixture check passes" >/dev/null || return 1
   printf '%s' "$home/data/$id/brief.md"
 }
 
@@ -1779,7 +1877,7 @@ test_visual_work_contract_is_surface_bound_and_opt_in() {
     esac
     mkdir -p "$(dirname "$checked")" && : > "$checked"
     FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
-      "$ROOT/bin/fm-brief.sh" "visual-$surface" "$proj" --mode no-mistakes --visual --surface "$surface" >/dev/null 2>"$home/warn.txt" \
+      "$ROOT/bin/fm-brief.sh" "visual-$surface" "$proj" --mode no-mistakes --done-when "fixture check passes" --visual --surface "$surface" >/dev/null 2>"$home/warn.txt" \
       || fail "$surface: --visual ship brief failed"
     [ ! -s "$home/warn.txt" ] || fail "$surface: warned although the point-of-view document exists"
     brief="$home/data/visual-$surface/brief.md"
@@ -1824,7 +1922,7 @@ ROWS
     home="$TMP_ROOT/visual-missing-$surface"
     proj="missing-$surface"
     mkdir -p "$home/data" "$home/projects/$proj"
-    out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "visual-missing-$surface" "$proj" --mode no-mistakes --visual --surface "$surface" 2>&1 >/dev/null) \
+    out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "visual-missing-$surface" "$proj" --mode no-mistakes --done-when "fixture check passes" --visual --surface "$surface" 2>&1 >/dev/null) \
       || fail "$surface: missing point-of-view document must warn, not refuse"
     assert_contains "$out" "warning: the $surface point-of-view document does not exist yet (checked " "$surface: missing document produced no warning"
     case "$surface" in
@@ -1845,10 +1943,10 @@ ROWS
     home="$TMP_ROOT/visual-kind-$kind"
     mkdir -p "$home/data"
     if [ "$kind" = scout ]; then
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" visual-kind some-proj --scout --visual --surface decks >/dev/null \
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" visual-kind some-proj --scout --done-when "fixture question" --visual --surface decks >/dev/null \
         || fail "scout: --visual brief failed"
     else
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" visual-kind some-proj --mode "$kind" --visual --surface decks >/dev/null \
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" visual-kind some-proj --mode "$kind" --done-when "fixture check passes" --visual --surface decks >/dev/null \
         || fail "$kind: --visual brief failed"
     fi
     assert_grep "# Visual work contract" "$home/data/visual-kind/brief.md" \
@@ -1914,19 +2012,19 @@ test_home_brief_include_is_appended_last() {
   config="$home/config"
   mkdir -p "$config"
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" include-absent some-proj --scout >/dev/null || fail "scout scaffold failed without an include"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" include-absent some-proj --scout --done-when "fixture question" >/dev/null || fail "scout scaffold failed without an include"
   assert_no_grep '# Home brief additions' "$home/data/include-absent/brief.md" "an absent include still added a section"
   printf ' \n\n' > "$config/brief-include.md"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" include-blank some-proj --scout >/dev/null || fail "scout scaffold failed with a blank include"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" include-blank some-proj --scout --done-when "fixture question" >/dev/null || fail "scout scaffold failed with a blank include"
   assert_no_grep '# Home brief additions' "$home/data/include-blank/brief.md" "a blank include still added a section"
 
   # shellcheck disable=SC2016 # The include is literal text and must never expand at scaffold time.
   printf '%s\n' '# Task' 'Run `house-tool $(id)` first.' > "$config/brief-include.md"
   for kind in ship scout; do
     if [ "$kind" = scout ]; then
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "include-$kind" some-proj --scout >/dev/null || fail "scout scaffold failed with an include"
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "include-$kind" some-proj --scout --done-when "fixture question" >/dev/null || fail "scout scaffold failed with an include"
     else
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "include-$kind" some-proj --mode no-mistakes >/dev/null || fail "ship scaffold failed with an include"
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "include-$kind" some-proj --mode no-mistakes --done-when "fixture check passes" >/dev/null || fail "ship scaffold failed with an include"
     fi
     brief="$home/data/include-$kind/brief.md"
     # shellcheck disable=SC2016 # Literal include text.
@@ -1940,7 +2038,7 @@ test_home_brief_include_is_appended_last() {
   done
 
   printf '%s\n' 'Delivery contract: mode=local-only' > "$config/brief-include.md"
-  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" include-contract some-proj --scout 2>&1); rc=$?
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" include-contract some-proj --scout --done-when "fixture question" 2>&1); rc=$?
   expect_code 1 "$rc" "an include carrying a delivery contract line must stop the scaffold"
   assert_contains "$out" "must not carry a 'Delivery contract: mode=' line" "delivery-contract refusal did not explain itself"
   assert_absent "$home/data/include-contract" "a refused include left a partial scaffold behind"
@@ -1951,12 +2049,12 @@ test_home_brief_include_is_appended_last() {
   assert_no_grep '# Home brief additions' "$home/data/include-mate/brief.md" "a secondmate charter took the brief include"
 
   FM_HOME="$home" FM_CONFIG_OVERRIDE="$TMP_ROOT/include-empty-config" \
-    "$ROOT/bin/fm-brief.sh" include-override some-proj --scout >/dev/null || fail "scout scaffold failed under FM_CONFIG_OVERRIDE"
+    "$ROOT/bin/fm-brief.sh" include-override some-proj --scout --done-when "fixture question" >/dev/null || fail "scout scaffold failed under FM_CONFIG_OVERRIDE"
   assert_no_grep '# Home brief additions' "$home/data/include-override/brief.md" "FM_CONFIG_OVERRIDE did not select the config directory"
 
   rm -f "$config/brief-include.md"
   mkdir "$config/brief-include.md"
-  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" include-unusable some-proj --scout 2>&1); rc=$?
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" include-unusable some-proj --scout --done-when "fixture question" 2>&1); rc=$?
   expect_code 1 "$rc" "an unusable include path must stop the scaffold"
   assert_contains "$out" "brief-include.md must be a readable regular file" "unusable include refusal did not name the file"
   assert_absent "$home/data/include-unusable" "an unusable include left a partial scaffold behind"
@@ -1973,7 +2071,7 @@ test_ship_branch_prefix_defaults_to_legacy_fm() {
   for id_mode in "brief-branch-nm-e1:no-mistakes" "brief-branch-dp-e2:direct-PR" "brief-branch-lo-e3:local-only"; do
     id=${id_mode%%:*}
     mode=${id_mode##*:}
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "fixture check passes" >/dev/null 2>&1
     brief="$home/data/$id/brief.md"
     # shellcheck disable=SC2016  # literal backticks around the branch name must stay unexpanded
     assert_grep "\`git checkout -b fm/$id --\`" "$brief" \
@@ -1991,7 +2089,7 @@ test_ship_branch_prefix_override_is_consistent_across_modes() {
   mkdir -p "$home/data"
 
   id="brief-branch-override-nm-e4"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --branch-prefix 'contrib/' >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --done-when "fixture check passes" --branch-prefix 'contrib/' >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   # shellcheck disable=SC2016
   assert_grep "\`git checkout -b contrib/$id --\`" "$brief" \
@@ -2000,7 +2098,7 @@ test_ship_branch_prefix_override_is_consistent_across_modes() {
     "no-mistakes: brief mixed the legacy fm/ prefix in with the configured override"
 
   id="brief-branch-override-dp-e5"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode direct-PR --branch-prefix 'contrib/' >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode direct-PR --done-when "fixture check passes" --branch-prefix 'contrib/' >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   # shellcheck disable=SC2016
   assert_grep "\`git checkout -b contrib/$id --\`" "$brief" \
@@ -2012,7 +2110,7 @@ test_ship_branch_prefix_override_is_consistent_across_modes() {
     "direct-PR: brief mixed the legacy fm/ prefix in with the configured override"
 
   id="brief-branch-override-lo-e6"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --branch-prefix 'contrib/' >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --done-when "fixture check passes" --branch-prefix 'contrib/' >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   # shellcheck disable=SC2016
   assert_grep "\`git checkout -b contrib/$id --\`" "$brief" \
@@ -2038,7 +2136,7 @@ test_ship_branch_prefix_empty_override_yields_bare_task_id() {
   home="$TMP_ROOT/branch-prefix-bare-home"
   mkdir -p "$home/data"
   id="brief-branch-bare-e7"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --branch-prefix '' >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --done-when "fixture check passes" --branch-prefix '' >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   # shellcheck disable=SC2016
   assert_grep "\`git checkout -b $id --\`" "$brief" \
@@ -2077,13 +2175,13 @@ test_branch_prefix_value_is_validated() {
   home="$TMP_ROOT/branch-prefix-validated-home"
   mkdir -p "$home/data"
 
-  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-branchval-g1 some-proj --mode no-mistakes --branch-prefix 'bad prefix/' 2>&1)
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-branchval-g1 some-proj --mode no-mistakes --done-when "fixture check passes" --branch-prefix 'bad prefix/' 2>&1)
   status=$?
   [ "$status" -ne 0 ] || fail "a space-containing --branch-prefix should be refused"
   assert_contains "$out" "must not contain a space" "space-containing --branch-prefix did not explain why"
   assert_absent "$home/data/brief-branchval-g1/brief.md" "refused space-containing --branch-prefix still wrote a brief"
 
-  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-branchval-g2 some-proj --mode no-mistakes --branch-prefix=-oops 2>&1)
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-branchval-g2 some-proj --mode no-mistakes --done-when "fixture check passes" --branch-prefix=-oops 2>&1)
   status=$?
   [ "$status" -ne 0 ] || fail "a dash-leading --branch-prefix should be refused"
   assert_contains "$out" "must not start with '-'" "dash-leading --branch-prefix did not explain why"
@@ -2099,7 +2197,7 @@ test_branch_prefix_command_is_shell_safe() {
   id='brief-branch-safe-g3'
   prefix="\$(touch\${IFS}$marker)"
   mkdir -p "$home/data"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --branch-prefix "$prefix" >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --done-when "fixture check passes" --branch-prefix "$prefix" >/dev/null 2>&1 \
     || fail "a ref-format-valid metacharacter prefix should scaffold safely"
   brief="$home/data/$id/brief.md"
   # shellcheck disable=SC2016 # The sed expression intentionally contains literal backticks.
@@ -2127,7 +2225,7 @@ test_crewmate_scaffolds_forbid_pool_administration() {
 
   for mode in no-mistakes direct-PR local-only; do
     id="brief-pool-$mode"
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" alpha --mode "$mode" >/dev/null 2>&1 \
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" alpha --mode "$mode" --done-when "fixture check passes" >/dev/null 2>&1 \
       || fail "fm-brief.sh --mode $mode exited non-zero"
     brief="$home/data/$id/brief.md"
     assert_grep "worktree pool" "$brief" \
@@ -2148,7 +2246,7 @@ test_crewmate_scaffolds_forbid_pool_administration() {
       "$mode ship brief gave the prohibition no exit for a genuine second-checkout need"
   done
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-pool-scout alpha --scout >/dev/null 2>&1 \
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-pool-scout alpha --scout --done-when "fixture question" >/dev/null 2>&1 \
     || fail "fm-brief.sh --scout exited non-zero"
   brief="$home/data/brief-pool-scout/brief.md"
   assert_grep "worktree pool" "$brief" "scout brief did not name the shared worktree pool"
@@ -2190,6 +2288,9 @@ test_help_includes_entire_header
 test_ship_modes_generate_clean_briefs
 test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
+test_done_when_is_required_on_ship_and_scout
+test_done_when_renders_in_task_and_definition_of_done
+test_follow_ups_section_renders_for_ship_and_scout
 test_delivery_flags_are_refused_where_they_do_not_apply
 test_ship_base_branch_line_renders_only_when_given
 test_faster_paths_use_configured_authority_without_stacked_review

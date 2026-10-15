@@ -642,8 +642,15 @@ run_teardown() {
 
 # Seed a real backlog carrying task-x1 as In flight, so a teardown in this case
 # has a row to close. Uses the real tasks-axi (the fixture's default fakebin has
-# no tasks-axi stub, so PATH resolves the installed one).
+# no tasks-axi stub, so PATH resolves the installed one). The follow-ups gate
+# then applies, so this also records task-x1's --none escape in whatever meta is
+# already written; the follow-ups tests seed with seed_backlog_rows instead.
 seed_backlog_in_flight() {
+  seed_backlog_rows "$@"
+  [ ! -f "$1/state/task-x1.meta" ] || printf '%s\n' 'followups=none' >> "$1/state/task-x1.meta"
+}
+
+seed_backlog_rows() {
   local case_dir=$1 kind=${2:-ship}
   mkdir -p "$case_dir/data"
   printf '%s\n' '# Backlog' '' '## In flight' '' '## Queued' '' '## Done' \
@@ -879,6 +886,134 @@ test_teardown_closes_the_backlog_item_itself() {
   printf '%s\n' "$out" | grep -F 'Run tasks-axi done' >/dev/null \
     && fail "teardown still asked a later turn to close the item it already closed: $out"
   pass "teardown closes its own backlog item before reporting success"
+}
+
+test_teardown_refuses_until_follow_ups_are_recorded() {
+  local case_dir out rc
+  case_dir=$(make_case followups-refuse)
+  write_meta "$case_dir" no-mistakes ship
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/7' >> "$case_dir/state/task-x1.meta"
+  seed_backlog_rows "$case_dir"
+
+  rc=0; out=$(run_teardown "$case_dir" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "teardown succeeded with no follow-ups record and no --none: $out"
+  assert_contains "$out" "REFUSED: task task-x1 has not recorded its follow-ups" \
+    "follow-ups refusal did not name the missing record"
+  assert_contains "$out" "fm-followups.sh task-x1 --none" "follow-ups refusal did not name the --none escape"
+  assert_present "$case_dir/state/task-x1.meta" "follow-ups refusal removed the task record"
+  [ "$(backlog_row_state "$case_dir")" = in_flight ] \
+    || fail "follow-ups refusal still closed the backlog item: $(backlog_row_state "$case_dir")"
+  [ -d "$case_dir/wt" ] || fail "follow-ups refusal removed the worktree"
+
+  # A record with no items is not a declaration of none.
+  mkdir -p "$case_dir/data/task-x1"
+  printf '\n  \n' > "$case_dir/data/task-x1/follow-ups.md"
+  rc=0; out=$(run_teardown "$case_dir" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "teardown accepted an empty follow-ups record as filed: $out"
+  assert_contains "$out" "has not recorded its follow-ups" "empty follow-ups record refusal did not explain itself"
+  pass "teardown refuses until follow-ups are recorded or declared none"
+}
+
+test_teardown_files_follow_ups_before_cleanup() {
+  local case_dir out rows
+  case_dir=$(make_case followups-file)
+  write_meta "$case_dir" no-mistakes ship
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/7' >> "$case_dir/state/task-x1.meta"
+  seed_backlog_rows "$case_dir"
+  mkdir -p "$case_dir/data/task-x1"
+  printf '%s\n' '- Wire the renderer to the new record' '' '* Add the event log hook' 'Measure filing noise' \
+    > "$case_dir/data/task-x1/follow-ups.md"
+
+  out=$(run_teardown "$case_dir" 2>&1) || fail "teardown failed with a follow-ups record: $out"
+  [ "$(backlog_row_state "$case_dir")" = "done" ] \
+    || fail "teardown did not close the task after filing follow-ups: $(backlog_row_state "$case_dir")"
+  rows=$(grep -c '(kind: follow-up)' "$case_dir/data/backlog.md")
+  [ "$rows" = 3 ] || fail "teardown filed $rows follow-up items, expected 3: $(cat "$case_dir/data/backlog.md")"
+  assert_grep ' - Wire the renderer to the new record (repo: project) (kind: follow-up)' \
+    "$case_dir/data/backlog.md" "follow-up item lost its title, repo, or kind"
+  assert_grep ' - Add the event log hook (repo: project) (kind: follow-up)' \
+    "$case_dir/data/backlog.md" "a bulleted follow-up kept its bullet or was dropped"
+  assert_grep ' - Measure filing noise (repo: project) (kind: follow-up)' \
+    "$case_dir/data/backlog.md" "a plain follow-up line was dropped"
+  [ "$(grep -c '^  Origin: task-x1$' "$case_dir/data/backlog.md")" = 3 ] \
+    || fail "follow-up items do not all name their origin task: $(cat "$case_dir/data/backlog.md")"
+  assert_contains "$out" "filed 3 follow-ups from task-x1" "teardown did not report the filed follow-ups"
+  assert_present "$case_dir/data/task-x1/follow-ups.md" "teardown removed the worker's follow-ups record"
+  pass "teardown files every recorded follow-up as a backlog item before cleanup"
+}
+
+test_teardown_retry_never_files_a_follow_up_twice() {
+  local case_dir out rc real_axi
+  case_dir=$(make_case followups-retry)
+  write_meta "$case_dir" no-mistakes ship
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/7' >> "$case_dir/state/task-x1.meta"
+  seed_backlog_rows "$case_dir"
+  mkdir -p "$case_dir/data/task-x1"
+  printf '%s\n' 'First follow-up' 'Second follow-up' > "$case_dir/data/task-x1/follow-ups.md"
+  # The backend refuses the second title once, then recovers.
+  real_axi=$(command -v tasks-axi)
+  cat > "$case_dir/fakebin/tasks-axi" <<SH
+#!/usr/bin/env bash
+if [ "\${1:-}" = add ] && [ "\${2:-}" = 'Second follow-up' ] && [ ! -e '$case_dir/axi-failed-once' ]; then
+  : > '$case_dir/axi-failed-once'
+  echo "error: backend unavailable" >&2
+  exit 1
+fi
+exec '$real_axi' "\$@"
+SH
+  chmod +x "$case_dir/fakebin/tasks-axi"
+
+  rc=0; out=$(run_teardown "$case_dir" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "teardown succeeded although a follow-up could not be filed: $out"
+  assert_contains "$out" "could not file follow-up 2 of 2" "partial filing refusal did not name the unfiled follow-up"
+  assert_present "$case_dir/state/task-x1.meta" "partial filing refusal removed the task record"
+  out=$(run_teardown "$case_dir" 2>&1) || fail "retried teardown failed after the backend recovered: $out"
+  [ "$(grep -c ' - First follow-up (repo: project) (kind: follow-up)' "$case_dir/data/backlog.md")" = 1 ] \
+    || fail "a retried teardown filed the first follow-up again: $(cat "$case_dir/data/backlog.md")"
+  [ "$(grep -c ' - Second follow-up (repo: project) (kind: follow-up)' "$case_dir/data/backlog.md")" = 1 ] \
+    || fail "a retried teardown did not file the second follow-up exactly once: $(cat "$case_dir/data/backlog.md")"
+  pass "a teardown retried after a partial filing failure never files a follow-up twice"
+}
+
+test_teardown_none_escape_recorded_in_meta() {
+  local case_dir out
+  case_dir=$(make_case followups-none)
+  write_meta "$case_dir" no-mistakes ship
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/7' >> "$case_dir/state/task-x1.meta"
+  seed_backlog_rows "$case_dir"
+
+  out=$(FM_STATE_OVERRIDE="$case_dir/state" "$ROOT/bin/fm-followups.sh" task-x1 --none 2>&1) \
+    || fail "fm-followups.sh --none failed: $out"
+  grep -qx 'followups=none' "$case_dir/state/task-x1.meta" || fail "--none was not recorded in the task's meta"
+  out=$(run_teardown "$case_dir" 2>&1) || fail "teardown refused after --none was recorded: $out"
+  [ "$(backlog_row_state "$case_dir")" = "done" ] \
+    || fail "teardown did not close the task after --none: $(backlog_row_state "$case_dir")"
+  assert_no_grep '(kind: follow-up)' "$case_dir/data/backlog.md" "--none still filed follow-up items"
+
+  # The escape names a live task record; it never creates one.
+  out=$(FM_STATE_OVERRIDE="$case_dir/state" "$ROOT/bin/fm-followups.sh" no-such-task --none 2>&1) \
+    && fail "fm-followups.sh --none accepted a task with no record: $out"
+  assert_absent "$case_dir/state/no-such-task.meta" "fm-followups.sh created a task record"
+  pass "the --none escape is recorded in the task's meta and lets teardown proceed"
+}
+
+test_teardown_files_follow_ups_recorded_after_none() {
+  local case_dir out rc
+  case_dir=$(make_case followups-none-then-record)
+  write_meta "$case_dir" no-mistakes ship
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/7' >> "$case_dir/state/task-x1.meta"
+  seed_backlog_rows "$case_dir"
+  out=$(FM_STATE_OVERRIDE="$case_dir/state" "$ROOT/bin/fm-followups.sh" task-x1 --none 2>&1) \
+    || fail "fm-followups.sh --none failed: $out"
+  mkdir -p "$case_dir/data/task-x1"
+  printf '%s\n' 'Gap found after the escape' > "$case_dir/data/task-x1/follow-ups.md"
+
+  rc=0; out=$(run_teardown "$case_dir" 2>&1) || rc=$?
+  [ "$rc" -eq 0 ] || fail "teardown failed with a record written after --none: $out"
+  assert_grep ' - Gap found after the escape (repo: project) (kind: follow-up)' \
+    "$case_dir/data/backlog.md" "a follow-up recorded after --none was dropped"
+  assert_contains "$out" "filed 1 follow-ups from task-x1" "teardown did not report filing the late follow-up"
+  pass "a follow-up recorded after --none is still filed"
 }
 
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator() {
@@ -4548,6 +4683,11 @@ test_teardown_retires_browser_bridge_on_structurally_confirmed_backend cmux cmux
 test_teardown_retires_browser_bridge_on_structurally_confirmed_backend orca
 test_teardown_closes_the_backlog_item_itself
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator
+test_teardown_refuses_until_follow_ups_are_recorded
+test_teardown_files_follow_ups_before_cleanup
+test_teardown_retry_never_files_a_follow_up_twice
+test_teardown_none_escape_recorded_in_meta
+test_teardown_files_follow_ups_recorded_after_none
 test_local_only_truly_unpushed_refuses
 test_local_only_merged_to_local_main_allows
 test_no_mistakes_origin_remote_allows

@@ -62,6 +62,7 @@ data/                personal fleet records; LOCAL, gitignored as a whole
   secondmates.md      local and remote secondmate routing table; firstmate-private, maintained by the secondmate seed helpers (section 6)
   <id>/brief.md      per-task crewmate brief, or per-secondmate charter brief when kind=secondmate
   <id>/report.md     scout task deliverable, written by the crewmate; survives teardown
+  <id>/follow-ups.md ship or scout follow-ups, one title per line, written by the crewmate; fm-teardown.sh files them as backlog items and keeps the file
   captures/mail-<uid>/  accepted phone capture rendered mail and saved image/audio attachments; fm-capture-intake.sh owns filing markers and digest records
   captures/people/   private person-note handoff lane; capture-intake keeps its contents out of chat and digest surfaces, and only Scout's person-note intake reads it
   personal/          markdown Reading, Watching, Places, Ideas, Names, Tasks, Drafts, and Questions lists written by fm-capture-intake.sh

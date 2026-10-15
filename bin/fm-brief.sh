@@ -14,8 +14,8 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--base <branch>] [--branch-prefix <prefix>] [--forge <none|gerrit> [--shape squash]] [--ui] [--design] [--visual --surface <decks|scout|website|email>] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
-#        fm-brief.sh <task-id> <repo-name> --scout [--design] [--visual --surface <decks|scout|website|email>] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> --done-when <check> [--base <branch>] [--branch-prefix <prefix>] [--forge <none|gerrit> [--shape squash]] [--ui] [--design] [--visual --surface <decks|scout|website|email>] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
+#        fm-brief.sh <task-id> <repo-name> --scout --done-when <question> [--design] [--visual --surface <decks|scout|website|email>] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -54,6 +54,20 @@
 #   after scaffolding and the caller-supplied repo string cannot reliably
 #   identify this repo. Briefs made without it carry a loud declaration so an
 #   omitted contract cannot be silent.
+# --done-when <text> is REQUIRED on ship and scout briefs and refused on a
+# secondmate charter. Firstmate fills it at scaffold time with one runnable check
+# proving the task is finished - a command, a scenario, or a screen walk - or, for
+# a scout, the question the report must answer. A missing, blank, or multi-line
+# value stops the scaffold before anything is written, as a missing --mode does.
+# It renders as a "## Done when" subsection closing the `# Task` section (a ship
+# reads "Done when: <check>", a scout "Done when: the report answers <question>"),
+# and the Definition of done repeats that line as the acceptance check
+# (bin/fm-dod-lib.sh owns the ship wording). A promoted scout's ship contract
+# carries no Done when line, because bin/fm-promote.sh takes no such flag.
+# Ship and scout scaffolds also carry a "Follow-ups" section: the worker writes
+# each follow-up - work found but not done, split off rather than shrunk away -
+# as one line in data/<task-id>/follow-ups.md, or runs bin/fm-followups.sh
+# <task-id> --none, and bin/fm-teardown.sh files or refuses on that record.
 # For ship tasks, --mode is REQUIRED and shapes the definition of done. Firstmate
 # resolves it per task at intake (AGENTS.md section 7); data/projects.md holds the
 # captain's standing posture as context, and this script never reads it:
@@ -318,6 +332,8 @@ FORGE=none
 FORGE_SET=0
 SHAPE=
 SHAPE_SET=0
+DONE_WHEN=
+DONE_WHEN_SET=0
 POS=()
 want_value=
 for a in "$@"; do
@@ -334,6 +350,7 @@ for a in "$@"; do
       branch-prefix) BRANCH_PREFIX=$a; BRANCH_PREFIX_SET=1 ;;
       forge) FORGE=$a; FORGE_SET=1 ;;
       shape) SHAPE=$a; SHAPE_SET=1 ;;
+      done-when) DONE_WHEN=$a; DONE_WHEN_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
     want_value=
@@ -363,6 +380,8 @@ for a in "$@"; do
     --forge=*) FORGE=${a#--forge=}; FORGE_SET=1 ;;
     --shape) want_value=shape ;;
     --shape=*) SHAPE=${a#--shape=}; SHAPE_SET=1 ;;
+    --done-when) want_value=done-when ;;
+    --done-when=*) DONE_WHEN=${a#--done-when=}; DONE_WHEN_SET=1 ;;
     # yolo never reaches the worker: it is firstmate's merge authority, not a
     # brief input. Refuse it loudly so it is never silently dropped here and then
     # believed to have been recorded.
@@ -549,6 +568,24 @@ if [ "$PASTED_FILE_SET" -eq 1 ]; then
   PASTED_BLOCK=$(fm_pasted_content_wrap "$PASTED_FILE") || exit 1
 fi
 
+# Every crewmate brief names its finish line at scaffold time, so a missing or
+# blank value stops here, after every other flag check, rather than shipping a brief
+# whose worker and reviewer have no runnable check to agree on.
+if [ "$KIND" = secondmate ]; then
+  [ "$DONE_WHEN_SET" -eq 0 ] || {
+    echo "error: --done-when applies only to crewmate ship or scout briefs; a secondmate charter has no single finish line" >&2
+    exit 1
+  }
+else
+  [ -n "$(printf '%s' "$DONE_WHEN" | tr -d '[:space:]')" ] || {
+    echo "error: ship and scout briefs require --done-when \"<text>\": one runnable check proving the task is finished (a command, a scenario, or a screen walk), or for a scout the question its report must answer" >&2
+    exit 1
+  }
+  case "$DONE_WHEN" in
+    *$'\n'*|*$'\r'*) echo "error: --done-when must be one line" >&2; exit 1 ;;
+  esac
+fi
+
 # The optional home-local include is read before anything is written, so an
 # unusable file never leaves a partial scaffold behind.
 BRIEF_INCLUDE_FILE="$CONFIG/brief-include.md"
@@ -670,6 +707,21 @@ IFS= read -r -d '' WORKING_DISCIPLINE_SECTION <<'EOF' || true
 5. One judge: when the delivery mode is no-mistakes, do not invoke completion-gate or audit skills offered by project rules or plugins; the review pipeline is the only judge of this work.
 EOF
 WORKING_DISCIPLINE_SECTION=${WORKING_DISCIPLINE_SECTION%$'\n'}
+
+# Follow-ups: shared by ship and scout so the two cannot drift. A worker's
+# "wired later" is filed as its own item rather than shrinking the task to hide
+# it; bin/fm-teardown.sh files each recorded line before cleanup and refuses
+# until a record or the --none escape exists. Both paths are task-owned
+# exceptions to the worktree-only rule, like the status file.
+FOLLOWUPS_NONE="FM_STATE_OVERRIDE=$(shell_quote "$STATE") $(shell_quote "$FM_ROOT/bin/fm-followups.sh") $ID --none"
+IFS= read -r -d '' FOLLOWUPS_SECTION <<EOF || true
+# Follow-ups
+Work you found but did not do - a gap, a deferred piece, something wired later - is a follow-up: split it off, never shrink the task to hide it.
+Before your \`done:\` line, write each follow-up as one short title per line in \`$DATA/$ID/follow-ups.md\`; firstmate files each line as a backlog item at cleanup.
+When there are none, run \`$FOLLOWUPS_NONE\` instead.
+Cleanup refuses until one of the two exists; that file and that command are the only writes outside your worktree this section allows.
+EOF
+FOLLOWUPS_SECTION=${FOLLOWUPS_SECTION%$'\n'}
 
 # Turn ends (Opus 5.5 prompting guide, "Unattended agentic runs"): a worker
 # that ends a turn with text alone stops until firstmate rings it again, so the
@@ -975,13 +1027,24 @@ EOF
 HERDR_SECTION=${HERDR_SECTION%$'\n'}
 fi
 
-IFS= read -r -d '' TASK_SECTION <<'EOF' || true
+# The finish line Firstmate supplied with --done-when: a ship's runnable check,
+# or a scout's question phrased as what the report answers. It gets its own
+# subsection so the {FIRSTMATE_SPEC} placeholder check still sees a bare body.
+if [ "$KIND" = scout ]; then
+  DONE_WHEN_LINE="Done when: the report answers $DONE_WHEN"
+else
+  DONE_WHEN_LINE="Done when: $DONE_WHEN"
+fi
+IFS= read -r -d '' TASK_SECTION <<EOF || true
 # Task
 ## Captain's intent
 {TASK}
 
 ## Firstmate spec
 {FIRSTMATE_SPEC}
+
+## Done when
+$DONE_WHEN_LINE
 EOF
 TASK_SECTION=${TASK_SECTION%$'\n'}
 if [ -n "$PASTED_BLOCK" ]; then
@@ -1043,7 +1106,7 @@ $CONTEXT_LINE$ENV_SECTION
 
 # Rules
 1. Never push to any remote and never open a PR.
-2. Stay inside this worktree; the only files you may write outside it are the report and the status file below.
+2. Stay inside this worktree; the only files you may write outside it are the report, the status file below, and the follow-ups record under Follow-ups.
 3. Use the tools listed under Toolkit below for research, web pages, and GitHub.
 4. Report status by appending one line:
    \`$STATUS_APPEND\`
@@ -1073,10 +1136,14 @@ $TOOLKIT_SECTION
 
 $REPORTING_SECTION
 
+$FOLLOWUPS_SECTION
+
 $WAIT_BLOCK$INBOX_SECTION
 
 # Definition of done
 Write your findings to \`$DATA/$ID/report.md\`.
+$DONE_WHEN_LINE
+This line is this task's acceptance check: the report is finished only when it answers that question with evidence.
 The report must stand alone: what you did, what you found, the evidence (commands run, output, file:line references), and what you recommend.
 $LAVISH_LINE
 Before reporting done, read and follow \`$FM_ROOT/.agents/skills/captain-hold-lifecycle/SKILL.md\` and pass its shared completion gate for the report and any visual review.
@@ -1113,7 +1180,7 @@ case "$MODE" in
     ;;
 esac
 RULE1=$(fm_ship_rule_one "$MODE" "$ID" "$BRANCH" "$FORGE") || exit 1
-DOD=$(fm_dod_block "$MODE" "$ID" "$BRANCH" "$FORGE" "$META_FILE" "$BASE") || exit 1
+DOD=$(fm_dod_block "$MODE" "$ID" "$BRANCH" "$FORGE" "$META_FILE" "$BASE" "$DONE_WHEN") || exit 1
 
 # Evidence rules 8 and 9 (scout report fm-scout-loop-throughput-review 7.1, F-a
 # and F-b). Both name the PR body as the place the proof is cited, so local-only,
@@ -1207,6 +1274,8 @@ $TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION
 $TOOLKIT_SECTION
 
 $REPORTING_SECTION
+
+$FOLLOWUPS_SECTION
 
 $WAIT_BLOCK$INBOX_SECTION
 

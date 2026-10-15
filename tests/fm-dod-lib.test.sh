@@ -425,7 +425,29 @@ test_pr_based_dod_draft_check_uses_gh_axi() {
   pass "PR-based DoD draft check uses gh-axi"
 }
 
+# The Definition of done repeats the brief's Done when line as the acceptance
+# check in every mode and forge; without one the block is byte-identical.
+test_dod_block_repeats_done_when_line() {
+  local mode_forge mode forge with without check
+  check='open /settings and the saved name shows after a reload'
+  for mode_forge in no-mistakes:none direct-PR:none local-only:none no-mistakes:gerrit direct-PR:gerrit; do
+    mode=${mode_forge%%:*}
+    forge=${mode_forge##*:}
+    with=$(fm_dod_block "$mode" dod-done-when fm/dod-done-when "$forge" '' '' "$check") \
+      || fail "$mode/$forge: fm_dod_block refused a Done when line"
+    without=$(fm_dod_block "$mode" dod-done-when fm/dod-done-when "$forge") \
+      || fail "$mode/$forge: fm_dod_block failed without a Done when line"
+    assert_contains "$with" "Done when: $check" "$mode/$forge: DoD does not repeat the Done when line"
+    assert_contains "$with" "acceptance check" "$mode/$forge: DoD does not name the line as the acceptance check"
+    assert_not_contains "$without" "Done when:" "$mode/$forge: DoD rendered a Done when line nobody supplied"
+    [ "$(printf '%s\n' "$with" | grep -v -e '^Done when: ' -e 'acceptance check')" = "$without" ] \
+      || fail "$mode/$forge: the Done when lines changed the rest of the block"
+  done
+  pass "fm_dod_block repeats the Done when line as acceptance, and is unchanged without one"
+}
+
 test_scout_done_is_not_gated
+test_dod_block_repeats_done_when_line
 test_unpushed_ship_done_is_refused
 test_no_mistakes_done_without_pr_url_is_refused
 test_done_lacks_pr_url_classification

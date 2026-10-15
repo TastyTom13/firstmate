@@ -3351,11 +3351,11 @@ if [ "$KIND" = ship ]; then
   # server does not have, or to publish a change to a forge that is not Gerrit.
   if [ "$BRIEF_FORGE" != "$STANDING_FORGE" ]; then
     if [ "$STANDING_FORGE" = none ]; then
-      forge_scaffold="fm-brief.sh $ID $PROJ_NAME --mode $MODE"
+      forge_scaffold="fm-brief.sh $ID $PROJ_NAME --mode $MODE --done-when '<its Done when check>'"
     else
-      forge_scaffold="fm-brief.sh $ID $PROJ_NAME --mode $MODE --forge $STANDING_FORGE"
+      forge_scaffold="fm-brief.sh $ID $PROJ_NAME --mode $MODE --forge $STANDING_FORGE --done-when '<its Done when check>'"
     fi
-    echo "error: forge mismatch for $ID: $PROJ_NAME is registered forge=$STANDING_FORGE but $SOURCE_BRIEF records forge=$BRIEF_FORGE; keep the filled ## Captain's intent and ## Firstmate spec bodies, remove $SOURCE_BRIEF, re-scaffold it with $forge_scaffold, then re-fill those two subsections, so the worker's publication matches the project's forge" >&2
+    echo "error: forge mismatch for $ID: $PROJ_NAME is registered forge=$STANDING_FORGE but $SOURCE_BRIEF records forge=$BRIEF_FORGE; keep the filled ## Captain's intent and ## Firstmate spec bodies and its ## Done when line, remove $SOURCE_BRIEF, re-scaffold it with $forge_scaffold, then re-fill those two subsections, so the worker's publication matches the project's forge" >&2
     exit 1
   fi
   # Merge authority on a Gerrit forge is refused rather than quietly dropped, on
