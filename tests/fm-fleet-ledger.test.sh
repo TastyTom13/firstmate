@@ -2,8 +2,9 @@
 # tests/fm-fleet-ledger.test.sh - the opt-in fleet activity ledger, driven
 # through the real producers: bin/fm-spawn.sh (fake tmux, real git worktree),
 # the real watcher through bin/fm-watch-checkpoint.sh, bin/fm-pr-check.sh,
-# bin/fm-merge-local.sh, the shared PR merge outcome in bin/fm-merge-outcome-lib.sh, and
-# bin/fm-teardown.sh. docs/fleet-ledger.md owns the record contract.
+# bin/fm-merge-local.sh, the shared PR merge outcome in bin/fm-merge-outcome-lib.sh,
+# bin/fm-captain-hold.sh, and bin/fm-teardown.sh, plus the writers that have no
+# producer yet. docs/fleet-ledger.md owns the record contract.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -90,6 +91,14 @@ ledger_rows() {  # <jq filter>: print one compact row per ledger record
   jq -c "$1" "$HOME_DIR/state/fleet-ledger.jsonl"
 }
 
+durable_rows() {  # <jq filter>: the same, from the durable copy under data/
+  jq -c "$1" "$HOME_DIR/data/fleet-ledger.jsonl"
+}
+
+ledger() {  # <writer args...>: run the ledger writer against the case home
+  in_home "$ROOT/bin/fm-fleet-ledger.sh" "$@"
+}
+
 test_flag_on_records_the_task_lifecycle() {
   local rows
   make_case on-lifecycle on
@@ -107,9 +116,12 @@ test_flag_on_records_the_task_lifecycle() {
 ["task.status","$TASK",null,null,"partial line without its newline finished"]
 ["task.status","$TASK","done",null," ready in branch"]
 ["task.merged","$TASK","local"]
+["item.landed","$TASK","local"]
 ["task.cleaned_up","$TASK"]
 EOF
 )" "$rows" "ledger rows"
+  assert_equals "$(cat "$HOME_DIR/state/fleet-ledger.jsonl")" "$(cat "$HOME_DIR/data/fleet-ledger.jsonl" 2>/dev/null)" \
+    "the durable copy under data/ must hold the same records"
   assert_not_contains "$LEDGER_AFTER_POLL" "partial line" "the poll recorded a line before its newline arrived"
   assert_contains "$LEDGER_AFTER_POLL" '"state":"needs-decision"' "the watcher poll did not record the status lines"
   assert_absent "$HOME_DIR/state/.$TASK.fleet-ledger-offset" "cleanup left the task's ledger offset behind"
@@ -133,9 +145,10 @@ test_flag_on_records_a_pr_merge_once() {
   assert_equals "$(cat <<EOF
 ["task.status","done",null,null]
 ["task.merged",null,"pr","$pr_url"]
+["item.landed",null,"pr","$pr_url"]
 EOF
 )" "$rows" "PR merge rows"
-  pass "flag on: a PR merge is recorded once, after the task's pending status lines"
+  pass "flag on: a PR merge is recorded once, as task.merged then item.landed, after the task's pending status lines"
 }
 
 test_flag_on_records_a_pr_registration() {
@@ -198,6 +211,8 @@ test_worker_status_line_is_recorded_when_written() {
   out=$(in_home "$ROOT/bin/fm-fleet-ledger.sh" capture 2>&1) || fail "backstop capture failed: $out"
   assert_equals 1 "$(wc -l < "$HOME_DIR/state/fleet-ledger.jsonl" | tr -d ' ')" \
     "ledger records after the backstop capture"
+  assert_equals '["task.status","needs-decision"]' "$(durable_rows '[.event, .state]')" \
+    "durable copy after the worker's append and the backstop capture"
   pass "flag on: a worker's status command records its line at once, and the watcher backstop does not record it again"
 }
 
@@ -212,7 +227,10 @@ test_worker_status_line_is_recorded_under_a_state_override() {
   assert_equals '["task.status","blocked"]' \
     "$(jq -c '[.event, .state]' "$state_dir/fleet-ledger.jsonl" 2>/dev/null)" \
     "ledger rows right after the append"
-  pass "flag on, state override outside the home: the worker's status command records its line at once"
+  assert_equals '["task.status","blocked"]' "$(durable_rows '[.event, .state]')" \
+    "the durable copy belongs in the home's data directory the brief names"
+  assert_absent "$TMP_ROOT/on-state-override/elsewhere/data" "the durable copy was guessed from the state directory"
+  pass "flag on, state override outside the home: the worker's status command records its line at once, in both copies"
 }
 
 test_worker_status_line_is_recorded_under_a_relative_config_override() {
@@ -266,11 +284,141 @@ test_worker_status_line_with_the_flag_absent() {
   pass "flag off: the worker's status command is a plain append and leaves no ledger file, offset, or lock"
 }
 
+test_status_command_from_an_older_brief_keeps_working() {
+  local out
+  make_case on-old-command on
+  printf 'working: from an older brief\n' > "$HOME_DIR/state/$TASK.status"
+  out=$(env -i PATH="$PATH" HOME="$HOME_DIR/user-home" \
+    "$ROOT/bin/fm-fleet-ledger.sh" appended "$HOME_DIR/config" "$HOME_DIR/state/$TASK.status" 2>&1) \
+    || fail "the older three-argument form failed: $out"
+  assert_equals '["task.status","working"]' "$(ledger_rows '[.event, .state]')" "live copy"
+  assert_equals '["task.status","working"]' "$(durable_rows '[.event, .state]')" \
+    "durable copy beside the state directory"
+  pass "flag on: a status command from a brief written before the durable copy still records into both copies"
+}
+
+test_durable_copy_survives_clearing_the_live_file() {
+  local out
+  make_case on-durable on
+  out=$(ledger live "$TASK" "rebuilt at 12:00" 2>&1) || fail "live writer failed: $out"
+  : > "$HOME_DIR/state/fleet-ledger.jsonl"
+  rm -f "$HOME_DIR/state/fleet-ledger.jsonl"
+  out=$(ledger live "$TASK" "rebuilt at 13:00" 2>&1) || fail "live writer failed after clearing: $out"
+  assert_equals '["item.live","rebuilt at 13:00"]' "$(ledger_rows '[.event, .evidence]')" "live copy after clearing"
+  assert_equals "$(printf '%s\n' '["item.live","rebuilt at 12:00"]' '["item.live","rebuilt at 13:00"]')" \
+    "$(durable_rows '[.event, .evidence]')" "durable copy after clearing the live file"
+  pass "flag on: clearing state/ loses nothing from the append-only copy under data/"
+}
+
+test_new_writers_record_their_fields() {
+  local out pr_url=https://github.com/acme/sample/pull/11
+  make_case on-writers on
+  printf 'working: started\n' > "$HOME_DIR/state/$TASK.status"
+  for args in \
+    "linked|$TASK|words|w-20261013-0910-1" \
+    "linked|$TASK|outcome|scout/O1" \
+    "landed|$TASK|pr|$pr_url" \
+    "landed|$TASK|local" \
+    "live|$TASK|deployed build 42 to https://scout.example.invalid" \
+    "check|$TASK|passed|scout/O1/1|longlist of 31 built in Scout" \
+    "check|$TASK|failed|scout/O1/2|3 people had no source date" \
+    "verdict|$TASK|scout/O1|met with open items|https://github.com/acme/sample/pull/12"; do
+    IFS='|' read -r -a argv <<< "$args"
+    out=$(ledger "${argv[@]}" 2>&1) || fail "writer ${argv[*]} failed: $out"
+  done
+  assert_equals "$(cat <<EOF
+["task.status","$TASK",{"state":"working","key":null,"text":" started"}]
+["item.linked","$TASK",{"link":"words","ref":"w-20261013-0910-1"}]
+["item.linked","$TASK",{"link":"outcome","ref":"scout/O1"}]
+["item.landed","$TASK",{"via":"pr","pr":"$pr_url"}]
+["item.landed","$TASK",{"via":"local"}]
+["item.live","$TASK",{"evidence":"deployed build 42 to https://scout.example.invalid"}]
+["check.passed","$TASK",{"check":"scout/O1/1","evidence":"longlist of 31 built in Scout"}]
+["check.failed","$TASK",{"check":"scout/O1/2","evidence":"3 people had no source date"}]
+["review.verdict","$TASK",{"subject":"scout/O1","verdict":"met with open items","evidence":"https://github.com/acme/sample/pull/12"}]
+EOF
+)" "$(ledger_rows '[.event, .task, del(.v, .ts, .event, .task)]')" "writer rows"
+  assert_equals "$(cat "$HOME_DIR/state/fleet-ledger.jsonl")" "$(cat "$HOME_DIR/data/fleet-ledger.jsonl")" "durable copy"
+  pass "flag on: linked, landed, live, check, and verdict each write their documented members, after the task's pending status lines"
+}
+
+test_said_records_the_captain_words_with_an_id() {
+  local out first second words="$TMP_ROOT/said-words.txt"
+  make_case on-said on
+  printf 'Go on "revised" ledger.\nAnd keep it\\small.\n' > "$words"
+  first=$(ledger said "$words" chat 2>&1) || fail "said failed: $first"
+  second=$(ledger said "$words" 2>&1) || fail "second said failed: $second"
+  case "$first" in w-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]-1) ;;
+    *) fail "said printed no word id: $first" ;; esac
+  case "$second" in "${first%-1}-2"|w-*-1) ;; *) fail "second word id is not the next one: $second after $first" ;; esac
+  [ "$first" != "$second" ] || fail "two captain messages got the same id: $first"
+  assert_equals "$(cat <<EOF
+["captain.said",null,"$first","chat","Go on \"revised\" ledger.\nAnd keep it\\\\small."]
+["captain.said",null,"$second",null,"Go on \"revised\" ledger.\nAnd keep it\\\\small."]
+EOF
+)" "$(ledger_rows '[.event, .task, .id, .source, .text]')" "captain.said rows"
+  assert_equals "$(cat "$HOME_DIR/state/fleet-ledger.jsonl")" "$(cat "$HOME_DIR/data/fleet-ledger.jsonl")" "durable copy"
+  pass "flag on: said records the captain's exact words with a fresh word id, and prints that id"
+}
+
+test_new_writers_refuse_bad_arguments() {
+  local args rc out
+  make_case on-usage on
+  for args in "linked|$TASK|charter|x" "linked|$TASK|words|" "landed|$TASK|pr|" "landed|$TASK" \
+    "live|$TASK|" "live|$TASK" "check|$TASK|maybe|c1|e" "check|$TASK|passed||e" "verdict|$TASK|s|v" \
+    "said|$TMP_ROOT/no-such-file" "hold_opened|$TASK|" "hold_opened|$TASK|r|tomorrow" \
+    "hold_answered|$TASK|guessed|$TMP_ROOT/no-such-file" "live|../x|evidence"; do
+    IFS='|' read -r -a argv <<< "$args"
+    rc=0
+    out=$(ledger "${argv[@]}" 2>&1) || rc=$?
+    assert_equals 2 "$rc" "exit status for ${argv[*]} ($out)"
+  done
+  assert_absent "$HOME_DIR/state/fleet-ledger.jsonl" "a refused writer wrote a record"
+  pass "flag on: the new writers refuse malformed arguments with a usage error and write nothing"
+}
+
+test_captain_hold_records_opened_and_answered() {
+  local home answer out
+  command -v tasks-axi >/dev/null 2>&1 || { echo "skip: tasks-axi not found"; return 0; }
+  make_case on-hold on
+  home=$HOME_DIR
+  cp "$ROOT/.tasks.toml" "$home/.tasks.toml"
+  printf '## In flight\n\n## Queued\n\n## Done\n' > "$home/data/backlog.md"
+  answer="$TMP_ROOT/hold-answer.txt"
+  printf 'Go with the revised plan.\n' > "$answer"
+  out=$(in_home "$ROOT/bin/fm-captain-hold.sh" hold "$TASK" --title "Pick a plan" --reason "which plan" --until 2026-11-01 2>&1) \
+    || fail "hold failed: $out"
+  out=$(in_home "$ROOT/bin/fm-captain-hold.sh" answer "$TASK" --decision-file "$answer" 2>&1) \
+    || fail "answer failed: $out"
+  out=$(in_home "$ROOT/bin/fm-captain-hold.sh" answer "$TASK" --decision-file "$answer" 2>&1) \
+    || fail "the exact answer replay failed: $out"
+  assert_equals "$(cat <<EOF
+["hold.opened","$TASK",{"reason":"which plan","until":"2026-11-01"}]
+["hold.answered","$TASK",{"mode":"answered","decision":"Go with the revised plan."}]
+EOF
+)" "$(ledger_rows '[.event, .task, del(.v, .ts, .event, .task)]')" "hold rows"
+  assert_equals "$(cat "$HOME_DIR/state/fleet-ledger.jsonl")" "$(cat "$HOME_DIR/data/fleet-ledger.jsonl")" "durable copy"
+  pass "flag on: a captain hold records hold.opened, its answer records hold.answered with the exact words once"
+}
+
+test_new_writers_with_the_flag_absent() {
+  local out words="$TMP_ROOT/off-words.txt" leftovers
+  make_case off-writers off
+  printf 'hello\n' > "$words"
+  out=$(ledger said "$words" 2>&1) || fail "said failed with the flag absent: $out"
+  assert_equals "" "$out" "said output with the flag absent"
+  ledger live "$TASK" "built" >/dev/null 2>&1 || fail "live failed with the flag absent"
+  ledger check "$TASK" passed c1 ok >/dev/null 2>&1 || fail "check failed with the flag absent"
+  leftovers=$(cd "$HOME_DIR" && find state data -name '*fleet-ledger*')
+  assert_equals "" "$leftovers" "ledger files with the flag absent"
+  pass "flag off: the new writers write nothing and print no word id"
+}
+
 test_flag_off_writes_nothing() {
   local leftovers
   make_case off-lifecycle off
   run_lifecycle
-  leftovers=$(cd "$HOME_DIR/state" && find . -name '*fleet-ledger*')
+  leftovers=$(cd "$HOME_DIR" && find state data -name '*fleet-ledger*')
   assert_equals "" "$leftovers" "ledger files with the flag absent"
   pass "flag off: the whole lifecycle leaves no ledger file, offset, or lock"
 }
@@ -284,4 +432,11 @@ test_worker_status_line_is_recorded_under_a_relative_config_override
 test_worker_status_command_fails_when_the_append_fails
 test_worker_status_line_lands_when_the_ledger_fails
 test_worker_status_line_with_the_flag_absent
+test_status_command_from_an_older_brief_keeps_working
+test_durable_copy_survives_clearing_the_live_file
+test_new_writers_record_their_fields
+test_said_records_the_captain_words_with_an_id
+test_new_writers_refuse_bad_arguments
+test_captain_hold_records_opened_and_answered
+test_new_writers_with_the_flag_absent
 test_flag_off_writes_nothing

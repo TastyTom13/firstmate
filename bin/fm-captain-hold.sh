@@ -229,6 +229,13 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/fm-parent-channel-lib.sh"
 
+# Opt-in fleet activity ledger (docs/fleet-ledger.md); off costs one file test,
+# and a ledger failure never changes this script's result.
+ledger_record() {  # <writer args...>
+  [ ! -e "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/fleet-ledger" ] \
+    || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE FM_DATA_OVERRIDE=$DATA "$SCRIPT_DIR/fm-fleet-ledger.sh" "$@" || true
+}
+
 PARENT_HOLD_PUBLISHED=0
 publish_parent_hold() {  # <task-id> <occurrence> <verb> <note>
   local id=$1 occurrence=$2 verb=$3 note=$4 rc=0
@@ -987,6 +994,7 @@ command_hold() {
   [ -n "$(body_hold_set_timestamp "$(show_field_value "$show" body)")" ] \
     || fail "task $id lost its hold-set stamp while being held"
   publish_parent_hold "$id" "$occurrence" needs-decision "$reason"
+  ledger_record hold_opened "$id" "$reason" "$until"
   printf '%s\n' "$id"
 }
 
@@ -1157,6 +1165,7 @@ command_answer() {
     body_has_resolution_record "$(show_field "$show" body)" \
       || fail "captain-held task $id did not retain its durable resolution record"
     publish_parent_resolution_then_retire "$id" "$occurrence" "answered (repaired)"
+    ledger_record hold_answered "$id" repaired "$decision_file"
     printf 'repaired: %s\n' "$id"
     return 0
   fi
@@ -1181,6 +1190,7 @@ command_answer() {
       fi
       remove_interrupted_answer_stamp "$id"
       publish_parent_resolution_then_retire "$id" $((occurrence - 1)) "$outcome"
+      ledger_record hold_answered "$id" "$outcome" "$decision_file"
       printf '%s: %s\n' "$outcome" "$id"
       return 0
     fi
@@ -1194,6 +1204,7 @@ command_answer() {
     body_has_resolution_record "$(show_field "$show" body)" \
       || fail "captain-held task $id did not retain its durable resolution record"
     publish_parent_resolution_then_retire "$id" "$occurrence" "$outcome"
+    ledger_record hold_answered "$id" "$outcome" "$decision_file"
     printf '%s: %s\n' "$outcome" "$id"
     return 0
   fi
