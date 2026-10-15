@@ -1961,7 +1961,7 @@ ROWS
   assert_no_grep "# Visual work contract" "$plain" "a brief without --visual carried the visual contract"
   stripped="$TMP_ROOT/visual-stripped.md"
   awk '
-    $0 == "# Visual work contract" { skip=1; next }
+    $0 == "# Visual work contract" || $0 == "# Knowledge library" { skip=1; next }
     skip && $0 == "" { skip=0; next }
     skip { next }
     { print }
@@ -1985,12 +1985,56 @@ ROWS
   pass "fm-brief.sh: --visual is surface-bound, shared by ship/scout, and byte-neutral when absent"
 }
 
+# Every --visual brief (all four surfaces) and every --words brief names the
+# distilled knowledge library and its two-stage route; a brief with neither
+# flag carries no such section.
+test_knowledge_library_section_renders_for_visual_and_words() {
+  local surface home brief lib plain out rc
+  lib="$TMP_ROOT/knowledge-lib"
+  for surface in decks scout website email; do
+    home="$TMP_ROOT/knowledge-visual-$surface"
+    brief=$(SCOUT_LIBRARY_DIR="$lib" scaffold_in_home "$home" "knowledge-$surface" some-proj --mode no-mistakes --visual --surface "$surface" 2>/dev/null) \
+      || fail "$surface: --visual brief failed"
+    assert_grep "# Knowledge library" "$brief" "$surface: visual brief lost the Knowledge library section"
+    assert_grep "Read \`$lib/INTEGRATION.md\` once" "$brief" "$surface: brief did not require reading INTEGRATION.md"
+    assert_grep "first \`$lib/themes.json\`" "$brief" "$surface: brief did not route through themes.json first"
+    assert_grep "\`$lib/index.json\` and \`$lib/frameworks.json\`" "$brief" "$surface: brief did not name index.json and frameworks.json"
+    assert_grep "required input" "$brief" "$surface: brief did not make the library a required input"
+    assert_grep "exposure: client-ok" "$brief" "$surface: brief lost the client-ok exposure filter"
+    assert_grep "Never copy quotes or locators" "$brief" "$surface: brief did not forbid quotes and locators"
+    assert_grep "claim, framework, and theme ids" "$brief" "$surface: brief did not carry the chosen ids"
+    assert_grep "knowledge library unavailable at $lib" "$brief" "$surface: brief did not say what to do when the library is absent"
+  done
+
+  brief=$(SCOUT_LIBRARY_DIR="$lib" scaffold_in_home "$TMP_ROOT/knowledge-words-scout" knowledge-words some-proj --scout --words) \
+    || fail "scout: --words brief failed"
+  assert_grep "# Knowledge library" "$brief" "scout: --words brief lost the Knowledge library section"
+  assert_no_grep "# Visual work contract" "$brief" "--words must not add the visual contract"
+  brief=$(unset SCOUT_LIBRARY_DIR; scaffold_in_home "$TMP_ROOT/knowledge-words-default" knowledge-default some-proj --mode direct-PR --words) \
+    || fail "direct-PR: --words brief failed"
+  assert_grep "first \`/Users/tomas/firstmate/projects/brain/library/themes.json\`" "$brief" \
+    "unset SCOUT_LIBRARY_DIR did not fall back to the primary home library"
+
+  plain=$(scaffold_in_home "$TMP_ROOT/knowledge-plain" knowledge-plain some-proj --mode no-mistakes) \
+    || fail "plain knowledge-control scaffold failed"
+  assert_no_grep "# Knowledge library" "$plain" "a brief without --visual or --words carried the Knowledge library section"
+  assert_no_grep "themes.json" "$plain" "a brief without --visual or --words named the library route"
+
+  rc=0
+  out=$(FM_HOME="$TMP_ROOT/knowledge-refusals" "$ROOT/bin/fm-brief.sh" knowledge-mate --secondmate --no-projects --words 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "--words on a secondmate charter: expected a non-zero exit"
+  assert_contains "$out" "--words applies only to crewmate ship or scout briefs" "--words secondmate refusal did not explain itself"
+  pass "fm-brief.sh: --visual and --words render the Knowledge library route; absent otherwise"
+}
+
 test_help_documents_visual_work() {
   local help
   help=$("$ROOT/bin/fm-brief.sh" --help)
   assert_contains "$help" "--visual" "fm-brief.sh --help does not mention --visual"
   assert_contains "$help" "--surface <decks|scout|website|email>" "fm-brief.sh --help does not list the known visual surfaces"
   assert_contains "$help" "Visual work contract" "fm-brief.sh --help does not name the generated contract"
+  assert_contains "$help" "--words" "fm-brief.sh --help does not mention --words"
+  assert_contains "$help" "Knowledge library" "fm-brief.sh --help does not name the Knowledge library section"
   pass "fm-brief.sh: --help documents the visual-work flag and surface selector"
 }
 
@@ -2325,6 +2369,7 @@ test_turn_end_and_time_lines_render_for_ship_and_scout
 test_pasted_file_is_opt_in_and_marked
 test_design_block_is_opt_in
 test_visual_work_contract_is_surface_bound_and_opt_in
+test_knowledge_library_section_renders_for_visual_and_words
 test_help_documents_visual_work
 test_help_documents_prompting_flags
 test_workers_wait_without_spending_turns
