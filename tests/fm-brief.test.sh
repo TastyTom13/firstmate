@@ -1044,6 +1044,7 @@ test_scout_lavish_line_follows_presentation_floor() {
   local hosting='use the lavish-axi rule'
   local text_only='deliver your findings as a text report without Lavish'
   local durable='never under your session scratchpad or /tmp, because a restart wipes those'
+  local uncut='never cap, slice or truncate text the captain types in any board field'
   base=$(fm_test_base_path_sans "${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}" lavish-axi)
   while IFS='^' read -r label version expect; do
     [ -n "$label" ] || continue
@@ -1062,6 +1063,7 @@ test_scout_lavish_line_follows_presentation_floor() {
       assert_grep "Write any Lavish artifact under \`$case_dir/home/data/scout-lavish/\`" "$brief" \
         "$label: scout brief did not direct the board to the task's durable data directory"
       assert_grep "$durable" "$brief" "$label: scout brief did not say why the board must be durable"
+      assert_grep "$uncut" "$brief" "$label: scout brief allowed a board to cut captain-entered text"
     else
       assert_grep "$text_only" "$brief" "$label: scout brief did not ask for a text report"
       assert_no_grep "$hosting" "$brief" "$label: scout brief offered a below-floor Lavish"
