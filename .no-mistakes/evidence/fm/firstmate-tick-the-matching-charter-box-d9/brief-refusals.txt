@@ -1,0 +1,46 @@
+### refusals
+-- t3 proj --scout --charter docs/X.md
+error: --charter applies only to PR-raising ship briefs on a pull-request forge; a scout, a secondmate charter, a local-only ship, and a gerrit change carry no Charter boxes section
+rc=1
+-- t4 proj --mode local-only --charter docs/X.md
+error: --charter applies only to PR-raising ship briefs on a pull-request forge; a scout, a secondmate charter, a local-only ship, and a gerrit change carry no Charter boxes section
+rc=1
+-- t5 proj --mode no-mistakes --forge gerrit --charter docs/X.md
+error: --charter applies only to PR-raising ship briefs on a pull-request forge; a scout, a secondmate charter, a local-only ship, and a gerrit change carry no Charter boxes section
+rc=1
+-- t6 proj --mode direct-PR --charter /etc/passwd
+error: --charter must be a path relative to the worktree, without '..', spaces or backticks (got '/etc/passwd')
+rc=1
+-- t7 proj --mode direct-PR --charter ../x.md
+error: --charter must be a path relative to the worktree, without '..', spaces or backticks (got '../x.md')
+rc=1
+-- t8 proj --mode direct-PR --charter docs/../../x.md
+error: --charter must be a path relative to the worktree, without '..', spaces or backticks (got 'docs/../../x.md')
+rc=1
+-- t9 proj --mode direct-PR --charter ..hidden/../../x
+error: --charter must be a path relative to the worktree, without '..', spaces or backticks (got '..hidden/../../x')
+rc=1
+-- t13 proj --mode direct-PR --charter docs/ok.md
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.82YvgO/data/t13/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+
+### brief t1 charter section
+# Charter boxes
+Read `docs/IDEAL_STATE.md` in this worktree, the project's charter, and list the boxes (ids such as `O1.1`) this change meets or advances.
+For each box this change fully meets, tick it in the same change, before you commit and push: change `- [ ]` to `- [x]` and add ` (proof: branch fm/t1, <YYYY-MM-DD>)` with today's date.
+The PR is not open when you edit, so never write a URL or a placeholder, and never add a commit after the PR exists just to tick a box; the merged PR is found later by its head branch.
+Never tick a box this change only advances, and never tick a box marked `(owner runs)`.
+Put one line `Charter boxes: <ids or none>` in the PR body, naming every box met or advanced, or `none`; write `none` when the charter file does not exist.
+Before you report done, check the body with `gh pr view <number> --json body -q .body | '/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M5MM9365YM2CG9SPAFXGBBNY/bin/fm-charter-line.sh'` and fix the line until it passes.
+
+# Toolkit
+### brief t2 first line of charter section
+# Charter boxes
+Read `sites/web/docs/IDEAL_STATE.md` in this worktree, the project's charter, and list the boxes (ids such as `O1.1`) this change meets or advances.
+### absent dirs after refusal
+t1
+t10
+t11
+t12
+t13
+t2

@@ -1,0 +1,32 @@
+### 1 default no-mistakes
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.82YvgO/data/t1/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+### 2 direct-PR with --charter
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.82YvgO/data/t2/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+### 3 refusals
+-- t3 proj --scout --charter docs/X.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+-- t4 proj --mode local-only --charter docs/X.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+-- t5 proj --mode no-mistakes --forge gerrit --charter docs/X.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+-- t6 proj --mode direct-PR --charter /etc/passwd
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+-- t7 proj --mode direct-PR --charter ../x.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+-- t8 proj --mode direct-PR --charter docs/../../x.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+-- t9 proj --mode direct-PR --charter ..hidden/../../x
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+### 4 local-only and gerrit and scout carry no section
+t10: 0
+t11: 0
+t12: 0

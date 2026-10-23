@@ -1,0 +1,22 @@
+proof: branch cap/t20
+--- body: Charter boxes: none|
+Charter boxes: none
+rc=0
+--- body: Charter boxes: O1.1, O2.3|
+Charter boxes: O1.1, O2.3
+rc=0
+--- body: no line here|
+error: the PR body has no 'Charter boxes: <ids or none>' line
+rc=1
+--- body: Charter boxes:|
+error: the Charter boxes line must name box ids such as 'O1.1, O2.3' or 'none' (got '')
+rc=1
+--- body: Charter boxes: <ids or none>|
+error: the Charter boxes line must name box ids such as 'O1.1, O2.3' or 'none' (got '<ids or none>')
+rc=1
+--- body: Charter boxes: none|Charter boxes: O1.1|
+error: the PR body has 2 'Charter boxes:' lines; keep exactly one
+rc=1
+--- body: Charter boxes: https://x/pr/1|
+error: the Charter boxes line must name box ids such as 'O1.1, O2.3' or 'none' (got 'https://x/pr/1')
+rc=1
