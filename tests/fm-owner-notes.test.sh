@@ -109,12 +109,42 @@ test_file_refuses_unsafe_project_names() {
   home=$(new_home file)
   out=$(run_notes "$home" file forge) || fail "file refused a plain project name"
   assert_equals "$home/data/owner-notes/forge.md" "$out" "file printed the wrong path"
-  for name in '../escape' '.hidden' ''; do
+  for name in '' '.' '..' '...'; do
     rc=0
     run_notes "$home" file "$name" >/dev/null 2>&1 || rc=$?
-    [ "$rc" -ne 0 ] || fail "file accepted the unsafe project name '$name'"
+    [ "$rc" -ne 0 ] || fail "file accepted the empty project name '$name'"
   done
-  pass "file prints the owner-notes path and refuses unsafe project names"
+  out=$(run_notes "$home" file '../escape') || fail "file refused a name with slashes"
+  assert_equals "$home/data/owner-notes/-escape.md" "$out" "file let a slash escape the owner-notes directory"
+  pass "file maps unsafe project names to one safe file and refuses only empty ones"
+}
+
+test_unsafe_project_paths_collect_into_the_file_the_brief_names() {
+  local home path out dest slug
+  home=$(new_home unsafe)
+  mkdir -p "$home/data/copy-board"
+  printf '%s\n' 'Spaced words.' > "$home/data/copy-board/captain-notes-2026-10-23.md"
+  for slug in 'My App:My-App' '.hidden:hidden'; do
+    path="$home/projects/${slug%%:*}"
+    mkdir -p "$path"
+    out=$(run_notes "$home" collect copy-board --project-path "$path") || fail "collect failed for '${slug%%:*}': $out"
+    dest=$(run_notes "$home" file "$(basename "$path")") || fail "file refused '${slug%%:*}'"
+    assert_equals "$home/data/owner-notes/${slug##*:}.md" "$dest" "file named a different file than collect fills"
+    assert_exact_line "$dest" 'Spaced words.' "notes for '${slug%%:*}' did not land in the file the brief names"
+  done
+  pass "unsafe project paths collect into the same file that file names"
+}
+
+test_task_without_notes_collects_cleanly_for_any_project_name() {
+  local home path out
+  home=$(new_home nonotes)
+  mkdir -p "$home/data/quiet"
+  for path in "$home/projects/My App" "$home/projects/.hidden"; do
+    mkdir -p "$path"
+    out=$(run_notes "$home" collect quiet --project-path "$path" 2>&1) || fail "collect refused a task with no notes: $out"
+  done
+  [ ! -e "$home/data/owner-notes" ] || fail "collect created owner notes for a task with no notes"
+  pass "a task with no notes collects cleanly whatever its project is called"
 }
 
 test_collect_appends_verbatim_with_date_and_task
@@ -123,3 +153,5 @@ test_firstmate_home_tasks_collect_into_firstmate
 test_undated_notes_use_the_file_date
 test_backfill_resolves_projects_and_lists_the_unresolved
 test_file_refuses_unsafe_project_names
+test_unsafe_project_paths_collect_into_the_file_the_brief_names
+test_task_without_notes_collects_cleanly_for_any_project_name

@@ -21,8 +21,10 @@
 #        fm-owner-notes.sh file <project-name>
 #        fm-owner-notes.sh backfill
 #   collect   append the task's captain-notes files to its project's owner notes.
-#   file      print the owner-notes path for a project name; exit 1 when the
-#             name is not a plain file-name-safe project name.
+#   file      print the owner-notes path for a project name; every character
+#             outside A-Za-z0-9._- becomes "-" and leading dots are dropped,
+#             so any project name maps to one file; exit 1 only when nothing
+#             is left. `collect` uses the same mapping.
 #   backfill  run collect once for every data/*/captain-notes-*.md already
 #             present, resolving each task's project from its live
 #             state/<task-id>.meta, else its brief's "worktree of <repo>" line.
@@ -50,13 +52,17 @@ usage() {
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 
-project_name_valid() {
-  fm_task_id_path_safe "${1-}"
+project_slug() {  # <project-name>
+  local slug
+  slug=$(printf '%s' "${1-}" | LC_ALL=C tr -c 'A-Za-z0-9._-' '-' | sed 's/^\.*//')
+  [ -n "$slug" ] || return 1
+  printf '%s\n' "$slug"
 }
 
 owner_notes_file() {  # <project-name>
-  project_name_valid "$1" || return 1
-  printf '%s/owner-notes/%s.md\n' "$DATA" "$1"
+  local slug
+  slug=$(project_slug "$1") || return 1
+  printf '%s/owner-notes/%s.md\n' "$DATA" "$slug"
 }
 
 canonical_dir() {
@@ -95,18 +101,18 @@ collect() {  # <task-id> <project-name>
   local id=$1 project=$2 dest file name marker sha appended=0
   local -a files=()
   fm_task_id_path_safe "$id" || { echo "error: invalid task id: $id" >&2; return 2; }
-  dest=$(owner_notes_file "$project") || { echo "error: invalid project name: $project" >&2; return 2; }
   for file in "$DATA/$id"/captain-notes-*.md; do
     [ -f "$file" ] && [ ! -L "$file" ] && [ -s "$file" ] || continue
     files+=("$file")
   done
   [ "${#files[@]}" -gt 0 ] || return 0
+  dest=$(owner_notes_file "$project") || { echo "error: invalid project name: $project" >&2; return 2; }
   mkdir -p "$DATA/owner-notes"
   OWNER_NOTES_LOCK="$dest.lock"
   fm_lock_acquire_wait "$OWNER_NOTES_LOCK"
   trap 'fm_lock_release "$OWNER_NOTES_LOCK" || true' EXIT
   if [ ! -e "$dest" ]; then
-    printf '%s\n' "# Owner notes: $project" '' \
+    printf '%s\n' "# Owner notes: $(basename "$dest" .md)" '' \
       "The captain's own words from Firstmate tasks on $project, verbatim, collected at each task's cleanup." \
       "Entries are appended in collection order and never edited." > "$dest"
   fi
@@ -147,7 +153,7 @@ backfill() {
       repo=$(sed -n 's/^You are in a disposable git worktree of \([^,]*\), at a detached HEAD.*/\1/p' "$dir/brief.md" | head -n 1)
       [ -z "$repo" ] || project=$repo
     fi
-    if [ -z "$project" ] || ! project_name_valid "$project"; then
+    if [ -z "$project" ] || ! project_slug "$project" >/dev/null; then
       echo "skipped $id: no project could be resolved; run: $0 collect $id --project <name>" >&2
       continue
     fi
