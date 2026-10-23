@@ -14,7 +14,7 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> --done-when <check> [--base <branch>] [--branch-prefix <prefix>] [--forge <none|gerrit> [--shape squash]] [--ui] [--design] [--visual --surface <decks|scout|website|email>] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> --done-when <check> [--base <branch>] [--branch-prefix <prefix>] [--charter <path>] [--forge <none|gerrit> [--shape squash]] [--ui] [--design] [--visual --surface <decks|scout|website|email>] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
 #        fm-brief.sh <task-id> <repo-name> --scout --done-when <question> [--design] [--visual --surface <decks|scout|website|email>] [--pasted-file <path>] [--herdr-lab] [--env-file <path>[:<dest>]]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
@@ -133,11 +133,17 @@
 # scaffold time, as required reading that outranks generic guidance.
 # bin/fm-owner-notes.sh owns that record and its collection at cleanup.
 # Every PR-raising ship brief on a pull-request forge also carries a "Charter
-# boxes" section: read the project's charter (bin/fm-project-mode.sh --charter,
-# default docs/IDEAL_STATE.md), tick each box the change fully meets in the same
-# PR with " (proof: PR <url>)", and put one "Charter boxes: <ids or none>" line
-# in the PR body, checked by bin/fm-charter-line.sh. local-only, forge=gerrit,
-# scout, and secondmate scaffolds carry none.
+# boxes" section: read the project's charter (docs/IDEAL_STATE.md in the
+# worktree), tick each box the change fully meets in the same change with
+# " (proof: PR <PR title>, <YYYY-MM-DD>)" (the PR is not open yet, so the
+# proof names the PR by its title, which finds the merged PR later), and put one
+# "Charter boxes: <ids or none>" line in the PR body, checked by
+# bin/fm-charter-line.sh. --charter <path> names a different charter file, as a
+# path relative to the worktree, for the one project whose charter lives
+# elsewhere; it is refused with an absolute path or a path that escapes the
+# worktree with "..", and wherever the section does not render (scout,
+# secondmate, local-only, forge=gerrit). Scout, secondmate, local-only, and
+# forge=gerrit scaffolds carry no such section.
 # --pasted-file <path> takes a file holding text the captain pasted in from
 # somewhere else (an email, a web page, another tool's output). Its text is
 # placed under `## Captain's intent`, after the {TASK} slot Firstmate still
@@ -354,6 +360,8 @@ ENV_FILE=
 ENV_FILE_SET=0
 BRANCH_PREFIX=fm/
 BRANCH_PREFIX_SET=0
+CHARTER=docs/IDEAL_STATE.md
+CHARTER_SET=0
 FORGE=none
 FORGE_SET=0
 SHAPE=
@@ -374,6 +382,7 @@ for a in "$@"; do
       pasted-file) PASTED_FILE=$a; PASTED_FILE_SET=1 ;;
       surface) SURFACE=$a; SURFACE_SET=1 ;;
       branch-prefix) BRANCH_PREFIX=$a; BRANCH_PREFIX_SET=1 ;;
+      charter) CHARTER=$a; CHARTER_SET=1 ;;
       forge) FORGE=$a; FORGE_SET=1 ;;
       shape) SHAPE=$a; SHAPE_SET=1 ;;
       done-when) DONE_WHEN=$a; DONE_WHEN_SET=1 ;;
@@ -402,6 +411,8 @@ for a in "$@"; do
     --env-file=*) ENV_FILE=${a#--env-file=}; ENV_FILE_SET=1 ;;
     --branch-prefix) want_value="branch-prefix" ;;
     --branch-prefix=*) BRANCH_PREFIX=${a#--branch-prefix=}; BRANCH_PREFIX_SET=1 ;;
+    --charter) want_value=charter ;;
+    --charter=*) CHARTER=${a#--charter=}; CHARTER_SET=1 ;;
     --forge) want_value=forge ;;
     --forge=*) FORGE=${a#--forge=}; FORGE_SET=1 ;;
     --shape) want_value=shape ;;
@@ -497,6 +508,20 @@ if [ "$KIND" = ship ]; then
 elif [ "$FORGE_SET" -eq 1 ] || [ "$SHAPE_SET" -eq 1 ]; then
   echo "error: --forge and --shape apply only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract" >&2
   exit 1
+fi
+# The charter path only means something where the Charter boxes section renders:
+# a PR-raising ship brief on a pull-request forge. It is read inside the task's
+# worktree, so it must stay relative to it.
+if [ "$CHARTER_SET" -eq 1 ]; then
+  if [ "$KIND" != ship ] || [ "$MODE" = local-only ] || [ "$FORGE" != none ]; then
+    echo "error: --charter applies only to PR-raising ship briefs on a pull-request forge; a scout, a secondmate charter, a local-only ship, and a gerrit change carry no Charter boxes section" >&2
+    exit 1
+  fi
+  case "/$CHARTER/" in
+    //*|*/../*|*'`'*|*' '*)
+      echo "error: --charter must be a path relative to the worktree, without '..', spaces or backticks (got '$CHARTER')" >&2
+      exit 1 ;;
+  esac
 fi
 ID=${POS[0]}
 BRANCH="$BRANCH_PREFIX$ID"
@@ -1279,19 +1304,17 @@ fi
 
 # Charter boxes: shipped work stays invisible on a project's charter unless the
 # PR that meets a box ticks it, so every PR-raising ship brief names the charter
-# (bin/fm-project-mode.sh --charter owns the registry token and its default) and
-# the PR body line bin/fm-charter-line.sh checks. local-only raises no PR to
+# (docs/IDEAL_STATE.md unless --charter names another path) and the PR body line bin/fm-charter-line.sh checks. local-only raises no PR to
 # cite, and a gerrit change has no PR body, so neither carries the section.
 CHARTER_SECTION=
 if [ "$MODE" != local-only ] && [ "$FORGE" = none ]; then
-  CHARTER_PATH=$("$SCRIPT_DIR/fm-project-mode.sh" --charter "$REPO" 2>/dev/null) || CHARTER_PATH=docs/IDEAL_STATE.md
-  [ -n "$CHARTER_PATH" ] || CHARTER_PATH=docs/IDEAL_STATE.md
   IFS= read -r -d '' CHARTER_SECTION <<EOF || true
 
 
 # Charter boxes
-Read \`$CHARTER_PATH\` in this worktree, the project's charter, and list the boxes (ids such as \`O1.1\`) this change meets or advances.
-For each box this change fully meets, tick it in the same PR: change \`- [ ]\` to \`- [x]\` and add \` (proof: PR <url>)\` with this PR's full URL.
+Read \`$CHARTER\` in this worktree, the project's charter, and list the boxes (ids such as \`O1.1\`) this change meets or advances.
+For each box this change fully meets, tick it in the same change, before you commit and push: change \`- [ ]\` to \`- [x]\` and add \` (proof: PR <PR title>, <YYYY-MM-DD>)\` with this PR's exact title and today's date.
+The PR is not open when you edit, so never write a URL or a placeholder, and never add a commit after the PR exists just to tick a box; the merged PR is found later by its title.
 Never tick a box this change only advances, and never tick a box marked \`(owner runs)\`.
 Put one line \`Charter boxes: <ids or none>\` in the PR body, naming every box met or advanced, or \`none\`; write \`none\` when the charter file does not exist.
 Before you report done, check the body with \`gh pr view <number> --json body -q .body | $(shell_quote "$FM_ROOT/bin/fm-charter-line.sh")\` and fix the line until it passes.

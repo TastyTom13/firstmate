@@ -1590,16 +1590,14 @@ test_evidence_rules_render_only_where_a_pr_exists() {
 }
 
 # Every PR-raising ship brief tells the worker to name the charter boxes its
-# change meets, tick a met box with the PR as proof, and carry one Charter boxes
-# line in the PR body, which bin/fm-charter-line.sh checks. The charter path is
-# the project's registered charter= token, else docs/IDEAL_STATE.md.
+# change meets, tick a met box in the same change with the PR title and date as
+# proof, and carry one Charter boxes line in the PR body, which
+# bin/fm-charter-line.sh checks. The charter is docs/IDEAL_STATE.md unless
+# --charter names another worktree-relative path.
 test_charter_boxes_section_renders_for_pr_raising_ships() {
-  local home id brief mode out
+  local home id brief mode out status
   home="$TMP_ROOT/charter-home"
   mkdir -p "$home/data"
-  printf '%s\n' '# Projects' '' \
-    '- web [charter=sites/web/docs/IDEAL_STATE.md direct-PR +yolo] - fixture site (added 2026-10-23)' \
-    > "$home/data/projects.md"
 
   for mode in no-mistakes direct-PR; do
     id="brief-charter-$mode"
@@ -1608,19 +1606,19 @@ test_charter_boxes_section_renders_for_pr_raising_ships() {
     brief="$home/data/$id/brief.md"
     assert_grep "# Charter boxes" "$brief" "$mode: brief lost the Charter boxes section"
     assert_grep "Read \`docs/IDEAL_STATE.md\` in this worktree" "$brief" \
-      "$mode: an unregistered project must default to docs/IDEAL_STATE.md"
-    assert_grep '(proof: PR <url>)' "$brief" "$mode: brief lost the PR proof suffix"
+      "$mode: the charter must default to docs/IDEAL_STATE.md"
+    assert_grep '(proof: PR <PR title>, <YYYY-MM-DD>)' "$brief" "$mode: brief lost the PR title and date proof suffix"
+    assert_grep 'never add a commit after the PR exists' "$brief" "$mode: brief allows a post-PR commit"
+    assert_no_grep '(proof: PR <url>)' "$brief" "$mode: brief still asks for a PR URL that does not exist yet"
     assert_grep 'Charter boxes: <ids or none>' "$brief" "$mode: brief lost the PR body line"
     assert_grep "$ROOT/bin/fm-charter-line.sh" "$brief" "$mode: brief lost the PR body check command"
   done
 
-  id="brief-charter-registered"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" web --mode direct-PR --done-when "fixture check passes" >/dev/null 2>&1 \
-    || fail "registered: brief should scaffold"
+  id="brief-charter-override"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode direct-PR --charter sites/web/docs/IDEAL_STATE.md --done-when "fixture check passes" >/dev/null 2>&1 \
+    || fail "override: brief should scaffold"
   assert_grep "Read \`sites/web/docs/IDEAL_STATE.md\` in this worktree" "$home/data/$id/brief.md" \
-    "registered: the brief must name the project's registered charter path"
-  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-mode.sh" web 2>/dev/null)
-  [ "$out" = "direct-PR on" ] || fail "a charter= token must not be read as the mode (got '$out')"
+    "override: the brief must name the --charter path"
 
   id="brief-charter-local-only"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --done-when "fixture check passes" >/dev/null 2>&1 \
@@ -1636,7 +1634,24 @@ test_charter_boxes_section_renders_for_pr_raising_ships() {
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout --done-when "fixture question" >/dev/null 2>&1 \
     || fail "scout: brief should scaffold"
   assert_no_grep "# Charter boxes" "$home/data/$id/brief.md" "scout: a report ticks no charter box"
-  pass "fm-brief.sh: PR-raising ship briefs carry the Charter boxes section with the registered or default charter path"
+
+  while IFS='|' read -r label args expect; do
+    [ -n "$label" ] || continue
+    # shellcheck disable=SC2086  # args is an intentional word-split arg list
+    out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" $args --done-when x 2>&1)
+    status=$?
+    [ "$status" -ne 0 ] || fail "$label: expected a non-zero exit"
+    assert_contains "$out" "$expect" "$label: refusal did not explain why"
+    assert_absent "$home/data/${args%% *}/brief.md" "$label: refusal still wrote a brief"
+  done <<'ROWS'
+charter on a scout brief|brief-charter-r1 some-proj --scout --charter docs/X.md|--charter applies only to PR-raising ship briefs
+charter on a local-only ship brief|brief-charter-r2 some-proj --mode local-only --charter docs/X.md|--charter applies only to PR-raising ship briefs
+charter on a gerrit ship brief|brief-charter-r3 some-proj --mode no-mistakes --forge gerrit --charter docs/X.md|--charter applies only to PR-raising ship briefs
+absolute charter path|brief-charter-r4 some-proj --mode direct-PR --charter /etc/passwd|--charter must be a path relative to the worktree
+escaping charter path|brief-charter-r5 some-proj --mode direct-PR --charter ../outside/IDEAL_STATE.md|--charter must be a path relative to the worktree
+escaping charter path mid-path|brief-charter-r6 some-proj --mode direct-PR --charter docs/../../x.md|--charter must be a path relative to the worktree
+ROWS
+  pass "fm-brief.sh: PR-raising ship briefs carry the Charter boxes section with the default or --charter path, and misuse is refused"
 }
 
 test_charter_line_check_accepts_only_one_well_formed_line() {
