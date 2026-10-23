@@ -158,7 +158,8 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-merge-authority-lib.sh` | Resolve merge authority at the gate, persist it against the accepted canonical PR, and identity-check its later poll consumption |
 | `fm-parent-channel-lib.sh` | Resolve a secondmate home's parent channel and append a captain-facing outcome line to it at most once |
 | `fm-promote.sh`          | Promote a scout task in place to a protected ship task with an explicit delivery mode, write the ship instructions carrying that mode's definition of done, and supersede the task's brief so a later relaunch cannot revive stale scout delivery text |
-| `fm-teardown.sh`         | Fail-closed teardown: return landed ship worktrees, require completed scout deliverables, file a task's recorded follow-ups as backlog items, retire secondmate homes |
+| `fm-teardown.sh`         | Fail-closed teardown: return landed ship worktrees, require completed scout deliverables, file a task's recorded follow-ups as backlog items, collect the captain's notes into the project's owner notes, retire secondmate homes |
+| `fm-owner-notes.sh`      | Append each task's `captain-notes-*.md` to a durable per-project `data/owner-notes/<project>.md` (idempotent), print that path, and backfill existing notes |
 | `fm-followups.sh`        | Record a live ship or scout task's explicit no-follow-ups escape in its task record, so teardown can proceed |
 | `fm-model-scorecard.sh`  | Tally completed work per model and effort from the backlog's own attribution notes, with best-effort fix-round and ask-user proxies |
 | `fm-harness.sh`          | Detect the running harness, resolve crew or secondmate harness, model, and effort, and validate the native-only `ultra` effort |
