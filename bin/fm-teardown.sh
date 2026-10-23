@@ -90,6 +90,11 @@
 # backlog transition applies (a manual backend, or a markdown home with no
 # backlog file), the titles are printed for the operator and nothing refuses.
 # --force skips this step with the other work checks.
+# Captain's words before cleanup: right after the follow-ups, a ship or scout
+# teardown appends every data/<task-id>/captain-notes-*.md to the project's
+# data/owner-notes/<project>.md through bin/fm-owner-notes.sh collect, which owns
+# the record, its idempotence, and the project naming. It runs under --force too
+# and refuses, changing nothing else, when collection fails.
 # Before destructive cleanup, teardown validates task check artifacts as
 # ordinary single-link files on the state device. It refuses and preserves
 # task state when that proof fails; otherwise it removes the task's check,
@@ -3721,6 +3726,18 @@ fi
 # refusal here leaves every record, the endpoint, and the worktree in place.
 if [ "$KIND" != secondmate ] && [ "$FORCE" != "--force" ]; then
   teardown_file_follow_ups || exit 1
+fi
+
+# Captain's words before cleanup (script header). Runs even under --force,
+# because the notes are the captain's own words rather than unlanded work, and
+# a failure refuses here with every record and the worktree still in place.
+if [ "$KIND" != secondmate ]; then
+  OWNER_NOTES_PROJECT=${PROJ:-$FM_HOME}
+  if ! FM_HOME="$FM_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" FM_DATA_OVERRIDE="$DATA" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-owner-notes.sh" collect "$ID" --project-path "$OWNER_NOTES_PROJECT"; then
+    echo "REFUSED: could not collect $ID's captain notes into the project's owner notes; nothing was cleaned up, and a retried teardown collects them." >&2
+    exit 1
+  fi
 fi
 
 BACKLOG_CLOSED=0

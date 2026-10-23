@@ -386,6 +386,48 @@ test_follow_ups_section_renders_for_ship_and_scout() {
   pass "fm-brief.sh: ship and scout briefs name the follow-ups record and its --none escape"
 }
 
+# Workers save the captain's words verbatim in their task data, and once the
+# project has collected owner notes every brief names them as required reading.
+test_captain_words_section_renders_for_ship_and_scout() {
+  local home kind id brief notes
+  home="$TMP_ROOT/captain-words-home"
+  mkdir -p "$home/data"
+  for kind in ship scout; do
+    id="captain-words-$kind"
+    if [ "$kind" = ship ]; then
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --done-when 'check' >/dev/null 2>&1
+    else
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout --done-when 'question' >/dev/null 2>&1
+    fi || fail "$kind: scaffold failed"
+    brief="$home/data/$id/brief.md"
+    grep -qx "# Captain's words" "$brief" || fail "$kind: brief has no Captain's words section"
+    assert_grep "\`$home/data/$id/captain-notes-<YYYY-MM-DD>.md\`" "$brief" "$kind: brief does not name the captain-notes file"
+    assert_grep "verbatim with no paraphrase and no cuts, and what you did with them" "$brief" \
+      "$kind: brief does not require verbatim words and what was done with them"
+    assert_no_grep "owner-notes" "$brief" "$kind: brief named owner notes the project does not have"
+  done
+
+  notes="$home/data/owner-notes/some-proj.md"
+  mkdir -p "$home/data/owner-notes"
+  printf '%s\n' '# Owner notes: some-proj' 'Words.' > "$notes"
+  for kind in ship scout; do
+    id="captain-words-read-$kind"
+    if [ "$kind" = ship ]; then
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode direct-PR --done-when 'check' >/dev/null 2>&1
+    else
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout --done-when 'question' >/dev/null 2>&1
+    fi || fail "$kind: scaffold with owner notes failed"
+    brief="$home/data/$id/brief.md"
+    assert_grep "Required reading before you start, next to the knowledge library: \`$notes\` (2 lines, $(wc -c < "$notes" | tr -d ' ') bytes at scaffold time)." \
+      "$brief" "$kind: brief does not name the owner notes as required reading with their size"
+    assert_grep "they outrank generic guidance" "$brief" "$kind: brief does not rank the captain's words above generic guidance"
+  done
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" captain-words-other other-proj --scout --done-when 'question' >/dev/null 2>&1 \
+    || fail "other project: scaffold failed"
+  assert_no_grep "owner-notes" "$home/data/captain-words-other/brief.md" "a brief named another project's owner notes"
+  pass "fm-brief.sh: ship and scout briefs save the captain's words and name the project's owner notes"
+}
+
 # yolo is firstmate's merge authority and never reaches the worker, and a scout
 # or charter carries no delivery contract. Each must refuse rather than accept and
 # discard the flag, which would look recorded but change nothing.
@@ -2368,6 +2410,7 @@ test_ship_mode_is_explicit_not_registry
 test_done_when_is_required_on_ship_and_scout
 test_done_when_renders_in_task_and_definition_of_done
 test_follow_ups_section_renders_for_ship_and_scout
+test_captain_words_section_renders_for_ship_and_scout
 test_delivery_flags_are_refused_where_they_do_not_apply
 test_ship_base_branch_line_renders_only_when_given
 test_faster_paths_use_configured_authority_without_stacked_review
