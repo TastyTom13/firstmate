@@ -9,11 +9,6 @@
 # With --forge it prints one word instead: the project's registered forge,
 # none|gerrit. The forge is asked for explicitly, so the default output stays
 # the same two words for every project, bound or not.
-# --charter prints one value: the repo-relative path of the project's charter
-# (the file whose boxes a ship ticks when its change meets them), from the
-# registry's charter=<path> token, "docs/IDEAL_STATE.md" when the project
-# registers none, is unregistered, or the registry is absent. bin/fm-brief.sh
-# names it in every PR-raising ship brief.
 #
 # MECHANICAL CONSUMERS ONLY. This answers "what posture did the captain register
 # for this project", never "how does this task ship". A task's delivery mode,
@@ -25,9 +20,7 @@
 # run no-mistakes init), bin/fm-spawn.sh's advisory registry-deviation notice,
 # and --forge for bin/fm-spawn.sh's forge agreement and yolo refusal and for
 # bin/fm-promote.sh, which takes the forge binding from here because it is a
-# project fact rather than a task choice. --charter is for bin/fm-brief.sh,
-# which reads the charter path itself because it is a project fact, not a task
-# decision.
+# project fact rather than a task choice.
 #
 # Registry line format (data/projects.md):
 #   - <name> - <desc> (added <date>)                                 -> no-mistakes off fm/  (legacy default)
@@ -35,12 +28,10 @@
 #   - <name> [<mode> +yolo] - <desc> (added <date>)                  -> <mode> on fm/
 #   - <name> [<mode> +yolo branch=<prefix>] - <desc> (added <date>)  -> <mode> <yolo> <prefix>
 #   - <name> [<mode> forge=gerrit] - <desc> (added <date>)           -> <mode> off, --forge gerrit
-#   - <name> [<mode> charter=<path>] - <desc> (added <date>)         -> <mode> off, --charter <path>
 #   <name> may contain spaces; it ends at the literal " [" or " - " that follows it.
-#   Bracket tokens are order-independent: +yolo, branch=<prefix>, forge=<value>,
-#   and charter=<path> are recognized by their own shape wherever they appear, and
-#   whichever token is left over is the mode. <prefix> and <path> must not contain
-#   a space, and an empty charter= means the default path; an empty override
+#   Bracket tokens are order-independent: +yolo, branch=<prefix>, and forge=<value>
+#   are recognized by their own shape wherever they appear, and whichever token is
+#   left over is the mode. <prefix> must not contain a space; an empty override
 #   ("branch=") resolves to "" for a bare "<task-id>" ship branch instead of the
 #   legacy "fm/<task-id>".
 #
@@ -88,8 +79,8 @@
 # An unknown/missing project or unknown mode falls back to "no-mistakes off" (or
 # "fm/" under --branch-prefix) and warns to stderr, so a typo never silently
 # drops the gate. Other annotation tokens are ignored, as they always were, keyed
-# ones included: a `<key>=<value>` token whose key is none of exactly `forge`,
-# `branch`, or `charter` resolves as it did before the forge existed, and in the mode slot it
+# ones included: a `<key>=<value>` token whose key is neither exactly `forge` nor
+# `branch` resolves as it did before the forge existed, and in the mode slot it
 # is read as an unknown mode. A key one or two edits from `forge` (such as
 # `forg=` or `Forge=`) is still ignored, with one stderr warning naming the token
 # and the forge=gerrit spelling. The one refusal is a malformed forge binding - a
@@ -102,7 +93,7 @@
 # to the forge binding, so it prints even when the forge token is malformed;
 # every path that reads the forge binding (default, --forge, and spawn's
 # forge-agreement check) still refuses.
-# Usage: fm-project-mode.sh [--raw|--branch-prefix|--forge|--charter] <project-name>
+# Usage: fm-project-mode.sh [--raw|--branch-prefix|--forge] <project-name>
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -113,33 +104,28 @@ REG="$DATA/projects.md"
 RAW=0
 BRANCH_PREFIX_QUERY=0
 WANT_FORGE=0
-CHARTER_QUERY=0
-CHARTER_DEFAULT=docs/IDEAL_STATE.md
 case "${1:-}" in
   --raw) RAW=1; shift ;;
   --branch-prefix) BRANCH_PREFIX_QUERY=1; shift ;;
   --forge) WANT_FORGE=1; shift ;;
-  --charter) CHARTER_QUERY=1; shift ;;
 esac
-NAME=${1:?usage: fm-project-mode.sh [--raw|--branch-prefix|--forge|--charter] <project-name>}
+NAME=${1:?usage: fm-project-mode.sh [--raw|--branch-prefix|--forge] <project-name>}
 
 if [ ! -f "$REG" ]; then
   echo "warn: no registry at $REG; defaulting $NAME to no-mistakes off" >&2
-  if [ "$CHARTER_QUERY" -eq 1 ]; then
-    echo "$CHARTER_DEFAULT"
-  elif [ "$BRANCH_PREFIX_QUERY" -eq 1 ]; then
+  if [ "$BRANCH_PREFIX_QUERY" -eq 1 ]; then
     echo "fm/"
   elif [ "$WANT_FORGE" -eq 1 ]; then echo none; else echo "no-mistakes off"; fi
   exit 0
 fi
 
 # awk emits one "near <token>" line per keyed token whose key is a near miss of
-# `forge`, then "posture <mode> <yolo> <forge> <charter> <branch-prefix>" (branch-prefix is
+# `forge`, then "posture <mode> <yolo> <branch-prefix> <forge>" (branch-prefix is
 # the raw prefix, defaulting to "fm/"; forge is `none` or the whole `forge=<value>`
 # token, so an empty value survives the split), or nothing if the project is
 # absent. Every other token beside the mode is ignored, exactly as before either
 # annotation existed.
-parsed=$(awk -v n="$NAME" -v cd="$CHARTER_DEFAULT" '
+parsed=$(awk -v n="$NAME" '
   function dist(x, y,   i, j, lx, ly, d, c, v) {
     lx = length(x); ly = length(y);
     for (i=0; i<=lx; i++) d[i,0] = i;
@@ -163,23 +149,22 @@ parsed=$(awk -v n="$NAME" -v cd="$CHARTER_DEFAULT" '
     if (substr($0, 1, plen) != prefix) next
     after = substr($0, plen + 1);
     if (after != "" && substr(after, 1, 2) != " [" && substr(after, 1, 3) != " - ") next
-    mode="no-mistakes"; yolo="off"; branch="fm/"; forge="none"; charter=cd;
+    mode="no-mistakes"; yolo="off"; branch="fm/"; forge="none";
     if (substr(after, 1, 2) == " [") {
       s="";
       nk = split(after, rest, " ");
       for (i=1; i<=nk; i++) { s = s (s==""?"":" ") rest[i]; if (rest[i] ~ /\]$/) break }
       gsub(/^\[|\]$/, "", s);           # strip the surrounding brackets
       k = split(s, a, " ");
-      # Tokens are order-independent: +yolo, branch=<prefix>, forge=<value>, and
-      # charter=<path> are recognized by their own shape wherever they appear,
-      # other keyed tokens are ignored (with a near-miss warning for the forge
+      # Tokens are order-independent: +yolo, branch=<prefix>, and forge=<value>
+      # are recognized by their own shape wherever they appear, keyed tokens
+      # that are neither are ignored (with a near-miss warning for the forge
       # spelling), and the first token left over is the mode.
       mode_set = 0
       for (j=1; j<=k; j++) {
         if (a[j]=="+yolo") { yolo="on"; continue }
         if (a[j] ~ /^branch=/) { branch = substr(a[j], 8); continue }
         if (a[j] ~ /^forge=/) { forge = a[j]; continue }
-        if (a[j] ~ /^charter=/) { charter = substr(a[j], 9); if (charter == "") charter = cd; continue }
         if (a[j] ~ /^[^=]+=/) {
           key = substr(a[j], 1, index(a[j], "=") - 1);
           e = dist(key, "forge");
@@ -192,15 +177,13 @@ parsed=$(awk -v n="$NAME" -v cd="$CHARTER_DEFAULT" '
     }
     # branch is printed LAST: an empty branch= override must survive as an
     # empty final field, which only holds when nothing follows it.
-    print "posture", mode, yolo, forge, charter, branch; exit
+    print "posture", mode, yolo, forge, branch; exit
   }
 ' "$REG")
 
 if [ -z "$parsed" ]; then
   echo "warn: project \"$NAME\" not in registry; defaulting to no-mistakes off" >&2
-  if [ "$CHARTER_QUERY" -eq 1 ]; then
-    echo "$CHARTER_DEFAULT"
-  elif [ "$BRANCH_PREFIX_QUERY" -eq 1 ]; then
+  if [ "$BRANCH_PREFIX_QUERY" -eq 1 ]; then
     echo "fm/"
   elif [ "$WANT_FORGE" -eq 1 ]; then echo none; else echo "no-mistakes off"; fi
   exit 0
@@ -215,8 +198,8 @@ while IFS=' ' read -r kind rest; do
 done <<EOF
 $parsed
 EOF
-while IFS=' ' read -r m y f c b; do
-  mode=$m; yolo=$y; rest_forge=$f; charter=$c; branch=$b
+while IFS=' ' read -r m y f b; do
+  mode=$m; yolo=$y; rest_forge=$f; branch=$b
 done <<EOF
 $posture
 EOF
@@ -226,10 +209,6 @@ case "$mode" in
   *) echo "warn: unknown mode \"$mode\" for $NAME; defaulting to no-mistakes off" >&2; mode=no-mistakes; yolo=off; branch=fm/ ;;
 esac
 case "$yolo" in on|off) ;; *) yolo=off ;; esac
-if [ "$CHARTER_QUERY" -eq 1 ]; then
-  echo "$charter"
-  exit 0
-fi
 if [ "$BRANCH_PREFIX_QUERY" -eq 1 ]; then
   echo "$branch"
   exit 0

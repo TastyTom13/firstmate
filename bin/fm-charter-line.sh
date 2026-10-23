@@ -2,9 +2,9 @@
 # Check that a PR body carries exactly one well-formed charter line:
 #   Charter boxes: <ids or none>
 # where the value is "none" or a comma-separated list of charter box ids such
-# as "O1.1, O2.3" from the project's charter (bin/fm-project-mode.sh --charter
-# names its path). Every PR-raising ship brief (bin/fm-brief.sh) tells the
-# worker to run this on its PR body before reporting done.
+# as "O1.1, O2.3" from the project's charter (docs/IDEAL_STATE.md by default).
+# Every PR-raising ship brief (bin/fm-brief.sh) tells the worker to run this on
+# its PR body before reporting done.
 # Usage: fm-charter-line.sh [<body-file>]   (reads stdin without a file)
 # Exits 0 and prints the line when it is well formed; otherwise exits 1 and
 # names what is wrong on stderr.
