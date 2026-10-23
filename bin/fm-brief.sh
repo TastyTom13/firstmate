@@ -135,8 +135,9 @@
 # Every PR-raising ship brief on a pull-request forge also carries a "Charter
 # boxes" section: read the project's charter (docs/IDEAL_STATE.md in the
 # worktree), tick each box the change fully meets in the same change with
-# " (proof: PR <PR title>, <YYYY-MM-DD>)" (the PR is not open yet, so the
-# proof names the PR by its title, which finds the merged PR later), and put one
+# " (proof: branch <ship branch>, <YYYY-MM-DD>)" (the PR is not open yet, so the
+# proof names the task's ship branch, which finds the merged PR by its head
+# branch later), and put one
 # "Charter boxes: <ids or none>" line in the PR body, checked by
 # bin/fm-charter-line.sh. --charter <path> names a different charter file, as a
 # path relative to the worktree, for the one project whose charter lives
@@ -1313,8 +1314,8 @@ if [ "$MODE" != local-only ] && [ "$FORGE" = none ]; then
 
 # Charter boxes
 Read \`$CHARTER\` in this worktree, the project's charter, and list the boxes (ids such as \`O1.1\`) this change meets or advances.
-For each box this change fully meets, tick it in the same change, before you commit and push: change \`- [ ]\` to \`- [x]\` and add \` (proof: PR <PR title>, <YYYY-MM-DD>)\` with this PR's exact title and today's date.
-The PR is not open when you edit, so never write a URL or a placeholder, and never add a commit after the PR exists just to tick a box; the merged PR is found later by its title.
+For each box this change fully meets, tick it in the same change, before you commit and push: change \`- [ ]\` to \`- [x]\` and add \` (proof: branch $BRANCH, <YYYY-MM-DD>)\` with today's date.
+The PR is not open when you edit, so never write a URL or a placeholder, and never add a commit after the PR exists just to tick a box; the merged PR is found later by its head branch.
 Never tick a box this change only advances, and never tick a box marked \`(owner runs)\`.
 Put one line \`Charter boxes: <ids or none>\` in the PR body, naming every box met or advanced, or \`none\`; write \`none\` when the charter file does not exist.
 Before you report done, check the body with \`gh pr view <number> --json body -q .body | $(shell_quote "$FM_ROOT/bin/fm-charter-line.sh")\` and fix the line until it passes.

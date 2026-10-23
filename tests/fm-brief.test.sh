@@ -1590,7 +1590,7 @@ test_evidence_rules_render_only_where_a_pr_exists() {
 }
 
 # Every PR-raising ship brief tells the worker to name the charter boxes its
-# change meets, tick a met box in the same change with the PR title and date as
+# change meets, tick a met box in the same change with the ship branch and date as
 # proof, and carry one Charter boxes line in the PR body, which
 # bin/fm-charter-line.sh checks. The charter is docs/IDEAL_STATE.md unless
 # --charter names another worktree-relative path.
@@ -1607,7 +1607,7 @@ test_charter_boxes_section_renders_for_pr_raising_ships() {
     assert_grep "# Charter boxes" "$brief" "$mode: brief lost the Charter boxes section"
     assert_grep "Read \`docs/IDEAL_STATE.md\` in this worktree" "$brief" \
       "$mode: the charter must default to docs/IDEAL_STATE.md"
-    assert_grep '(proof: PR <PR title>, <YYYY-MM-DD>)' "$brief" "$mode: brief lost the PR title and date proof suffix"
+    assert_grep "(proof: branch fm/$id, <YYYY-MM-DD>)" "$brief" "$mode: brief lost the ship branch and date proof suffix"
     assert_grep 'never add a commit after the PR exists' "$brief" "$mode: brief allows a post-PR commit"
     assert_no_grep '(proof: PR <url>)' "$brief" "$mode: brief still asks for a PR URL that does not exist yet"
     assert_grep 'Charter boxes: <ids or none>' "$brief" "$mode: brief lost the PR body line"
