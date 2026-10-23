@@ -1589,6 +1589,75 @@ test_evidence_rules_render_only_where_a_pr_exists() {
   pass "fm-brief.sh: acceptance-numbering and red-then-green rules render only for PR-raising ship briefs"
 }
 
+# Every PR-raising ship brief tells the worker to name the charter boxes its
+# change meets, tick a met box with the PR as proof, and carry one Charter boxes
+# line in the PR body, which bin/fm-charter-line.sh checks. The charter path is
+# the project's registered charter= token, else docs/IDEAL_STATE.md.
+test_charter_boxes_section_renders_for_pr_raising_ships() {
+  local home id brief mode out
+  home="$TMP_ROOT/charter-home"
+  mkdir -p "$home/data"
+  printf '%s\n' '# Projects' '' \
+    '- web [charter=sites/web/docs/IDEAL_STATE.md direct-PR +yolo] - fixture site (added 2026-10-23)' \
+    > "$home/data/projects.md"
+
+  for mode in no-mistakes direct-PR; do
+    id="brief-charter-$mode"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "fixture check passes" >/dev/null 2>&1 \
+      || fail "$mode: brief should scaffold"
+    brief="$home/data/$id/brief.md"
+    assert_grep "# Charter boxes" "$brief" "$mode: brief lost the Charter boxes section"
+    assert_grep "Read \`docs/IDEAL_STATE.md\` in this worktree" "$brief" \
+      "$mode: an unregistered project must default to docs/IDEAL_STATE.md"
+    assert_grep '(proof: PR <url>)' "$brief" "$mode: brief lost the PR proof suffix"
+    assert_grep 'Charter boxes: <ids or none>' "$brief" "$mode: brief lost the PR body line"
+    assert_grep "$ROOT/bin/fm-charter-line.sh" "$brief" "$mode: brief lost the PR body check command"
+  done
+
+  id="brief-charter-registered"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" web --mode direct-PR --done-when "fixture check passes" >/dev/null 2>&1 \
+    || fail "registered: brief should scaffold"
+  assert_grep "Read \`sites/web/docs/IDEAL_STATE.md\` in this worktree" "$home/data/$id/brief.md" \
+    "registered: the brief must name the project's registered charter path"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-mode.sh" web 2>/dev/null)
+  [ "$out" = "direct-PR on" ] || fail "a charter= token must not be read as the mode (got '$out')"
+
+  id="brief-charter-local-only"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --done-when "fixture check passes" >/dev/null 2>&1 \
+    || fail "local-only: brief should scaffold"
+  assert_no_grep "# Charter boxes" "$home/data/$id/brief.md" "local-only: a mode with no PR must not be told to cite one"
+
+  id="brief-charter-gerrit"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --forge gerrit --done-when "fixture check passes" >/dev/null 2>&1 \
+    || fail "gerrit: brief should scaffold"
+  assert_no_grep "# Charter boxes" "$home/data/$id/brief.md" "gerrit: a change is not a PR and must not carry the PR body line"
+
+  id="brief-charter-scout"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout --done-when "fixture question" >/dev/null 2>&1 \
+    || fail "scout: brief should scaffold"
+  assert_no_grep "# Charter boxes" "$home/data/$id/brief.md" "scout: a report ticks no charter box"
+  pass "fm-brief.sh: PR-raising ship briefs carry the Charter boxes section with the registered or default charter path"
+}
+
+test_charter_line_check_accepts_only_one_well_formed_line() {
+  local body ok
+  body="$TMP_ROOT/charter-body.md"
+  for ok in 'Charter boxes: none' 'Charter boxes: O1.1' 'Charter boxes: O1.1, O2.3'; do
+    printf '%s\n' 'Summary' '' "$ok" '' 'Built by: x/y at z' > "$body"
+    "$ROOT/bin/fm-charter-line.sh" "$body" >/dev/null 2>&1 || fail "the check refused a well-formed line: $ok"
+    printf '%s\n' "$ok" | "$ROOT/bin/fm-charter-line.sh" >/dev/null 2>&1 || fail "the check refused a well-formed line on stdin: $ok"
+  done
+  printf '%s\n' 'Summary only' > "$body"
+  if "$ROOT/bin/fm-charter-line.sh" "$body" >/dev/null 2>&1; then fail "the check accepted a body with no Charter boxes line"; fi
+  printf '%s\n' 'Charter boxes:' > "$body"
+  if "$ROOT/bin/fm-charter-line.sh" "$body" >/dev/null 2>&1; then fail "the check accepted an empty Charter boxes line"; fi
+  printf '%s\n' 'Charter boxes: <ids or none>' > "$body"
+  if "$ROOT/bin/fm-charter-line.sh" "$body" >/dev/null 2>&1; then fail "the check accepted the unfilled placeholder"; fi
+  printf '%s\n' 'Charter boxes: none' 'Charter boxes: O1.1' > "$body"
+  if "$ROOT/bin/fm-charter-line.sh" "$body" >/dev/null 2>&1; then fail "the check accepted two Charter boxes lines"; fi
+  pass "fm-charter-line.sh: the PR body check accepts exactly one Charter boxes line naming box ids or none"
+}
+
 # A red check is classified once and never retried for a known cause: the
 # Scout dev-branch incident of October 2026 spent a month of hosted CI minutes
 # on reruns of a base-branch failure every PR had inherited. The rule renders
@@ -2438,6 +2507,8 @@ test_pr_wait_follow_up_only_where_a_pr_exists
 test_built_by_line_reads_task_meta
 test_fable_prompting_additions_render
 test_evidence_rules_render_only_where_a_pr_exists
+test_charter_boxes_section_renders_for_pr_raising_ships
+test_charter_line_check_accepts_only_one_well_formed_line
 test_ci_failures_are_classified_never_rerun
 test_ui_screenshot_line_is_opt_in
 test_help_documents_the_ui_flag
