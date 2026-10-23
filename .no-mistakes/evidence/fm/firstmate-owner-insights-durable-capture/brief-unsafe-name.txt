@@ -1,0 +1,7 @@
+collected 1 captain-notes file(s) from prev into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-br.tPxQYC/data/owner-notes/My-App.md
+brief rc=0
+110:# Captain's words
+111-Whenever the captain's words reach you - written on a board, or in chat relayed by firstmate - save them before you act on them.
+112-Append to `/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-br.tPxQYC/data/t9/captain-notes-<YYYY-MM-DD>.md` (today's date; append when the file exists) an entry with the date, the captain's words verbatim with no paraphrase and no cuts, and what you did with them.
+113-That file is a write outside your worktree this section allows; cleanup collects it into the project's owner notes, so later workers on this project read it.
+114-Required reading before you start, next to the knowledge library: `/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-br.tPxQYC/data/owner-notes/My-App.md` (11 lines, 406 bytes at scaffold time).

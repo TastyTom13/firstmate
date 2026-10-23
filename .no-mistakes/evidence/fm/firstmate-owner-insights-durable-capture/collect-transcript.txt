@@ -1,0 +1,28 @@
+== file with space / dot / empty
+/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-on.dKIHwK/data/owner-notes/My-App.md
+rc=0
+/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-on.dKIHwK/data/owner-notes/hidden.md
+rc=0
+rc=1
+/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-on.dKIHwK/data/owner-notes/lens.md
+rc=0
+== no notes + unsafe name
+rc=0
+rc=0
+== notes + unsafe name
+collected 1 captain-notes file(s) from t2 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-on.dKIHwK/data/owner-notes/my-project.md
+rc=0
+repeat rc=0
+my-project.md
+# Owner notes: my-project
+
+The captain's own words from Firstmate tasks on my project, verbatim, collected at each task's cleanup.
+Entries are appended in collection order and never edited.
+
+## 2026-10-23 - t2
+<!-- fm-owner-notes task=t2 file=captain-notes-2026-10-23-chat.md sha256=587af4c9750a9794a82aef469a75e7f52e43f1dc526b50b9d14e1484c3aa4dd5 -->
+Source: captain-notes-2026-10-23-chat.md
+
+I want X preserved verbatim.
+Applied: did X
+/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-on.dKIHwK/data/owner-notes/my-project.md

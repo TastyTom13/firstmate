@@ -1,0 +1,14 @@
+ok - teardown appends the task's captain notes to the project's owner notes before cleanup
+ok - a teardown retried after a partial filing failure never files a follow-up twice
+ok - herdr projection teardown surfaces failed focus restoration without turning confirmed cleanup into a hard failure
+ok - gh lookup error with content not in default refuses (fail-safe)
+ok - --legacy-record teardown rolls its stamp back when the close marker write fails
+ok - a legacy stamp a failed rollback left behind still faces the endpoint gate
+ok - transient index.lock cleared after first failed return is retried successfully without force-remove
+ok - a parked run on another branch is never aborted by this task's teardown (ownership is precise)
+ok - fm-brief.sh: ship and scout briefs save the captain's words and name the project's owner notes
+ok - fm-brief.sh: ship and scout scaffolds make omitted Herdr intent fail-visible
+ok - fm-brief.sh: relative directory inputs ignore CDPATH, render stable absolute charter paths, or fail loudly
+ok - fm-brief.sh: PR-raising ship briefs classify a failing check once and never rerun a known failure
+ok - fm-brief.sh: --pasted-file marks the captain's paste under Captain's intent and is otherwise byte-identical
+ok - fm-brief.sh: the home brief include lands last on ship and scout, verbatim, and fails closed

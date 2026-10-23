@@ -1,0 +1,20 @@
+[space-nonotes] project='my project' notes=0 teardown rc=0 meta_gone=yes
+/private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-space-nonotes/my project: already current
+teardown task-x1 complete (window firstmate:fm-task-x1, worktree /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-space-nonotes/wt)
+Backlog: task-x1 is closed in /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-space-nonotes/data/backlog.md. Run bin/fm-tasks-axi.sh ready for dependency-cleared candidates, check date gates, and dispatch only work whose blockers are gone and date is due.
+[space-notes] project='my project' notes=1 teardown rc=0 meta_gone=yes
+/private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-space-notes/my project: already current
+teardown task-x1 complete (window firstmate:fm-task-x1, worktree /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-space-notes/wt)
+Backlog: task-x1 is closed in /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-space-notes/data/backlog.md. Run bin/fm-tasks-axi.sh ready for dependency-cleared candidates, check date gates, and dispatch only work whose blockers are gone and date is due.
+  owner-notes: my-project.md
+  line: "This cant be lost."
+[dot-notes] project='.hidden' notes=1 teardown rc=0 meta_gone=yes
+/private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-dot-notes/.hidden: already current
+teardown task-x1 complete (window firstmate:fm-task-x1, worktree /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-dot-notes/wt)
+Backlog: task-x1 is closed in /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-dot-notes/data/backlog.md. Run bin/fm-tasks-axi.sh ready for dependency-cleared candidates, check date gates, and dispatch only work whose blockers are gone and date is due.
+  owner-notes: hidden.md
+  line: "This cant be lost."
+[dot-nonotes] project='.hidden' notes=0 teardown rc=0 meta_gone=yes
+/private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-dot-nonotes/.hidden: already current
+teardown task-x1 complete (window firstmate:fm-task-x1, worktree /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-dot-nonotes/wt)
+Backlog: task-x1 is closed in /private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-teardown-tests.fewDgO/scratch-dot-nonotes/data/backlog.md. Run bin/fm-tasks-axi.sh ready for dependency-cleared candidates, check date gates, and dispatch only work whose blockers are gone and date is due.
