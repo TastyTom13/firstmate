@@ -132,6 +132,12 @@
 # data/owner-notes/<repo-name>.md exists the section names it, with its size at
 # scaffold time, as required reading that outranks generic guidance.
 # bin/fm-owner-notes.sh owns that record and its collection at cleanup.
+# Every PR-raising ship brief on a pull-request forge also carries a "Charter
+# boxes" section: read the project's charter (bin/fm-project-mode.sh --charter,
+# default docs/IDEAL_STATE.md), tick each box the change fully meets in the same
+# PR with " (proof: PR <url>)", and put one "Charter boxes: <ids or none>" line
+# in the PR body, checked by bin/fm-charter-line.sh. local-only, forge=gerrit,
+# scout, and secondmate scaffolds carry none.
 # --pasted-file <path> takes a file holding text the captain pasted in from
 # somewhere else (an email, a web page, another tool's output). Its text is
 # placed under `## Captain's intent`, after the {TASK} slot Firstmate still
@@ -1271,6 +1277,28 @@ if [ "$MODE" != local-only ]; then
 10. This task touches the UI: before you report the work done, save a screenshot of each changed view at viewport widths 375, 768 and 1440 under `docs/evidence/'"$ID"'/`, and cite those paths in the PR body.'
 fi
 
+# Charter boxes: shipped work stays invisible on a project's charter unless the
+# PR that meets a box ticks it, so every PR-raising ship brief names the charter
+# (bin/fm-project-mode.sh --charter owns the registry token and its default) and
+# the PR body line bin/fm-charter-line.sh checks. local-only raises no PR to
+# cite, and a gerrit change has no PR body, so neither carries the section.
+CHARTER_SECTION=
+if [ "$MODE" != local-only ] && [ "$FORGE" = none ]; then
+  CHARTER_PATH=$("$SCRIPT_DIR/fm-project-mode.sh" --charter "$REPO" 2>/dev/null) || CHARTER_PATH=docs/IDEAL_STATE.md
+  [ -n "$CHARTER_PATH" ] || CHARTER_PATH=docs/IDEAL_STATE.md
+  IFS= read -r -d '' CHARTER_SECTION <<EOF || true
+
+
+# Charter boxes
+Read \`$CHARTER_PATH\` in this worktree, the project's charter, and list the boxes (ids such as \`O1.1\`) this change meets or advances.
+For each box this change fully meets, tick it in the same PR: change \`- [ ]\` to \`- [x]\` and add \` (proof: PR <url>)\` with this PR's full URL.
+Never tick a box this change only advances, and never tick a box marked \`(owner runs)\`.
+Put one line \`Charter boxes: <ids or none>\` in the PR body, naming every box met or advanced, or \`none\`; write \`none\` when the charter file does not exist.
+Before you report done, check the body with \`gh pr view <number> --json body -q .body | $(shell_quote "$FM_ROOT/bin/fm-charter-line.sh")\` and fix the line until it passes.
+EOF
+  CHARTER_SECTION=${CHARTER_SECTION%$'\n'}
+fi
+
 # Failing CI checks: a red check is read once and classified, never rerun for a
 # known cause. A base-branch red that every PR inherits is a declared wait on the
 # base fix (AGENTS.md section 7 makes the base fix its own task), so the worker
@@ -1344,7 +1372,7 @@ $UNTRUSTED_CONTENT_SECTION
 
 $WORKING_DISCIPLINE_SECTION
 
-$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION$KNOWLEDGE_SECTION$OWNER_NOTES_SECTION
+$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION$KNOWLEDGE_SECTION$OWNER_NOTES_SECTION$CHARTER_SECTION
 
 $TOOLKIT_SECTION
 

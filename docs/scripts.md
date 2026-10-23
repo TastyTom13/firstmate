@@ -77,7 +77,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `backends/orca.sh`       | Experimental Orca backend adapter owning both worktree and terminal                  |
 | `backends/cmux.sh`       | Experimental cmux session-provider adapter                                           |
 | `fm-config-push.sh`      | Push declared inherited local material to live local or remote secondmates and send the placement-specific config reread when changed |
-| `fm-project-mode.sh`     | Resolve a project's registered delivery posture, forge binding, or ship-branch prefix from `data/projects.md` for fleet sync, home seeding, and the forge agreement a ship spawn or scout promotion applies |
+| `fm-project-mode.sh`     | Resolve a project's registered delivery posture, forge binding, ship-branch prefix, or charter path from `data/projects.md` for fleet sync, home seeding, and the forge agreement a ship spawn or scout promotion applies |
 | `fm-forge-detect.sh`     | Propose a clone's forge binding from its origin remote for project-add intake, never recording it |
 | `fm-merge-local.sh`      | Fast-forward a `local-only` project's local default branch after approval            |
 | `fm-review-diff.sh`      | Review a crewmate branch or resolved PR head against the authoritative base          |
@@ -160,6 +160,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-promote.sh`          | Promote a scout task in place to a protected ship task with an explicit delivery mode, write the ship instructions carrying that mode's definition of done, and supersede the task's brief so a later relaunch cannot revive stale scout delivery text |
 | `fm-teardown.sh`         | Fail-closed teardown: return landed ship worktrees, require completed scout deliverables, file a task's recorded follow-ups as backlog items, collect the captain's notes into the project's owner notes, retire secondmate homes |
 | `fm-owner-notes.sh`      | Append each task's `captain-notes-*.md` to a durable per-project `data/owner-notes/<project>.md` (idempotent), print that path, and backfill existing notes |
+| `fm-charter-line.sh`     | Check that a PR body carries exactly one `Charter boxes: <ids or none>` line, as every PR-raising ship brief asks |
 | `fm-followups.sh`        | Record a live ship or scout task's explicit no-follow-ups escape in its task record, so teardown can proceed |
 | `fm-model-scorecard.sh`  | Tally completed work per model and effort from the backlog's own attribution notes, with best-effort fix-round and ask-user proxies |
 | `fm-harness.sh`          | Detect the running harness, resolve crew or secondmate harness, model, and effort, and validate the native-only `ultra` effort |
