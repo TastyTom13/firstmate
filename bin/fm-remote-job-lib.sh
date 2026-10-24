@@ -541,7 +541,7 @@ fm_remote_job_advance_seq_hint() { # <value>
 }
 
 fm_remote_job_next_seq() { # [stage-dir destination]
-  local stage=${1:-} destination=${2:-} counter value claim attempt=0 recovered=0 maximum entry
+  local stage=${1:-} destination=${2:-} counter value claim gate created attempt=0 recovered=0 maximum entry
   [ -n "$FM_REMOTE_JOB_STATE" ] && [ -n "$FM_REMOTE_JOB_SEQ_CLAIMS" ] || return 1
   counter="$FM_REMOTE_JOB_STATE/seq"
   value=$(cat "$counter" 2>/dev/null || true)
@@ -563,7 +563,16 @@ fm_remote_job_next_seq() { # [stage-dir destination]
     attempt=$((attempt + 1))
     value=$((value + 1))
     claim="$FM_REMOTE_JOB_SEQ_CLAIMS/$value"
-    if (umask 077; mkdir "$claim") 2>/dev/null; then
+    # A uutils mkdir (Ubuntu 26.04) reports success to every racing caller when
+    # the directory appears between its checks, so mkdir alone is not an
+    # exclusive claim. The O_EXCL gate lets one caller at a time try each value;
+    # a caller that finds the gate held or left behind moves on to the next value.
+    gate="$FM_REMOTE_JOB_SEQ_CLAIMS/.gate-$value"
+    (set -C; umask 077; : > "$gate") 2>/dev/null || continue
+    created=0
+    (umask 077; mkdir "$claim") 2>/dev/null && created=1
+    rm -f -- "$gate"
+    if [ "$created" -eq 1 ]; then
       chmod 700 "$claim" || return 1
       fm_remote_job_advance_seq_hint "$value" || true
       if [ -n "$stage" ]; then

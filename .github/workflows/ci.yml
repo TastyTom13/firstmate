@@ -118,6 +118,12 @@ jobs:
           set -eu
           npm install -g tasks-axi
           tasks-axi --version
+      # The Pi extension typecheck runs tsc, which ubuntu-latest no longer ships.
+      - name: Install TypeScript for the Pi extension typecheck
+        run: |
+          set -eu
+          npm install -g typescript@6.0.2
+          tsc --version
       - name: Install the Pi package for the Pi extension tests
         run: |
           set -eu
@@ -222,6 +228,12 @@ jobs:
           set -eu
           npm install -g tasks-axi
           tasks-axi --version
+      # The Pi extension typecheck runs tsc, which ubuntu-latest no longer ships.
+      - name: Install TypeScript for the Pi extension typecheck
+        run: |
+          set -eu
+          npm install -g typescript@6.0.2
+          tsc --version
       # The Pi extension tests read the installed Pi package's own types and
       # runtime, so without it they gate-skip and pass silently. It is a public
       # npm package and needs no credential, so CI can hold the real thing.
