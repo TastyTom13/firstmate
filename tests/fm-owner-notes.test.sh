@@ -190,7 +190,7 @@ test_backfill_sweeps_dated_captain_md_entries_by_project() {
   local home before_md before_notes out
   home=$(new_home captainmd)
   printf '%s\n' '# Projects' '' '- scout [no-mistakes +yolo] - Search.' '- bull [direct-PR] - Trading.' \
-    '- doc-creator [direct-PR] - Decks.' > "$home/data/projects.md"
+    '- doc-creator [direct-PR] - Decks.' '- legacy-app - Old format line (added 2026-01-01).' > "$home/data/projects.md"
   cat > "$home/data/captain.md" <<'MD'
 # Captain preferences
 
@@ -207,6 +207,7 @@ test_backfill_sweeps_dated_captain_md_entries_by_project() {
   continued on a second line.
 - 6 Oct 2026: "nothing the captain says may get lost."
 - 2026-10-14, the doc creator deploy: guide me step by step.
+- 2026-10-15 legacy-app: keep the old format working.
 MD
   before_md=$(cat "$home/data/captain.md")
   out=$(run_notes "$home" backfill 2>&1) || fail "backfill failed: $out"
@@ -224,6 +225,8 @@ MD
   assert_exact_line "$home/data/owner-notes/general.md" '## 2026-10-06 - captain.md' "a written-out date was not read as 2026-10-06"
   assert_exact_line "$home/data/owner-notes/doc-creator.md" '- 2026-10-14, the doc creator deploy: guide me step by step.' \
     "a bullet naming a hyphenated project in words was not routed to it"
+  assert_exact_line "$home/data/owner-notes/legacy-app.md" '- 2026-10-15 legacy-app: keep the old format working.' \
+    "a bullet naming a legacy-format registry project was not routed to it"
   cat "$home/data/owner-notes/"*.md > "$home/all-notes"
   assert_no_grep 'Undated standing rule' "$home/all-notes" "backfill swept an undated captain.md line"
   assert_no_grep 'before September' "$home/all-notes" "backfill swept a captain.md entry dated before 2026-09-01"

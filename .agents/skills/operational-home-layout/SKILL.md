@@ -63,7 +63,8 @@ data/                personal fleet records; LOCAL, gitignored as a whole
   <id>/brief.md      per-task crewmate brief, or per-secondmate charter brief when kind=secondmate
   <id>/report.md     scout task deliverable, written by the crewmate; survives teardown
   <id>/follow-ups.md ship or scout follow-ups, one title per line, written by the crewmate; fm-teardown.sh files them as backlog items and keeps the file
-  owner-notes/<project>.md  the captain's verbatim words per project, appended from each task's data/<id>/captain-notes-*.md at teardown; bin/fm-owner-notes.sh owns it, and ship and scout briefs name it as required reading
+  owner-notes/<project>.md  the captain's verbatim words per project, appended from each task's owner-words files (captain-notes-*.md and the other patterns) at teardown, with older notes and dated data/captain.md entries swept in by `backfill`; bin/fm-owner-notes.sh owns it (see its header for `backfill`, `index` and `place`), and ship and scout briefs name it as required reading
+  owner-notes/index.md  where each note went, rebuilt at teardown by bin/fm-owner-notes.sh index
   captures/mail-<uid>/  accepted phone capture rendered mail and saved image/audio attachments; fm-capture-intake.sh owns filing markers and digest records
   captures/people/   private person-note handoff lane; capture-intake keeps its contents out of chat and digest surfaces, and only Scout's person-note intake reads it
   personal/          markdown Reading, Watching, Places, Ideas, Names, Tasks, Drafts, and Questions lists written by fm-capture-intake.sh
