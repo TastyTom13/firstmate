@@ -905,7 +905,8 @@ if OWNER_NOTES_FILE=$(FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-owner-notes.sh" f
   OWNER_NOTES_READ="
 Required reading before you start, next to the knowledge library: \`$OWNER_NOTES_FILE\` ($(wc -l < "$OWNER_NOTES_FILE" | tr -d ' ') lines, $(wc -c < "$OWNER_NOTES_FILE" | tr -d ' ') bytes at scaffold time).
 It holds the captain's own words from earlier tasks on this project; they outrank generic guidance such as the knowledge library and default styles, while this brief's task and rules still govern.
-When you turn one of those notes into a charter or brief line, run \`bin/fm-owner-notes.sh place <project> <entry-hash> <file:line>\` for that entry; the entry hashes are in the markers of that file."
+When you turn one of those notes into a charter or brief line, run \`FM_HOME=$(shell_quote "$FM_HOME") FM_DATA_OVERRIDE=$(shell_quote "$DATA") $(shell_quote "$FM_ROOT/bin/fm-owner-notes.sh") place $(basename "$OWNER_NOTES_FILE" .md) <entry-hash> <file:line>\` for that entry; the entry hashes are in the markers of that file.
+That run is the one other write outside your worktree this section allows."
 fi
 IFS= read -r -d '' OWNER_NOTES_SECTION <<EOF || true
 
@@ -1214,7 +1215,7 @@ $CONTEXT_LINE$ENV_SECTION
 
 # Rules
 1. Never push to any remote and never open a PR.
-2. Stay inside this worktree; the only files you may write outside it are the report, the status file below, the captain-notes file under Captain's words, and the follow-ups record under Follow-ups.
+2. Stay inside this worktree; the only files you may write outside it are the report, the status file below, the captain-notes file and any note placement under Captain's words, and the follow-ups record under Follow-ups.
 3. Use the tools listed under Toolkit below for research, web pages, and GitHub.
 4. Report status by appending one line:
    \`$STATUS_APPEND\`
