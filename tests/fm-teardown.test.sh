@@ -962,6 +962,33 @@ test_teardown_collects_captain_notes_into_owner_notes() {
   pass "teardown appends the task's captain notes to the project's owner notes before cleanup"
 }
 
+test_teardown_refreshes_the_owner_notes_index_and_survives_its_failure() {
+  local case_dir out
+  case_dir=$(make_case owner-notes-index)
+  write_meta "$case_dir" no-mistakes ship
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/7' >> "$case_dir/state/task-x1.meta"
+  seed_backlog_in_flight "$case_dir"
+  mkdir -p "$case_dir/data/task-x1"
+  printf '%s\n' 'Show me where each one went.' > "$case_dir/data/task-x1/captain-notes-2026-10-23.md"
+  out=$(run_teardown "$case_dir" 2>&1) || fail "teardown failed with captain notes: $out"
+  assert_grep '| 2026-10-23 | project | task-x1 | Show me where each one went. | not yet placed |' \
+    "$case_dir/data/owner-notes/index.md" "teardown did not refresh the owner-notes index after collecting"
+
+  case_dir=$(make_case owner-notes-index-fails)
+  write_meta "$case_dir" no-mistakes ship
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/7' >> "$case_dir/state/task-x1.meta"
+  seed_backlog_in_flight "$case_dir"
+  mkdir -p "$case_dir/data/task-x1" "$case_dir/data/owner-notes/index.md"
+  printf '%s\n' 'Words that must still land.' > "$case_dir/data/task-x1/captain-notes-2026-10-23.md"
+  out=$(run_teardown "$case_dir" 2>&1) || fail "a failed index refresh failed the cleanup: $out"
+  assert_exact_line "$case_dir/data/owner-notes/project.md" 'Words that must still land.' "collect did not run before the failed index refresh"
+  assert_absent "$case_dir/state/task-x1.meta" "cleanup did not finish after the index refresh failed"
+  [ "$(printf '%s\n' "$out" | grep -c 'owner-notes index')" = 1 ] \
+    || fail "a failed index refresh did not print exactly one actionable line: $out"
+  assert_contains "$out" "fm-owner-notes.sh index" "the failed index refresh line does not name the command to rerun"
+  pass "teardown refreshes the owner-notes index and goes on when the refresh fails"
+}
+
 test_teardown_retry_never_files_a_follow_up_twice() {
   local case_dir out rc real_axi
   case_dir=$(make_case followups-retry)
@@ -4706,6 +4733,7 @@ test_teardown_manual_backend_leaves_the_backlog_to_the_operator
 test_teardown_refuses_until_follow_ups_are_recorded
 test_teardown_files_follow_ups_before_cleanup
 test_teardown_collects_captain_notes_into_owner_notes
+test_teardown_refreshes_the_owner_notes_index_and_survives_its_failure
 test_teardown_retry_never_files_a_follow_up_twice
 test_teardown_none_escape_recorded_in_meta
 test_teardown_files_follow_ups_recorded_after_none

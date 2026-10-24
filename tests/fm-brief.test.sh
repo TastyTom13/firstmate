@@ -421,6 +421,8 @@ test_captain_words_section_renders_for_ship_and_scout() {
     assert_grep "Required reading before you start, next to the knowledge library: \`$notes\` (2 lines, $(wc -c < "$notes" | tr -d ' ') bytes at scaffold time)." \
       "$brief" "$kind: brief does not name the owner notes as required reading with their size"
     assert_grep "they outrank generic guidance" "$brief" "$kind: brief does not rank the captain's words above generic guidance"
+    assert_grep "FM_HOME='$home' FM_DATA_OVERRIDE='$home/data' '$ROOT/bin/fm-owner-notes.sh' place some-proj <entry-hash> <file:line>" "$brief" \
+      "$kind: brief does not give the worker a runnable place command for the project's owner notes"
   done
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" captain-words-other other-proj --scout --done-when 'question' >/dev/null 2>&1 \
     || fail "other project: scaffold failed"

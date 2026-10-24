@@ -78,7 +78,8 @@ Each effective `FM_HOME` contains private operational directories.
 - Project and secondmate registries.
 - Captain preferences and optional shared captain preferences.
 - Learnings, backlog, briefs, and scout reports.
-- The captain's verbatim words per project under `data/owner-notes/<project>.md`, collected from each task's `data/<id>/captain-notes-*.md` at cleanup (`bin/fm-owner-notes.sh`).
+- The captain's verbatim words per project under `data/owner-notes/<project>.md`, collected from each task's owner-words files such as `data/<id>/captain-notes-*.md` at cleanup and swept once from older board answers and dated `data/captain.md` entries by `backfill`, with entries naming no project in `data/owner-notes/general.md`.
+- `data/owner-notes/index.md`, refreshed at every cleanup, lists each owner note with where it was placed in a charter or brief, recorded by `place`, or that it is not yet placed (`bin/fm-owner-notes.sh` owns the file names, markers, and commands).
 - Explicitly installed content-addressed extension packages under `data/extensions/packages/`.
 
 `state/` holds runtime records:
