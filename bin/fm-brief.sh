@@ -872,7 +872,8 @@ if OWNER_NOTES_FILE=$(FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-owner-notes.sh" f
     && [ -f "$OWNER_NOTES_FILE" ]; then
   OWNER_NOTES_READ="
 Required reading before you start, next to the knowledge library: \`$OWNER_NOTES_FILE\` ($(wc -l < "$OWNER_NOTES_FILE" | tr -d ' ') lines, $(wc -c < "$OWNER_NOTES_FILE" | tr -d ' ') bytes at scaffold time).
-It holds the captain's own words from earlier tasks on this project; they outrank generic guidance such as the knowledge library and default styles, while this brief's task and rules still govern."
+It holds the captain's own words from earlier tasks on this project; they outrank generic guidance such as the knowledge library and default styles, while this brief's task and rules still govern.
+When you turn one of those notes into a charter or brief line, run \`bin/fm-owner-notes.sh place <project> <entry-hash> <file:line>\` for that entry; the entry hashes are in the markers of that file."
 fi
 IFS= read -r -d '' OWNER_NOTES_SECTION <<EOF || true
 

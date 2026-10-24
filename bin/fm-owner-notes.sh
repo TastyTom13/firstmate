@@ -39,7 +39,8 @@
 #             outside A-Za-z0-9._- becomes "-" and leading dots are dropped,
 #             so any project name maps to one file; exit 1 only when nothing
 #             is left. `collect` uses the same mapping.
-#   backfill  once and idempotently, (1) run collect for every data/<task-id>/
+#   backfill  run by firstmate by hand after this lands and by the follow-up
+#             per-project placement ships; once and idempotently, (1) run collect for every data/<task-id>/
 #             holding an owner-words file, resolving each task's project from
 #             its live state/<task-id>.meta, else its brief's "worktree of
 #             <repo>" line (a relative repo path resolves from FM_HOME); a
@@ -295,7 +296,7 @@ END { flush() }
 # Registered project names (data/projects.md, else projects/), then firstmate.
 project_names() {
   local names='' dir
-  [ ! -f "$DATA/projects.md" ] || names=$(sed -n 's/^- \([A-Za-z0-9._-][A-Za-z0-9._-]*\) \[.*/\1/p' "$DATA/projects.md")
+  [ ! -f "$DATA/projects.md" ] || names=$(awk '$1 == "-" && $2 != "" {print $2}' "$DATA/projects.md")
   if [ -z "$names" ]; then
     for dir in "$FM_HOME/projects"/*/; do
       [ -d "$dir" ] || continue
