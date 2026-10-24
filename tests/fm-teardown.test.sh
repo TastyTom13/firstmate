@@ -942,6 +942,26 @@ test_teardown_files_follow_ups_before_cleanup() {
   pass "teardown files every recorded follow-up as a backlog item before cleanup"
 }
 
+test_teardown_collects_captain_notes_into_owner_notes() {
+  local case_dir out dest
+  case_dir=$(make_case owner-notes)
+  write_meta "$case_dir" no-mistakes ship
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/7' >> "$case_dir/state/task-x1.meta"
+  seed_backlog_in_flight "$case_dir"
+  mkdir -p "$case_dir/data/task-x1"
+  printf '%s\n' '"This cant be lost."' 'Applied: saved for the next worker.' \
+    > "$case_dir/data/task-x1/captain-notes-2026-10-23.md"
+
+  out=$(run_teardown "$case_dir" 2>&1) || fail "teardown failed with captain notes: $out"
+  dest="$case_dir/data/owner-notes/project.md"
+  assert_present "$dest" "teardown did not collect the captain notes into the project's owner notes"
+  assert_exact_line "$dest" "## 2026-10-23 - task-x1" "owner-notes entry lacks its date or task id"
+  assert_exact_line "$dest" '"This cant be lost."' "teardown did not copy the captain's words verbatim"
+  assert_present "$case_dir/data/task-x1/captain-notes-2026-10-23.md" "teardown removed the task's own captain notes"
+  assert_absent "$case_dir/state/task-x1.meta" "teardown did not finish after collecting the captain notes"
+  pass "teardown appends the task's captain notes to the project's owner notes before cleanup"
+}
+
 test_teardown_retry_never_files_a_follow_up_twice() {
   local case_dir out rc real_axi
   case_dir=$(make_case followups-retry)
@@ -4685,6 +4705,7 @@ test_teardown_closes_the_backlog_item_itself
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator
 test_teardown_refuses_until_follow_ups_are_recorded
 test_teardown_files_follow_ups_before_cleanup
+test_teardown_collects_captain_notes_into_owner_notes
 test_teardown_retry_never_files_a_follow_up_twice
 test_teardown_none_escape_recorded_in_meta
 test_teardown_files_follow_ups_recorded_after_none

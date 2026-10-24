@@ -125,6 +125,13 @@
 # /Users/tomas/firstmate/projects/brain/library; when it is absent the worker
 # reports it and does not guess another location. Secondmate charters carry no
 # such section.
+# Every ship and scout brief also carries a "Captain's words" section after the
+# library: the worker saves the captain's words verbatim, dated, with what it
+# did with them, to data/<task-id>/captain-notes-<YYYY-MM-DD>.md (a write
+# outside the worktree the section allows), and when
+# data/owner-notes/<repo-name>.md exists the section names it, with its size at
+# scaffold time, as required reading that outranks generic guidance.
+# bin/fm-owner-notes.sh owns that record and its collection at cleanup.
 # --pasted-file <path> takes a file holding text the captain pasted in from
 # somewhere else (an email, a web page, another tool's output). Its text is
 # placed under `## Captain's intent`, after the {TASK} slot Firstmate still
@@ -856,6 +863,27 @@ EOF
 fi
 KNOWLEDGE_SECTION=${KNOWLEDGE_SECTION%$'\n'}
 
+# Captain's words. Every ship and scout brief tells the worker to save the
+# captain's words verbatim in its own task data, which bin/fm-teardown.sh
+# collects into the project's owner notes, and names those notes as required
+# reading once they exist; bin/fm-owner-notes.sh owns that record.
+OWNER_NOTES_READ=
+if OWNER_NOTES_FILE=$(FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-owner-notes.sh" file "${POS[1]:-}" 2>/dev/null) \
+    && [ -f "$OWNER_NOTES_FILE" ]; then
+  OWNER_NOTES_READ="
+Required reading before you start, next to the knowledge library: \`$OWNER_NOTES_FILE\` ($(wc -l < "$OWNER_NOTES_FILE" | tr -d ' ') lines, $(wc -c < "$OWNER_NOTES_FILE" | tr -d ' ') bytes at scaffold time).
+It holds the captain's own words from earlier tasks on this project; they outrank generic guidance such as the knowledge library and default styles, while this brief's task and rules still govern."
+fi
+IFS= read -r -d '' OWNER_NOTES_SECTION <<EOF || true
+
+
+# Captain's words
+Whenever the captain's words reach you - written on a board, or in chat relayed by firstmate - save them before you act on them.
+Append to \`$DATA/$ID/captain-notes-<YYYY-MM-DD>.md\` (today's date; append when the file exists) an entry with the date, the captain's words verbatim with no paraphrase and no cuts, and what you did with them.
+That file is a write outside your worktree this section allows; cleanup collects it into the project's owner notes, so later workers on this project read it.$OWNER_NOTES_READ
+EOF
+OWNER_NOTES_SECTION=${OWNER_NOTES_SECTION%$'\n'}
+
 # Untrusted content guard: shared by ship and scout so the two cannot drift.
 # Crewmates read fetched web/GitHub content routinely (WebFetch, gh-axi, PR and
 # issue bodies); this closes the gap where an instruction riding in on that
@@ -1153,7 +1181,7 @@ $CONTEXT_LINE$ENV_SECTION
 
 # Rules
 1. Never push to any remote and never open a PR.
-2. Stay inside this worktree; the only files you may write outside it are the report, the status file below, and the follow-ups record under Follow-ups.
+2. Stay inside this worktree; the only files you may write outside it are the report, the status file below, the captain-notes file under Captain's words, and the follow-ups record under Follow-ups.
 3. Use the tools listed under Toolkit below for research, web pages, and GitHub.
 4. Report status by appending one line:
    \`$STATUS_APPEND\`
@@ -1177,7 +1205,7 @@ $UNTRUSTED_CONTENT_SECTION
 
 $WORKING_DISCIPLINE_SECTION
 
-$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION$KNOWLEDGE_SECTION
+$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION$KNOWLEDGE_SECTION$OWNER_NOTES_SECTION
 
 $TOOLKIT_SECTION
 
@@ -1316,7 +1344,7 @@ $UNTRUSTED_CONTENT_SECTION
 
 $WORKING_DISCIPLINE_SECTION
 
-$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION$KNOWLEDGE_SECTION
+$TURN_ENDS_SECTION$DESIGN_SECTION$VISUAL_SECTION$KNOWLEDGE_SECTION$OWNER_NOTES_SECTION
 
 $TOOLKIT_SECTION
 
