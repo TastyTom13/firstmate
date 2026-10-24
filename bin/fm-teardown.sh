@@ -94,7 +94,10 @@
 # teardown appends every data/<task-id>/captain-notes-*.md to the project's
 # data/owner-notes/<project>.md through bin/fm-owner-notes.sh collect, which owns
 # the record, its idempotence, and the project naming. It runs under --force too
-# and refuses, changing nothing else, when collection fails.
+# and refuses, changing nothing else, when collection fails. It then refreshes
+# data/owner-notes/index.md through bin/fm-owner-notes.sh index; a failed
+# refresh prints one warning line naming the command to rerun, and cleanup
+# goes on.
 # Before destructive cleanup, teardown validates task check artifacts as
 # ordinary single-link files on the state device. It refuses and preserves
 # task state when that proof fails; otherwise it removes the task's check,
@@ -3737,6 +3740,10 @@ if [ "$KIND" != secondmate ]; then
       "$SCRIPT_DIR/fm-owner-notes.sh" collect "$ID" --project-path "$OWNER_NOTES_PROJECT"; then
     echo "REFUSED: could not collect $ID's captain notes into the project's owner notes; nothing was cleaned up, and a retried teardown collects them." >&2
     exit 1
+  fi
+  if ! OWNER_NOTES_INDEX_ERR=$(FM_HOME="$FM_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" FM_DATA_OVERRIDE="$DATA" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-owner-notes.sh" index 2>&1 >/dev/null); then
+    echo "warning: could not refresh the owner-notes index ($(printf '%s' "$OWNER_NOTES_INDEX_ERR" | tr '\n' ' ' | cut -c1-200)); cleanup goes on; rerun: $SCRIPT_DIR/fm-owner-notes.sh index" >&2
   fi
 fi
 
