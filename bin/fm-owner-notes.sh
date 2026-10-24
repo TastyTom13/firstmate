@@ -297,15 +297,15 @@ END { flush() }
 
 # Registered project names (data/projects.md, else projects/), then firstmate.
 project_names() {
-  local names='' dir
-  [ ! -f "$DATA/projects.md" ] || names=$(awk '$1 == "-" && $2 != "" {print $2}' "$DATA/projects.md")
-  if [ -z "$names" ]; then
+  local found='' dir
+  [ ! -f "$DATA/projects.md" ] || found=$(awk '$1 == "-" && $2 != "" {print $2}' "$DATA/projects.md")
+  if [ -z "$found" ]; then
     for dir in "$FM_HOME/projects"/*/; do
       [ -d "$dir" ] || continue
-      names=$(printf '%s\n%s' "$names" "$(basename "$dir")")
+      found=$(printf '%s\n%s' "$found" "$(basename "$dir")")
     done
   fi
-  printf '%s\nfirstmate\n' "$names" | sed '/^$/d'
+  printf '%s\nfirstmate\n' "$found" | sed '/^$/d'
 }
 
 # Prints the first project named by the entry text, else by the heading, else nothing.
