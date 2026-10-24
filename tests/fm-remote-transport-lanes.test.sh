@@ -120,6 +120,21 @@ export FM_REMOTE_JOB_STAGE_REAP_SECONDS=1
 
 fm_remote_job_prepare_state "$ACCOUNT_HOME" || fail "$FM_REMOTE_JOB_ERROR"
 rm -f -- "$STATE_ROOT/seq"
+# Ubuntu 26.04's uutils mkdir checks for the directory, then creates it, and
+# reports success when it lost the race in between. Reproduce that so the
+# allocation below does not depend on how fast the runner schedules 20 callers.
+RACY_MKDIR_BIN="$TMP_ROOT/racy-mkdir-bin"
+mkdir -p "$RACY_MKDIR_BIN"
+REAL_MKDIR=$(command -v mkdir)
+cat > "$RACY_MKDIR_BIN/mkdir" <<SH
+#!/usr/bin/env bash
+[ -e "\$1" ] && exit 1
+sleep 0.05
+"$REAL_MKDIR" "\$1" 2>/dev/null || [ -d "\$1" ]
+SH
+chmod +x "$RACY_MKDIR_BIN/mkdir"
+SEQ_PATH=$PATH
+PATH="$RACY_MKDIR_BIN:$PATH"
 SEQ_PIDS=()
 for i in $(seq 1 20); do
   fm_remote_job_next_seq > "$TMP_ROOT/seq-$i" &
@@ -128,6 +143,7 @@ done
 for pid in "${SEQ_PIDS[@]}"; do
   wait "$pid" || fail "a concurrent sequence allocator failed"
 done
+PATH=$SEQ_PATH
 SEQ_RESULTS=$(cat "$TMP_ROOT"/seq-* | sort -n)
 SEQ_EXPECTED=$(seq 1 20)
 [ "$SEQ_RESULTS" = "$SEQ_EXPECTED" ] \
