@@ -1589,6 +1589,90 @@ test_evidence_rules_render_only_where_a_pr_exists() {
   pass "fm-brief.sh: acceptance-numbering and red-then-green rules render only for PR-raising ship briefs"
 }
 
+# Every PR-raising ship brief tells the worker to name the charter boxes its
+# change meets, tick a met box in the same change with the ship branch and date as
+# proof, and carry one Charter boxes line in the PR body, which
+# bin/fm-charter-line.sh checks. The charter is docs/IDEAL_STATE.md unless
+# --charter names another worktree-relative path.
+test_charter_boxes_section_renders_for_pr_raising_ships() {
+  local home id brief mode out status
+  home="$TMP_ROOT/charter-home"
+  mkdir -p "$home/data"
+
+  for mode in no-mistakes direct-PR; do
+    id="brief-charter-$mode"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" --done-when "fixture check passes" >/dev/null 2>&1 \
+      || fail "$mode: brief should scaffold"
+    brief="$home/data/$id/brief.md"
+    assert_grep "# Charter boxes" "$brief" "$mode: brief lost the Charter boxes section"
+    assert_grep "Read \`docs/IDEAL_STATE.md\` in this worktree" "$brief" \
+      "$mode: the charter must default to docs/IDEAL_STATE.md"
+    assert_grep "(proof: branch fm/$id, <YYYY-MM-DD>)" "$brief" "$mode: brief lost the ship branch and date proof suffix"
+    assert_grep 'never add a commit after the PR exists' "$brief" "$mode: brief allows a post-PR commit"
+    assert_no_grep '(proof: PR <url>)' "$brief" "$mode: brief still asks for a PR URL that does not exist yet"
+    assert_grep 'Charter boxes: <ids or none>' "$brief" "$mode: brief lost the PR body line"
+    assert_grep "$ROOT/bin/fm-charter-line.sh" "$brief" "$mode: brief lost the PR body check command"
+  done
+
+  id="brief-charter-override"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode direct-PR --charter sites/web/docs/IDEAL_STATE.md --done-when "fixture check passes" >/dev/null 2>&1 \
+    || fail "override: brief should scaffold"
+  assert_grep "Read \`sites/web/docs/IDEAL_STATE.md\` in this worktree" "$home/data/$id/brief.md" \
+    "override: the brief must name the --charter path"
+
+  id="brief-charter-local-only"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --done-when "fixture check passes" >/dev/null 2>&1 \
+    || fail "local-only: brief should scaffold"
+  assert_no_grep "# Charter boxes" "$home/data/$id/brief.md" "local-only: a mode with no PR must not be told to cite one"
+
+  id="brief-charter-gerrit"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --forge gerrit --done-when "fixture check passes" >/dev/null 2>&1 \
+    || fail "gerrit: brief should scaffold"
+  assert_no_grep "# Charter boxes" "$home/data/$id/brief.md" "gerrit: a change is not a PR and must not carry the PR body line"
+
+  id="brief-charter-scout"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout --done-when "fixture question" >/dev/null 2>&1 \
+    || fail "scout: brief should scaffold"
+  assert_no_grep "# Charter boxes" "$home/data/$id/brief.md" "scout: a report ticks no charter box"
+
+  while IFS='|' read -r label args expect; do
+    [ -n "$label" ] || continue
+    # shellcheck disable=SC2086  # args is an intentional word-split arg list
+    out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" $args --done-when x 2>&1)
+    status=$?
+    [ "$status" -ne 0 ] || fail "$label: expected a non-zero exit"
+    assert_contains "$out" "$expect" "$label: refusal did not explain why"
+    assert_absent "$home/data/${args%% *}/brief.md" "$label: refusal still wrote a brief"
+  done <<'ROWS'
+charter on a scout brief|brief-charter-r1 some-proj --scout --charter docs/X.md|--charter applies only to PR-raising ship briefs
+charter on a local-only ship brief|brief-charter-r2 some-proj --mode local-only --charter docs/X.md|--charter applies only to PR-raising ship briefs
+charter on a gerrit ship brief|brief-charter-r3 some-proj --mode no-mistakes --forge gerrit --charter docs/X.md|--charter applies only to PR-raising ship briefs
+absolute charter path|brief-charter-r4 some-proj --mode direct-PR --charter /etc/passwd|--charter must be a path relative to the worktree
+escaping charter path|brief-charter-r5 some-proj --mode direct-PR --charter ../outside/IDEAL_STATE.md|--charter must be a path relative to the worktree
+escaping charter path mid-path|brief-charter-r6 some-proj --mode direct-PR --charter docs/../../x.md|--charter must be a path relative to the worktree
+ROWS
+  pass "fm-brief.sh: PR-raising ship briefs carry the Charter boxes section with the default or --charter path, and misuse is refused"
+}
+
+test_charter_line_check_accepts_only_one_well_formed_line() {
+  local body ok
+  body="$TMP_ROOT/charter-body.md"
+  for ok in 'Charter boxes: none' 'Charter boxes: O1.1' 'Charter boxes: O1.1, O2.3'; do
+    printf '%s\n' 'Summary' '' "$ok" '' 'Built by: x/y at z' > "$body"
+    "$ROOT/bin/fm-charter-line.sh" "$body" >/dev/null 2>&1 || fail "the check refused a well-formed line: $ok"
+    printf '%s\n' "$ok" | "$ROOT/bin/fm-charter-line.sh" >/dev/null 2>&1 || fail "the check refused a well-formed line on stdin: $ok"
+  done
+  printf '%s\n' 'Summary only' > "$body"
+  if "$ROOT/bin/fm-charter-line.sh" "$body" >/dev/null 2>&1; then fail "the check accepted a body with no Charter boxes line"; fi
+  printf '%s\n' 'Charter boxes:' > "$body"
+  if "$ROOT/bin/fm-charter-line.sh" "$body" >/dev/null 2>&1; then fail "the check accepted an empty Charter boxes line"; fi
+  printf '%s\n' 'Charter boxes: <ids or none>' > "$body"
+  if "$ROOT/bin/fm-charter-line.sh" "$body" >/dev/null 2>&1; then fail "the check accepted the unfilled placeholder"; fi
+  printf '%s\n' 'Charter boxes: none' 'Charter boxes: O1.1' > "$body"
+  if "$ROOT/bin/fm-charter-line.sh" "$body" >/dev/null 2>&1; then fail "the check accepted two Charter boxes lines"; fi
+  pass "fm-charter-line.sh: the PR body check accepts exactly one Charter boxes line naming box ids or none"
+}
+
 # A red check is classified once and never retried for a known cause: the
 # Scout dev-branch incident of October 2026 spent a month of hosted CI minutes
 # on reruns of a base-branch failure every PR had inherited. The rule renders
@@ -2438,6 +2522,8 @@ test_pr_wait_follow_up_only_where_a_pr_exists
 test_built_by_line_reads_task_meta
 test_fable_prompting_additions_render
 test_evidence_rules_render_only_where_a_pr_exists
+test_charter_boxes_section_renders_for_pr_raising_ships
+test_charter_line_check_accepts_only_one_well_formed_line
 test_ci_failures_are_classified_never_rerun
 test_ui_screenshot_line_is_opt_in
 test_help_documents_the_ui_flag
