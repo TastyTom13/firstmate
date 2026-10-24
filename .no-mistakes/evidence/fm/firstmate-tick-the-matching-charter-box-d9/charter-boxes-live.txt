@@ -1,0 +1,55 @@
+## 1 no-mistakes default
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.MaKgPh/data/t1/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+# Charter boxes
+# Charter boxes
+Read `docs/IDEAL_STATE.md` in this worktree, the project's charter, and list the boxes (ids such as `O1.1`) this change meets or advances.
+Read `docs/IDEAL_STATE.md` in this worktree, the project's charter, and list the boxes (ids such as `O1.1`) this change meets or advances.
+For each box this change fully meets, tick it in the same change, before you commit and push: change `- [ ]` to `- [x]` and add ` (proof: branch fm/t1, <YYYY-MM-DD>)` with today's date.
+For each box this change fully meets, tick it in the same change, before you commit and push: change `- [ ]` to `- [x]` and add ` (proof: branch fm/t1, <YYYY-MM-DD>)` with today's date.
+The PR is not open when you edit, so never write a URL or a placeholder, and never add a commit after the PR exists just to tick a box; the merged PR is found later by its head branch.
+The PR is not open when you edit, so never write a URL or a placeholder, and never add a commit after the PR exists just to tick a box; the merged PR is found later by its head branch.
+Never tick a box this change only advances, and never tick a box marked `(owner runs)`.
+Never tick a box this change only advances, and never tick a box marked `(owner runs)`.
+Put one line `Charter boxes: <ids or none>` in the PR body, naming every box met or advanced, or `none`; write `none` when the charter file does not exist.
+Put one line `Charter boxes: <ids or none>` in the PR body, naming every box met or advanced, or `none`; write `none` when the charter file does not exist.
+## 2 direct-PR with --charter
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.MaKgPh/data/t2/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+# Charter boxes
+Read `sites/web/docs/IDEAL_STATE.md` in this worktree, the project's charter, and list the boxes (ids such as `O1.1`) this change meets or advances.
+For each box this change fully meets, tick it in the same change, before you commit and push: change `- [ ]` to `- [x]` and add ` (proof: branch fm/t2, <YYYY-MM-DD>)` with today's date.
+## 3 local-only / gerrit / scout carry no section
+0
+0
+0
+## 4 refusals
+$ r1 proj --scout --charter docs/X.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+exit=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.MaKgPh/data/r1/brief.md: No such file or directory
+$ r2 proj --mode local-only --charter docs/X.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+exit=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.MaKgPh/data/r2/brief.md: No such file or directory
+$ r3 proj --mode direct-PR --charter /etc/passwd
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+exit=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.MaKgPh/data/r3/brief.md: No such file or directory
+$ r4 proj --mode direct-PR --charter ../o.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+exit=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.MaKgPh/data/r4/brief.md: No such file or directory
+$ r5 proj --mode direct-PR --charter docs/../../x.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+exit=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.MaKgPh/data/r5/brief.md: No such file or directory
+## 5 charter-line check
+Charter boxes: O1.1, O2.3
+exit=0
+Charter boxes: none
+exit=0
+error: the PR body has no 'Charter boxes: <ids or none>' line
+exit=1
+error: the Charter boxes line must name box ids such as 'O1.1, O2.3' or 'none' (got '<ids or none>')
+exit=1
+error: the PR body has 2 'Charter boxes:' lines; keep exactly one
+exit=1

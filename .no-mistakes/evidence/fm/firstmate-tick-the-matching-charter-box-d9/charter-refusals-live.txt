@@ -1,0 +1,29 @@
+## default brief (no-mistakes), Charter boxes section
+# Charter boxes
+Read `docs/IDEAL_STATE.md` in this worktree, the project's charter, and list the boxes (ids such as `O1.1`) this change meets or advances.
+For each box this change fully meets, tick it in the same change, before you commit and push: change `- [ ]` to `- [x]` and add ` (proof: branch fm/t1, <YYYY-MM-DD>)` with today's date.
+The PR is not open when you edit, so never write a URL or a placeholder, and never add a commit after the PR exists just to tick a box; the merged PR is found later by its head branch.
+Never tick a box this change only advances, and never tick a box marked `(owner runs)`.
+Put one line `Charter boxes: <ids or none>` in the PR body, naming every box met or advanced, or `none`; write `none` when the charter file does not exist.
+Before you report done, check the body with `gh pr view <number> --json body -q .body | '/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M5MM9365YM2CG9SPAFXGBBNY/bin/fm-charter-line.sh'` and fix the line until it passes.
+
+
+## refusals
+$ fm-brief.sh r1 proj --scout --charter docs/X.md --done-when x
+error: --charter applies only to PR-raising ship briefs on a pull-request forge; a scout, a secondmate charter, a local-only ship, and a gerrit change carry no Charter boxes section
+exit=1  brief written: no
+$ fm-brief.sh r2 proj --mode local-only --charter docs/X.md --done-when x
+error: --charter applies only to PR-raising ship briefs on a pull-request forge; a scout, a secondmate charter, a local-only ship, and a gerrit change carry no Charter boxes section
+exit=1  brief written: no
+$ fm-brief.sh r3 proj --mode no-mistakes --forge gerrit --charter docs/X.md --done-when x
+error: --charter applies only to PR-raising ship briefs on a pull-request forge; a scout, a secondmate charter, a local-only ship, and a gerrit change carry no Charter boxes section
+exit=1  brief written: no
+$ fm-brief.sh r4 proj --mode direct-PR --charter /etc/passwd --done-when x
+error: --charter must be a path relative to the worktree, without '..', spaces or backticks (got '/etc/passwd')
+exit=1  brief written: no
+$ fm-brief.sh r5 proj --mode direct-PR --charter ../o.md --done-when x
+error: --charter must be a path relative to the worktree, without '..', spaces or backticks (got '../o.md')
+exit=1  brief written: no
+$ fm-brief.sh r6 proj --mode direct-PR --charter docs/../../x.md --done-when x
+error: --charter must be a path relative to the worktree, without '..', spaces or backticks (got 'docs/../../x.md')
+exit=1  brief written: no
