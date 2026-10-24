@@ -5,13 +5,15 @@
 # A worker saves the captain's words verbatim, dated, with what it did with
 # them, to data/<task-id>/captain-notes-<YYYY-MM-DD>.md (bin/fm-brief.sh owns
 # that instruction). Owner-words files in data/<task-id>/ are the *.md files
-# that match one of these, brief.md and launch-brief.md never included:
+# that match one of these, brief.md, launch-brief.md, report.md and
+# follow-ups.md never included:
 #   captain-*.md (captain-notes-*, captain-answers-*, captain-feedback-*,
 #     captain-words-*, captain-review-* and every other captain- file)
 #   *-captain-words*.md
 #   board-answers*.md
 #   answers*.md whose first heading names the captain
-#   any other file whose first heading says the owner's words are verbatim
+#   any other file whose first heading says verbatim together with owner or
+#     captain ("# Owner's words, verbatim")
 # Board replies firstmate wrote (reply-*, *-reply*) match none of these.
 # bin/fm-teardown.sh runs `collect` on cleanup, which appends every owner-words
 # file of the task, in name order, to data/owner-notes/<project>.md under a
@@ -145,14 +147,14 @@ owner_words_file() {  # <file>
   local name heading
   name=$(basename "$1")
   case "$name" in
-    brief.md|launch-brief.md) return 1 ;;
+    brief.md|launch-brief.md|report.md|follow-ups.md) return 1 ;;
     captain-*.md|*-captain-words*.md|board-answers*.md) return 0 ;;
   esac
   heading=$(grep -m 1 '^#' -- "$1" 2>/dev/null | LC_ALL=C tr '[:upper:]' '[:lower:]' || true)
   case "$name" in
     answers*.md) case "$heading" in *captain*) return 0 ;; esac ;;
   esac
-  case "$heading" in *verbatim*) return 0 ;; esac
+  case "$heading" in *verbatim*) case "$heading" in *owner*|*captain*) return 0 ;; esac ;; esac
   return 1
 }
 
