@@ -1,0 +1,21 @@
+== fm-owner-notes
+ok - unsafe project paths collect into the same file that file names
+ok - a task with no notes collects cleanly whatever its project is called
+ok - backfill sweeps board and chat answer files once and leaves replies and drafts alone
+ok - backfill sweeps dated captain.md entries since September once, by the project each names
+ok - index lists one row per note and names every unplaced note by project
+ok - place writes a placement marker next to its entry once and the index shows it
+== fm-brief
+ok - fm-brief.sh: an empty --branch-prefix override resolves to a bare <task-id> branch
+ok - fm-brief.sh: --branch-prefix is refused on scout and secondmate scaffolds
+ok - fm-brief.sh: --branch-prefix value is validated against embedded spaces and a leading dash
+Switched to a new branch '$(touch${IFS}/private/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T/fm-brief.Ll33ug/branch-prefix-shell-safe-marker)brief-branch-safe-g3'
+ok - fm-brief.sh: ref-format-valid shell metacharacters stay literal in generated branch commands
+ok - fm-brief.sh: every crewmate scaffold forbids administering the shared worktree pool
+== fm-teardown
+ok - a process exiting during identity lookup does not block teardown
+ok - the run abort and the leaked-process reap both complete before the destructive worktree return
+ok - teardown refuses a worktree another task record still names, and changes nothing
+ok - --force authorizes discarding this task's work, never another task's shared worktree
+ok - --release-shared-record retires only the stale record and leaves the shared worktree intact
+ok - --release-shared-record refuses outside the shared-worktree case it exists for

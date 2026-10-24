@@ -1,0 +1,13 @@
+ok - collect appends each captain-notes file verbatim under a date and task heading
+ok - collect appends nothing on repeat and lands a grown notes file as a new entry
+ok - a task whose project is the firstmate home collects into firstmate.md
+ok - an undated notes file is headed with its modification date
+ok - backfill collects from live and cleaned-up tasks and keeps what it cannot resolve in general
+ok - file maps unsafe project names to one safe file and refuses only empty ones
+ok - unsafe project paths collect into the same file that file names
+ok - a task with no notes collects cleanly whatever its project is called
+ok - backfill sweeps board and chat answer files once and leaves replies and drafts alone
+ok - backfill sweeps dated captain.md entries since September once, by the project each names
+ok - index lists one row per note and names every unplaced note by project
+ok - place writes a placement marker next to its entry once and the index shows it
+exit=0

@@ -1,0 +1,10 @@
+52748a263723f373544e8273b4772f54
+24da08cacfd14421257f8a0a46768bea
+52748a263723f373544e8273b4772f54
+24da08cacfd14421257f8a0a46768bea
+(same sums = placed entries not re-appended)
+--- brief place sentence
+134:# bin/fm-owner-notes.sh owns that record and its collection at cleanup.
+869:# reading once they exist; bin/fm-owner-notes.sh owns that record.
+871:if OWNER_NOTES_FILE=$(FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-owner-notes.sh" file "${POS[1]:-}" 2>/dev/null) \
+876:When you turn one of those notes into a charter or brief line, run \`FM_HOME=$(shell_quote "$FM_HOME") FM_DATA_OVERRIDE=$(shell_quote "$DATA") $(shell_quote "$FM_ROOT/bin/fm-owner-notes.sh") place $(basename "$OWNER_NOTES_FILE" .md) <entry-hash> <file:line>\` for that entry; the entry hashes are in the markers of that file.

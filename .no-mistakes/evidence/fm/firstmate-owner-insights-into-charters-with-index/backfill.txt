@@ -1,0 +1,12 @@
+$ backfill
+collected 1 owner-words file(s) from lens-t1 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/lens.md
+no project could be resolved for lens-t4; collecting into general
+collected 1 owner-words file(s) from lens-t4 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/general.md
+no project could be resolved for lens-t6; collecting into general
+collected 1 owner-words file(s) from lens-t6 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/general.md
+collected 3 dated captain.md entries into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes
+$ ls
+forge.md
+general.md
+lens.md
+mentum.md

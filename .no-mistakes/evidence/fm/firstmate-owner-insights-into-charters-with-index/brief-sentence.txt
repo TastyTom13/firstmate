@@ -1,0 +1,2 @@
+124:When you turn one of those notes into a charter or brief line, run `FM_HOME='/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH' FM_DATA_OVERRIDE='/var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data' '/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M5PSR9CX80S4M3SM56DN2Z0D/bin/fm-owner-notes.sh' place lens <entry-hash> <file:line>` for that entry; the entry hashes are in the markers of that file.
+placed fa93902a41f7 in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/lens.md at charters/lens.md:99

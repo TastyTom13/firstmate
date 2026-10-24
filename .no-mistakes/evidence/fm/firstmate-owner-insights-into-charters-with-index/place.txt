@@ -1,0 +1,60 @@
+$ place lens fa9390 charters/lens.md:12
+placed fa93902a41f7 in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/lens.md at charters/lens.md:12
+rc=0
+$ place same again
+cec7cbf47c7d7640eafeccd2635d9777
+fa93902a41f7 in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/lens.md is already placed at charters/lens.md:12
+rc=0
+cec7cbf47c7d7640eafeccd2635d9777
+$ place 2nd destination
+placed fa93902a41f7 in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/lens.md at briefs/b.md:Goals
+rc=0
+$ place unknown hash
+error: no entry in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/lens.md has the hash deadbeef; run: bin/fm-owner-notes.sh index
+rc=1
+$ place too-short/empty prefix
+error: the entry hash must be 6 to 64 lowercase hex characters, as the index prints it: 
+rc=2
+$ place unknown project
+error: no owner notes for nope at /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/nope.md
+rc=1
+$ place bad dest
+error: the destination must be <repo-relative file>:<line or heading>: no-colon
+rc=2
+$ place on forge
+placed ddf2ace361c9 in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/forge.md at charters/forge.md:Positioning
+rc=0
+
+## 2026-10-20 - lens-t1
+<!-- fm-owner-notes task=lens-t1 file=captain-notes-2026-10-20.md sha256=fa93902a41f7d4d85d03288c06e25303267366921260ef6420fa20951be23230 -->
+<!-- fm-owner-notes placed=charters/lens.md:12 -->
+<!-- fm-owner-notes placed=briefs/b.md:Goals -->
+Source: captain-notes-2026-10-20.md
+
+# Captain notes
+
+I want lens to show weekly digests.
+indexed 6 owner note(s) into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/index.md
+| Project | Notes | Placed | Not yet placed |
+| --- | ---: | ---: | ---: |
+| forge | 1 | 1 | 0 |
+| general | 3 | 0 | 3 |
+| lens | 1 | 1 | 0 |
+| mentum | 1 | 0 | 1 |
+| Total | 6 | 2 | 4 |
+
+## Notes
+
+| Date | Project | Source | First words | Destination | Entry |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-06 | general | captain.md | Nothing about any project here, just a comment. | not yet placed | `7c1fb59cc3d2` |
+| 2026-10-20 | lens | lens-t1 | I want lens to show weekly digests. | charters/lens.md:12, briefs/b.md:Goals | `fa93902a41f7` |
+| 2026-10-21 | general | lens-t6 | use blue | not yet placed | `103ff2a5f18a` |
+| 2026-10-22 | forge | captain.md | Make Forge say mindshake first. | charters/forge.md:Positioning | `ddf2ace361c9` |
+| 2026-10-23 | mentum | captain.md | - 2026-10-23 Mentum onboarding should be shorter. | not yet placed | `926b611e54bf` |
+| 2026-10-24 | general | lens-t4 | Bull should cache the tariffs. | not yet placed | `f5cbebec0a32` |
+
+## Not yet placed
+
+### general
+
