@@ -207,13 +207,16 @@ pass "real herdr: interrupt refuses when herdr's own agent registry reports no a
 # A registration alone no longer proves an agent (issue #4115): the adapter
 # verifies the pane's processes through the real `pane process-info` view. So
 # the registered agent is backed by a real agent-named foreground process - a
-# symlink to a long-running system binary named `claude`, the same construction
-# tests/fm-tmux-agent-liveness.test.sh uses (a copied platform binary fails code
-# signing on macOS arm64; the symlink name is what the kernel records as argv[0]).
+# symlink named `claude` to a real long-running binary, the construction
+# tests/agent-standin-fixture.sh owns (the symlink name is what the kernel
+# records as argv[0]).
 AGENT_BIN="$SCRATCH/agentbin"
 mkdir -p "$AGENT_BIN"
-SLEEP_BIN=$(command -v sleep) || fail "sleep not found"
-ln -s "$SLEEP_BIN" "$AGENT_BIN/claude"
+# shellcheck source=tests/agent-standin-fixture.sh
+. "$ROOT/tests/agent-standin-fixture.sh"
+STANDIN_BIN=$(fm_agent_standin "$SCRATCH/standin") \
+  || fail "no long-running stand-in binary survives a rename (multicall coreutils, no C compiler)"
+ln -s "$STANDIN_BIN" "$AGENT_BIN/claude"
 printf -v AGENT_Q '%q' "$AGENT_BIN/claude"
 
 wait_process_state() {  # <expected> <tries>
