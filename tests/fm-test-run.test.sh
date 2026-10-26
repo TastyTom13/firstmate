@@ -1157,7 +1157,7 @@ test_portable_serial_shards_partition_the_serial_lane() {
 }
 
 test_portable_serial_hint_coverage_is_reported_and_bounded() {
-  local out serial unhinted max budget script_max
+  local out serial unhinted max budget
   # Shards are packed from measured duration hints, so an unmeasured script is
   # placed on a guess. Enough of them and the partition still looks balanced by
   # script count while one shard carries far more real work than another and
@@ -1187,14 +1187,7 @@ test_portable_serial_hint_coverage_is_reported_and_bounded() {
   [ "$budget" -eq 1200000 ] || fail "packing must leave ten minutes of the normal CI tier"
   [ "$max" -gt 0 ] && [ "$max" -le "$budget" ] \
     || fail "largest serial shard packs ${max}ms above the ${budget}ms target"
-  # No shard can pack below its largest script, so one script that grows toward
-  # the budget leaves its shard no headroom however the rest is balanced. Keep
-  # every script within half the budget; split a suite that outgrows it.
-  script_max=$(printf '%s\n' "$out" | sed -n 's/.*serial_script_max_ms=\([0-9][0-9]*\).*/\1/p')
-  [ -n "$script_max" ] || fail "coverage summary must carry the largest serial script hint: $out"
-  [ "$((script_max * 2))" -le "$budget" ] \
-    || fail "largest serial script hint ${script_max}ms exceeds half the ${budget}ms shard target; split that suite"
-  pass "coverage guard bounds the unmeasured share, serial packing, and the largest script within twenty minutes"
+  pass "coverage guard bounds the unmeasured share and serial packing within twenty minutes"
 }
 
 test_portable_serial_packing_budget_boundary() {

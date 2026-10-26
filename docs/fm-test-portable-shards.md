@@ -73,7 +73,7 @@ Refresh the hints whenever a serial member grows materially or the lane gains sc
 `bin/fm-test-run.sh` owns the per-shard packing, so its `--check-coverage` output is the current account of lane size and coverage rather than a copied inventory.
 Its header and `--help` own the modeled-budget check and output fields; read the current estimates from `--check-coverage` instead of retaining copied lane sums here.
 [`tests/fm-test-run.test.sh`](../tests/fm-test-run.test.sh), in `test_portable_serial_packing_budget_boundary`, verifies acceptance exactly at the budget and refusal one millisecond above it through the executable runner.
-No shard can pack below its largest script, so `--check-coverage` reports that hint as `serial_script_max_ms`, and `test_portable_serial_hint_coverage_is_reported_and_bounded` requires it to stay within half the packing target; split a suite that outgrows it into parts rather than leave it to fill a shard alone.
+The largest single script hint is the floor no shard can pack below, so split a suite that outgrows its share of the packing target rather than leave it to fill a shard alone.
 The estimates use per-file maxima from different runs, not measured rebalanced jobs or an end-to-end latency guarantee.
 Each observed completed portable job added at most 30 seconds beyond its summed scripts in the 2026-09-30 runs.
 Even so, maxima from a handful of runs do not establish a P95 or guarantee future headroom.

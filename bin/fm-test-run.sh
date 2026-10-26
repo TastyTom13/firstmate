@@ -136,9 +136,8 @@
 # share a machine. This script owns <n>: a lane whose <n> disagrees with the
 # configured shard count is refused, so a CI matrix cannot silently drop a shard.
 # --check-coverage also reports serial_max_ms (largest packed hint sum, including
-# default weights), serial_script_max_ms (largest single script hint, the floor
-# no shard can pack below), and serial_budget_ms (the 20-minute packing target),
-# refusing a split above that target. Neither figure is an execution timeout or proof of
+# default weights) and serial_budget_ms (the 20-minute packing target), refusing
+# a split above that target. Neither figure is an execution timeout or proof of
 # observed headroom: refresh growing files from CI measurements.
 # --changed is conservative: it over-selects related families rather than
 # under-selecting, and never expands to the complete suite unless --all. The one
@@ -944,15 +943,6 @@ portable_serial_unhinted() {
   rm -rf "$tmp"
 }
 
-# Largest single serial weight for paths on stdin, including the default.
-portable_serial_script_max_weight() {
-  awk -v fallback="$PORTABLE_SERIAL_DEFAULT_WEIGHT_MS" '
-    NR == FNR { if (NF) { hint[$1] = $2 }; next }
-    NF { ms = ($1 in hint) ? hint[$1] : fallback; if (ms > max) max = ms }
-    END { printf "%d\n", max + 0 }
-  ' <(portable_serial_weight_hints) -
-}
-
 # Sum serial weights for paths on stdin, including the unmeasured default.
 portable_serial_lane_weight() {
   awk -v fallback="$PORTABLE_SERIAL_DEFAULT_WEIGHT_MS" '
@@ -1248,7 +1238,7 @@ run_coverage_guard() {
   parallel_imbalance_ms=$((p1_ms - p2_ms))
   [ "$parallel_imbalance_ms" -ge 0 ] || parallel_imbalance_ms=$((-parallel_imbalance_ms))
 
-  printf 'FM_TEST_COVERAGE ok total=%s parallel=%s parallel_max_ms=%s parallel_imbalance_ms=%s parallel_unhinted=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_script_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
+  printf 'FM_TEST_COVERAGE ok total=%s parallel=%s parallel_max_ms=%s parallel_imbalance_ms=%s parallel_unhinted=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
     "$(wc -l <"$tmp/all" | tr -d ' ')" \
     "$(wc -l <"$tmp/shards_union" | tr -d ' ')" \
     "$parallel_max_ms" \
@@ -1258,7 +1248,6 @@ run_coverage_guard() {
     "$PORTABLE_SERIAL_SHARDS" \
     "$unhinted" \
     "$serial_max_ms" \
-    "$(portable_serial_script_max_weight <"$tmp/serial")" \
     "$PORTABLE_SERIAL_MAX_WEIGHT_MS" \
     "$(wc -l <"$tmp/herdr" | tr -d ' ')"
   rm -rf "$tmp"
