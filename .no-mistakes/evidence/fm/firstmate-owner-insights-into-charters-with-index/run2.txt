@@ -1,0 +1,58 @@
+collected 2 owner-words file(s) from t-lens-1 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-ownerlab.A425yz/data/owner-notes/lens.md
+collected 1 owner-words file(s) from t-x-3 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-ownerlab.A425yz/data/owner-notes/legacy-proj.md
+collected 2 dated captain.md entries into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-ownerlab.A425yz/data/owner-notes
+forge.md
+legacy-proj.md
+lens.md
+### place + rerun
+hash=e9695a7279f8
+placed e9695a7279f8 in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-ownerlab.A425yz/data/owner-notes/lens.md at data/lens/charter.md:12
+e9695a7279f8 in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-ownerlab.A425yz/data/owner-notes/lens.md is already placed at data/lens/charter.md:12
+error: the entry hash must be 6 to 64 lowercase hex characters, as the index prints it: zzzz
+exit=2
+indexed 5 owner note(s) into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-ownerlab.A425yz/data/owner-notes/index.md
+## Summary
+
+| Project | Notes | Placed | Not yet placed |
+| --- | ---: | ---: | ---: |
+| forge | 1 | 0 | 1 |
+| legacy-proj | 2 | 0 | 2 |
+| lens | 2 | 1 | 1 |
+| Total | 5 | 1 | 4 |
+
+## Notes
+
+| Date | Project | Source | First words | Destination | Entry |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-20 | lens | t-lens-1 | Lens must show X | data/lens/charter.md:12 | `e9695a7279f8` |
+| 2026-10-21 | lens | t-lens-1 | forge: use blue | not yet placed | `a8032c5a33b3` |
+| 2026-10-23 | forge | captain.md | Forge should do Z. | not yet placed | `18eab09d970e` |
+| 2026-10-23 | legacy-proj | captain.md | - 23 Oct 2026: legacy-proj tweak - undated bullet about lens | not yet placed | `dad3143e33b8` |
+| 2026-10-26 | legacy-proj | t-x-3 | legacy-proj needs Y | not yet placed | `c954d118d36d` |
+
+## Not yet placed
+### lens.md
+# Owner notes: lens
+
+The captain's own words on lens, verbatim, collected from Firstmate tasks at cleanup and from dated entries of data/captain.md.
+Entries are appended in collection order and their words are never edited; bin/fm-owner-notes.sh place adds where each one went.
+
+## 2026-10-21 - t-lens-1
+<!-- fm-owner-notes task=t-lens-1 file=board-answers-2026-10-21.md sha256=a8032c5a33b3040727c09bb9557b4f8a39dbb6f482cc98bcf01c085667439c04 -->
+Source: board-answers-2026-10-21.md
+
+# Board answers
+forge: use blue
+
+## 2026-10-20 - t-lens-1
+<!-- fm-owner-notes task=t-lens-1 file=captain-notes-2026-10-20.md sha256=e9695a7279f895cada2543ed926c583c51a6a71cda9f3f4e7156f500fb650dbc -->
+<!-- fm-owner-notes placed=data/lens/charter.md:12 -->
+Source: captain-notes-2026-10-20.md
+
+# Captain's words
+Lens must show X
+### no notes
+no owner notes yet; nothing to index
+### bad usage
+usage: fm-owner-notes.sh place <project-name> <entry-hash> <file>:<line or heading>
+exit=2
