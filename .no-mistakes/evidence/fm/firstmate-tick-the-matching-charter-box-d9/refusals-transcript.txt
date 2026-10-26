@@ -1,0 +1,32 @@
+-- --scout --charter docs/X.md
+error: --charter applies only to PR-raising ship briefs on a pull-request forge; a scout, a secondmate charter, a local-only ship, and a gerrit change carry no Charter boxes section
+rc=1
+no brief
+-- --mode local-only --charter docs/X.md
+error: --charter applies only to PR-raising ship briefs on a pull-request forge; a scout, a secondmate charter, a local-only ship, and a gerrit change carry no Charter boxes section
+rc=1
+no brief
+-- --mode no-mistakes --forge gerrit --charter docs/X.md
+error: --charter applies only to PR-raising ship briefs on a pull-request forge; a scout, a secondmate charter, a local-only ship, and a gerrit change carry no Charter boxes section
+rc=1
+no brief
+-- --mode direct-PR --charter /etc/passwd
+error: --charter must be a path relative to the worktree, without '..', spaces or backticks (got '/etc/passwd')
+rc=1
+no brief
+-- --mode direct-PR --charter ../o/X.md
+error: --charter must be a path relative to the worktree, without '..', spaces or backticks (got '../o/X.md')
+rc=1
+no brief
+-- --mode direct-PR --charter docs/../../x.md
+error: --charter must be a path relative to the worktree, without '..', spaces or backticks (got 'docs/../../x.md')
+rc=1
+no brief
+-- --mode direct-PR --charter docs/a_b.md
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.Ygr11P/data/r1/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+BRIEF WRITTEN
+-- --mode direct-PR --charter=docs/ok.md
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.Ygr11P/data/r1/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+BRIEF WRITTEN

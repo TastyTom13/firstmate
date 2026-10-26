@@ -1,0 +1,55 @@
+### 1 default no-mistakes
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.Ygr11P/data/t1/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+# Charter boxes
+Read `docs/IDEAL_STATE.md` in this worktree, the project's charter, and list the boxes (ids such as `O1.1`) this change meets or advances.
+For each box this change fully meets, tick it in the same change, before you commit and push: change `- [ ]` to `- [x]` and add ` (proof: branch fm/t1, <YYYY-MM-DD>)` with today's date.
+The PR is not open when you edit, so never write a URL or a placeholder, and never add a commit after the PR exists just to tick a box; the merged PR is found later by its head branch.
+Never tick a box this change only advances, and never tick a box marked `(owner runs)`.
+Put one line `Charter boxes: <ids or none>` in the PR body, naming every box met or advanced, or `none`; write `none` when the charter file does not exist.
+Before you report done, check the body with `gh pr view <number> --json body -q .body | '/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M5W1K60YJHYYM433CNHHQVHM/bin/fm-charter-line.sh'` and fix the line until it passes.
+
+### 2 direct-PR with --charter
+scaffolded: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.Ygr11P/data/t2/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+# Charter boxes
+Read `sites/web/docs/IDEAL_STATE.md` in this worktree, the project's charter, and list the boxes (ids such as `O1.1`) this change meets or advances.
+For each box this change fully meets, tick it in the same change, before you commit and push: change `- [ ]` to `- [x]` and add ` (proof: branch fm/t2, <YYYY-MM-DD>)` with today's date.
+The PR is not open when you edit, so never write a URL or a placeholder, and never add a commit after the PR exists just to tick a box; the merged PR is found later by its head branch.
+Never tick a box this change only advances, and never tick a box marked `(owner runs)`.
+Put one line `Charter boxes: <ids or none>` in the PR body, naming every box met or advanced, or `none`; write `none` when the charter file does not exist.
+Before you report done, check the body with `gh pr view <number> --json body -q .body | '/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M5W1K60YJHYYM433CNHHQVHM/bin/fm-charter-line.sh'` and fix the line until it passes.
+
+### 3 no section: local-only, gerrit, scout
+0
+0
+0
+### 4 refusals
+-- --scout --charter docs/X.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.Ygr11P/data/r1/brief.md: No such file or directory
+-- --mode local-only --charter docs/X.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.Ygr11P/data/r1/brief.md: No such file or directory
+-- --mode no-mistakes --forge gerrit --charter docs/X.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.Ygr11P/data/r1/brief.md: No such file or directory
+-- --mode direct-PR --charter /etc/passwd
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.Ygr11P/data/r1/brief.md: No such file or directory
+-- --mode direct-PR --charter ../o/X.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.Ygr11P/data/r1/brief.md: No such file or directory
+-- --mode direct-PR --charter docs/../../x.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.Ygr11P/data/r1/brief.md: No such file or directory
+-- --mode direct-PR --charter docs/a_b.md
+error: ship briefs require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+rc=1
+ls: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.Ygr11P/data/r1/brief.md: No such file or directory
