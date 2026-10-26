@@ -1157,7 +1157,7 @@ test_portable_serial_shards_partition_the_serial_lane() {
 }
 
 test_portable_serial_hint_coverage_is_reported_and_bounded() {
-  local out serial unhinted max budget
+  local out serial unhinted max budget script_max
   # Shards are packed from measured duration hints, so an unmeasured script is
   # placed on a guess. Enough of them and the partition still looks balanced by
   # script count while one shard carries far more real work than another and
@@ -1187,7 +1187,14 @@ test_portable_serial_hint_coverage_is_reported_and_bounded() {
   [ "$budget" -eq 1200000 ] || fail "packing must leave ten minutes of the normal CI tier"
   [ "$max" -gt 0 ] && [ "$max" -le "$budget" ] \
     || fail "largest serial shard packs ${max}ms above the ${budget}ms target"
-  pass "coverage guard bounds the unmeasured share and serial packing within twenty minutes"
+  # No shard can pack below its largest script, so one script that grows toward
+  # the budget leaves its shard no headroom however the rest is balanced. Keep
+  # every script within half the budget; split a suite that outgrows it.
+  script_max=$(printf '%s\n' "$out" | sed -n 's/.*serial_script_max_ms=\([0-9][0-9]*\).*/\1/p')
+  [ -n "$script_max" ] || fail "coverage summary must carry the largest serial script hint: $out"
+  [ "$((script_max * 2))" -le "$budget" ] \
+    || fail "largest serial script hint ${script_max}ms exceeds half the ${budget}ms shard target; split that suite"
+  pass "coverage guard bounds the unmeasured share, serial packing, and the largest script within twenty minutes"
 }
 
 test_portable_serial_packing_budget_boundary() {
@@ -1196,7 +1203,9 @@ test_portable_serial_packing_budget_boundary() {
   repo="$tmp/repo"
   mkdir -p "$repo/bin" "$repo/tests"
   # Preserve the real inventory and packing policy without executing suites.
-  # Only the fixture's measured timing input changes at the boundary.
+  # Only the fixture's measured timing input changes: every other serial hint
+  # drops to 1ms so the seeded script alone sets the largest shard at the
+  # boundary, however much the real lane has grown.
   while IFS= read -r script; do
     printf '#!/usr/bin/env bash\nexit 0\n' >"$repo/$script"
   done < <("$RUNNER" --list --all)
@@ -1208,11 +1217,15 @@ test_portable_serial_packing_budget_boundary() {
 from pathlib import Path
 import re, sys
 runner = Path(sys.argv[1])
-runner.write_text(re.sub(
-    r"(?m)^tests/fm-watch-triage\.test\.sh [0-9]+$",
+text = runner.read_text()
+table = re.search(r"(?s)^portable_serial_weight_hints\(\) \{\n.*?^EOF$", text, re.M)
+hints = re.sub(r"(?m)^(tests/\S+) [0-9]+$", r"\1 1", table.group(0))
+hints = re.sub(
+    r"(?m)^tests/fm-watch-triage\.test\.sh 1$",
     f"tests/fm-watch-triage.test.sh {sys.argv[2]}",
-    runner.read_text(),
-))
+    hints,
+)
+runner.write_text(text[:table.start()] + hints + text[table.end():])
 PY
     out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
     if [ "$weight" -eq 1200000 ]; then
