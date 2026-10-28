@@ -1,0 +1,41 @@
+$ place lens 489851e5 charters/lens.md:12
+placed 489851e5817b in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.PRKuMu/data/owner-notes/lens.md at charters/lens.md:12
+rc=0
+$ same again
+489851e5817b in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.PRKuMu/data/owner-notes/lens.md is already placed at charters/lens.md:12
+rc=0
+$ second destination
+placed 489851e5817b in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.PRKuMu/data/owner-notes/lens.md at docs/brief.md:Captions
+rc=0
+$ unknown hash
+error: no entry in /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.PRKuMu/data/owner-notes/lens.md has the hash deadbeef; run: bin/fm-owner-notes.sh index
+rc=1
+$ empty hash prefix
+error: the entry hash must be 6 to 64 lowercase hex characters, as the index prints it: 
+rc=2
+$ diff vs before
+7a8,9
+> <!-- fm-owner-notes placed=charters/lens.md:12 -->
+> <!-- fm-owner-notes placed=docs/brief.md:Captions -->
+$ backfill after place (must not re-add)
+1
+indexed 4 owner note(s) into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.PRKuMu/data/owner-notes/index.md
+## Summary
+
+| Project | Notes | Placed | Not yet placed |
+| --- | ---: | ---: | ---: |
+| forge | 1 | 0 | 1 |
+| general | 2 | 0 | 2 |
+| lens | 1 | 1 | 0 |
+| Total | 4 | 1 | 3 |
+
+## Notes
+
+| Date | Project | Source | First words | Destination | Entry |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-20 | general | old-lens | Lens should show the caption first. verbatim. | not yet placed | `7ede20fb7cc2` |
+| 2026-10-22 | forge | captain.md | - 2026-10-22 Forge: ship the pricing board. | not yet placed | `5040cb4a00f3` |
+| 2026-10-23 | lens | captain.md | Insight about Lens: every comment I give must be saved. | charters/lens.md:12, docs/brief.md:Captions | `489851e5817b` |
+| 2026-10-28 | general | old-forge | Forge pricing: keep it flat. | not yet placed | `3b097b56f628` |
+
+## Not yet placed
