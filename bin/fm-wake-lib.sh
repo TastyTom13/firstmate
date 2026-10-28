@@ -1191,9 +1191,14 @@ fm_lock_try_acquire() {
   return "$rc"
 }
 
+# Fails instead of waiting once the lock's directory is gone: no lock can ever be
+# created there, so a torn-down state directory would otherwise strand its
+# caller, such as a still-running watcher, in this loop forever.
 fm_lock_acquire_wait() {
-  local lockdir=$1
+  local lockdir=$1 parent
+  fm_dirname_to parent "$lockdir"
   while ! fm_lock_try_acquire "$lockdir"; do
+    [ -d "$parent" ] || return 1
     sleep 0.1
   done
 }
@@ -1996,7 +2001,7 @@ fm_wake_clean_field() {
 
 fm_wake_append() {
   local status=0
-  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"
+  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK" || return 1
   fm_wake_append_locked "$@" || status=$?
   fm_lock_release "$FM_WAKE_QUEUE_LOCK"
   return "$status"
@@ -2056,7 +2061,7 @@ fm_wake_queued_keys() {
     signal|stale|check|heartbeat) ;;
     *) printf 'fm_wake_queued_keys: invalid wake kind: %s\n' "$kind" >&2; return 2 ;;
   esac
-  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"
+  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK" || return 1
   fm_wake_queued_keys_locked "$kind"
   fm_lock_release "$FM_WAKE_QUEUE_LOCK"
 }

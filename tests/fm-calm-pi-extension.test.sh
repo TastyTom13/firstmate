@@ -2809,9 +2809,15 @@ import {
   fauxText,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
+import { writeFileSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI): void {
+  // Deterministic /reload signal: the test waits for this file instead of
+  // catching the short-lived "Reloading..." banner in a viewport poll.
+  pi.on("session_start", (event) => {
+    if (event.reason === "reload") writeFileSync("reload-started.marker", "reload\n");
+  });
   const faux = createFauxCore({
     api: "calm-geometry-e2e-api",
     provider: "calm-geometry-e2e",
@@ -2882,16 +2888,23 @@ TS
     return 1
   }
 
-  wait_for_geometry_transition() {
-    local file=$1 transient_text=$2 final_text=$3 attempt=0 saw_transient=0
+  # Wait until the provider extension reports session_start(reload), then until
+  # the settled viewport shows the transcript again with the banner gone and
+  # unchanged across two captures.
+  wait_for_geometry_reload() {
+    local file=$1 marker=$2 transient_text=$3 final_text=$4 attempt=0 previous
     while [ "$attempt" -lt 600 ]; do
-      capture_geometry_viewport "$file" || true
-      if grep -Fq "$transient_text" "$file" 2>/dev/null; then
-        saw_transient=1
-      elif [ "$saw_transient" -eq 1 ] && grep -Fq "$final_text" "$file" 2>/dev/null; then
-        return 0
+      if [ -f "$marker" ]; then
+        capture_geometry_viewport "$file" || true
+        if grep -Fq "$final_text" "$file" 2>/dev/null \
+          && ! grep -Fq "$transient_text" "$file" 2>/dev/null; then
+          previous=$(cat "$file")
+          sleep 0.2
+          capture_geometry_viewport "$file" || true
+          [ "$previous" = "$(cat "$file")" ] && return 0
+        fi
       fi
-      sleep 0.01
+      sleep 0.05
       attempt=$((attempt + 1))
     done
     return 1
@@ -2943,8 +2956,9 @@ TS
 
   tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" -l '/reload'
   tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" Enter
-  wait_for_geometry_transition \
+  wait_for_geometry_reload \
     "$snapshot" \
+    "$project/reload-started.marker" \
     "Reloading keybindings, extensions, skills, prompts, themes, and context files..." \
     "CALM_GEOMETRY_FINAL" \
     || fail "Pi Calm hidden-block geometry E2E did not complete the /reload viewport transition"

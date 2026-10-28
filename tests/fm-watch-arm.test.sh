@@ -1274,6 +1274,45 @@ test_watcher_exits_when_its_state_directory_is_removed() {
   pass "watch-arm: a watcher exits when its state directory is removed"
 }
 
+# The same deletion landing while a cycle runs its subprocess work. A vanished
+# state directory reads every due-by-age file as missing, so the slow-check
+# block runs; its validation-restart pass then fails for lack of a state
+# directory, and its wake would wait forever on a queue lock inside the deleted
+# directory. The fake resume command holds the first cycle there until the test
+# releases it, then deletes the state directory and fails, so the deletion lands
+# at that exact point every run.
+test_watcher_exits_when_its_state_directory_is_removed_mid_cycle() {
+  local dir home state fakebin armout go resume
+  dir=$(make_case state-dir-removed-mid-cycle)
+  home="$dir/home"
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  armout="$dir/arm.out"
+  go="$dir/go"
+  resume="$dir/resume"
+  mkdir -p "$home/data"
+  cat > "$resume" <<SH
+#!/usr/bin/env bash
+while [ ! -e '$go' ]; do sleep 0.05; done
+rm -rf '$state'
+exit 1
+SH
+  chmod +x "$resume"
+  export FM_VALIDATION_RESTART_RESUME_BIN="$resume"
+  start_owned_watcher "$home" "$state" "$fakebin" "$armout"
+  unset FM_VALIDATION_RESTART_RESUME_BIN
+
+  touch "$go"
+  wait_for_pid_gone "$WATCH_PID" 400 \
+    || { kill -TERM "$WATCH_PID" 2>/dev/null; fail "watcher pid $WATCH_PID outlived its state directory deleted mid-cycle"; }
+  wait_for_exit "$ARM_PID" 100 >/dev/null 2>&1 || true
+  grep -qF 'watcher: exiting - state directory' "$armout" \
+    || fail "watcher did not log the state-gone exit reason: $(cat "$armout")"
+  ! grep -q '^signal:\|^check:\|^stale:\|^heartbeat' "$armout" \
+    || fail "a state-gone exit was reported as an actionable wake: $(cat "$armout")"
+  pass "watch-arm: a watcher exits when its state directory is removed mid-cycle"
+}
+
 # The same for a deleted home whose state directory still exists elsewhere: the
 # lock is released through the ordinary cleanup so nothing stale is left behind.
 test_watcher_exits_when_its_home_is_removed() {
@@ -1322,6 +1361,7 @@ test_attached_arm_reports_the_delivered_wake_after_drain
 test_arm_refuses_an_unusable_launch_confirm_window
 test_arm_refuses_a_disposable_validation_checkout
 test_watcher_exits_when_its_state_directory_is_removed
+test_watcher_exits_when_its_state_directory_is_removed_mid_cycle
 test_watcher_exits_when_its_home_is_removed
 test_reaper_stops_a_tracked_watcher
 test_attached_arm_still_fails_on_a_wake_it_did_not_deliver
