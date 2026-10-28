@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# tests/fm-watch-triage-2.test.sh - part 2 of 3 of the watch-triage suite.
+# Every case and helper is defined once in tests/fm-watch-triage-helpers.sh; the parts
+# only split its run list by CI duration, so no portable serial shard carries
+# the whole suite (docs/fm-test-portable-shards.md).
+set -u
+
+# shellcheck source=tests/fm-watch-triage-helpers.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fm-watch-triage-helpers.sh"
+
+test_term_stops_a_watcher_blocked_inside_a_poll
+test_term_stops_a_watcher_whose_cleanup_marker_lock_is_held
+test_cleanup_marker_lock_bound_is_decimal_with_zero_default
+test_busy_pane_below_turn_age_bound_is_absorbed
+test_busy_pane_stable_hash_escalates_past_turn_age_bound
+test_busy_pane_changing_hash_escalates_past_turn_age_bound
+test_busy_pane_turn_end_touch_resets_age
+test_busy_pane_native_progress_resets_age
+test_busy_pane_repeated_escalation_reaches_demand_deep_inspection
+test_busy_pane_default_turn_age_bound_is_3600s
+test_busy_declared_pause_is_rechecked_not_wedge_escalated
+test_afk_busy_declared_pause_hands_off_plain_stale
+test_afk_busy_declared_pause_ticking_pane_hands_off_once
+test_nonterminal_stale_not_working_surfaced
+test_nonterminal_stale_paused_absorbed_then_resurfaced
+test_declared_wait_is_bounded_for_exited_and_live_agents
+test_own_work_wait_absorbs_then_long_cadence
+test_absorbed_replacement_wait_does_not_inherit_the_old_throttle
+test_live_declared_wait_churn_honors_the_resurface_throttle
+test_live_paused_until_controls_recheck_time
+test_wedge_threshold_defers_to_a_declared_wait_under_a_working_verdict
+test_wedge_threshold_keeps_a_wait_past_a_default_key_answer
+test_wedge_threshold_recheck_names_the_captain_for_a_held_lane
