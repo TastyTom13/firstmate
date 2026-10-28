@@ -1,0 +1,80 @@
+$ backfill
+collected 1 owner-words file(s) from forge-task2 into $LAB/data/owner-notes/forge.md
+collected 1 owner-words file(s) from lens-task1 into $LAB/data/owner-notes/lens.md
+no project could be resolved for scout-task3; collecting into general
+collected 1 owner-words file(s) from scout-task3 into $LAB/data/owner-notes/general.md
+collected 2 dated captain.md entries into $LAB/data/owner-notes
+$ backfill (2nd run)
+no project could be resolved for scout-task3; collecting into general
+forge.md
+general.md
+lens.md
+indexed 5 owner note(s) into $LAB/data/owner-notes/index.md
+$ place lens a9701314 charters/lens.md:12
+placed a9701314c82c in $LAB/data/owner-notes/lens.md at charters/lens.md:12
+$ place same again
+a9701314c82c in $LAB/data/owner-notes/lens.md is already placed at charters/lens.md:12
+$ place second dest
+placed a9701314c82c in $LAB/data/owner-notes/lens.md at briefs/lens.md:Search
+$ place forge by prefix
+placed 33e126af0c7c in $LAB/data/owner-notes/forge.md at charters/forge.md:3
+$ place bad hash
+error: no entry in $LAB/data/owner-notes/lens.md has the hash deadbeef; run: bin/fm-owner-notes.sh index
+rc=0
+$ place wrong project (hash in forge)
+error: no entry in $LAB/data/owner-notes/lens.md has the hash 33e126; run: bin/fm-owner-notes.sh index
+--- lens.md
+# Owner notes: lens
+
+The captain's own words on lens, verbatim, collected from Firstmate tasks at cleanup and from dated entries of data/captain.md.
+Entries are appended in collection order and their words are never edited; bin/fm-owner-notes.sh place adds where each one went.
+
+## 2026-10-20 - lens-task1
+<!-- fm-owner-notes task=lens-task1 file=captain-answers-2026-10-20.md sha256=d470654739c529aec31cfc3f39f218da2b6657ebb4135503bc80e831c20fdce7 -->
+Source: captain-answers-2026-10-20.md
+
+# Owner answers, verbatim
+
+Make lens search faster.
+
+## 2026-10-23 - captain.md
+<!-- fm-owner-notes task=captain.md file=captain.md sha256=a9701314c82c3c5897cb6d8de7755b46f82ceda17825a7b85b084f5fdeff92e5 -->
+<!-- fm-owner-notes placed=charters/lens.md:12 -->
+<!-- fm-owner-notes placed=briefs/lens.md:Search -->
+Source: captain.md, under "2026-10-23 Lens idea"
+
+## 2026-10-23 Lens idea
+Lens should export PDFs.
+indexed 5 owner note(s) into $LAB/data/owner-notes/index.md
+## Summary
+
+| Project | Notes | Placed | Not yet placed |
+| --- | ---: | ---: | ---: |
+| forge | 2 | 1 | 1 |
+| general | 1 | 0 | 1 |
+| lens | 2 | 1 | 1 |
+| Total | 5 | 2 | 3 |
+
+## Notes
+
+| Date | Project | Source | First words | Destination | Entry |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-05 | forge | captain.md | - 5 Oct 2026: Forge pricing page should be simpler | charters/forge.md:3 | `33e126af0c7c` |
+| 2026-10-20 | lens | lens-task1 | Make lens search faster. | not yet placed | `d470654739c5` |
+| 2026-10-21 | forge | forge-task2 | Forge needs dark mode. | not yet placed | `ef605ca2c61f` |
+| 2026-10-23 | lens | captain.md | Lens should export PDFs. | charters/lens.md:12, briefs/lens.md:Search | `a9701314c82c` |
+| 2026-10-28 | general | scout-task3 | Bull should show Mentum data. | not yet placed | `1b4769271d09` |
+
+## Not yet placed
+
+### forge
+
+- 2026-10-21, forge-task2, `ef605ca2c61f`: Forge needs dark mode.
+
+### general
+
+- 2026-10-28, scout-task3, `1b4769271d09`: Bull should show Mentum data.
+
+### lens
+
+- 2026-10-20, lens-task1, `d470654739c5`: Make lens search faster.

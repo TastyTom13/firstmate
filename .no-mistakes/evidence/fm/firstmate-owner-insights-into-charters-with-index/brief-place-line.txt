@@ -1,0 +1,2 @@
+134:When you turn one of those notes into a charter or brief line, run `FM_HOME='$H' FM_DATA_OVERRIDE='$H/data' '/Users/tomas/.no-mistakes/worktrees/a6ca20682364/01M614B9114APSKDR5MH9RWZWF/bin/fm-owner-notes.sh' place lens <entry-hash> <file:line>` for that entry; the entry hashes are in the markers of that file.
+(eval):1: parse error near `>'

@@ -1,12 +1,64 @@
 $ backfill
-collected 1 owner-words file(s) from lens-t1 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/lens.md
-no project could be resolved for lens-t4; collecting into general
-collected 1 owner-words file(s) from lens-t4 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/general.md
-no project could be resolved for lens-t6; collecting into general
-collected 1 owner-words file(s) from lens-t6 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes/general.md
-collected 3 dated captain.md entries into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-lab.8r5oBH/data/owner-notes
+no project could be resolved for forge-task2; collecting into general
+collected 1 owner-words file(s) from forge-task2 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-own.Vap0ta/data/owner-notes/general.md
+no project could be resolved for lens-task1; collecting into general
+collected 1 owner-words file(s) from lens-task1 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-own.Vap0ta/data/owner-notes/general.md
+no project could be resolved for scout-task3; collecting into general
+collected 1 owner-words file(s) from scout-task3 into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-own.Vap0ta/data/owner-notes/general.md
+collected 2 dated captain.md entries into /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-own.Vap0ta/data/owner-notes
+$ backfill again (idempotent)
+no project could be resolved for forge-task2; collecting into general
+no project could be resolved for lens-task1; collecting into general
+no project could be resolved for scout-task3; collecting into general
 $ ls
-forge.md
 general.md
 lens.md
-mentum.md
+--- lens.md
+# Owner notes: lens
+
+The captain's own words on lens, verbatim, collected from Firstmate tasks at cleanup and from dated entries of data/captain.md.
+Entries are appended in collection order and their words are never edited; bin/fm-owner-notes.sh place adds where each one went.
+
+## 2026-10-23 - captain.md
+<!-- fm-owner-notes task=captain.md file=captain.md sha256=a9701314c82c3c5897cb6d8de7755b46f82ceda17825a7b85b084f5fdeff92e5 -->
+Source: captain.md, under "2026-10-23 Lens idea"
+
+## 2026-10-23 Lens idea
+Lens should export PDFs.
+
+## 2026-10-05 - captain.md
+<!-- fm-owner-notes task=captain.md file=captain.md sha256=4940b881453eb86a01a8973e6a1e608368add4814b5ef73f02b9d87f670e751d -->
+Source: captain.md, under "2026-10-23 Lens idea"
+
+- 5 Oct 2026: forge pricing page should be simpler
+--- forge.md
+cat: /var/folders/08/gk0k1cz96snd794rnghc_98r0000gn/T//fm-own.Vap0ta/data/owner-notes/forge.md: No such file or directory
+--- general.md
+# Owner notes: general
+
+The captain's own words on general, verbatim, collected from Firstmate tasks at cleanup and from dated entries of data/captain.md.
+Entries are appended in collection order and their words are never edited; bin/fm-owner-notes.sh place adds where each one went.
+
+## 2026-10-21 - forge-task2
+<!-- fm-owner-notes task=forge-task2 file=board-answers-2026-10-21.md sha256=ef605ca2c61fb01bfd96038fb4c809f2315f5866d3b6af85d56e887451484535 -->
+Source: board-answers-2026-10-21.md
+
+# Board answers
+
+Forge needs dark mode.
+
+## 2026-10-20 - lens-task1
+<!-- fm-owner-notes task=lens-task1 file=captain-answers-2026-10-20.md sha256=d470654739c529aec31cfc3f39f218da2b6657ebb4135503bc80e831c20fdce7 -->
+Source: captain-answers-2026-10-20.md
+
+# Owner answers, verbatim
+
+Make lens search faster.
+
+## 2026-10-28 - scout-task3
+<!-- fm-owner-notes task=scout-task3 file=transcript.md sha256=1b4769271d09130bb0e6ad702dd96d70c2fcebb05efdc58821f0b5f7b7f955e1 -->
+Source: transcript.md
+
+# Owner's words, verbatim
+
+Bull should show Mentum data.
