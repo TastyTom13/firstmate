@@ -2882,16 +2882,22 @@ TS
     return 1
   }
 
+  # The reload banner can flash between two viewport polls on a busy runner, so
+  # read it from the pane's full output stream (pipe-pane) rather than from
+  # sampled snapshots, then wait for the settled viewport.
   wait_for_geometry_transition() {
-    local file=$1 transient_text=$2 final_text=$3 attempt=0 saw_transient=0
+    local file=$1 stream=$2 transient_text=$3 final_text=$4 attempt=0
     while [ "$attempt" -lt 600 ]; do
-      capture_geometry_viewport "$file" || true
-      if grep -Fq "$transient_text" "$file" 2>/dev/null; then
-        saw_transient=1
-      elif [ "$saw_transient" -eq 1 ] && grep -Fq "$final_text" "$file" 2>/dev/null; then
-        return 0
+      if awk -v t="$transient_text" -v f="$final_text" \
+        'seen && index($0, f) { ok = 1 } index($0, t) { seen = 1 } END { exit !ok }' \
+        "$stream" 2>/dev/null; then
+        capture_geometry_viewport "$file" || true
+        if grep -Fq "$final_text" "$file" 2>/dev/null \
+          && ! grep -Fq "$transient_text" "$file" 2>/dev/null; then
+          return 0
+        fi
       fi
-      sleep 0.01
+      sleep 0.05
       attempt=$((attempt + 1))
     done
     return 1
@@ -2941,10 +2947,14 @@ TS
   grep -Fq 'tool result one' "$session_file" \
     || fail "Calm removed hidden tool results from persisted history"
 
+  reload_stream="$TMP_ROOT/geometry-reload-stream.txt"
+  : >"$reload_stream"
+  tmux -L "$TMUX_SOCKET" pipe-pane -t "$TMUX_SESSION" "cat >>'$reload_stream'"
   tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" -l '/reload'
   tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" Enter
   wait_for_geometry_transition \
     "$snapshot" \
+    "$reload_stream" \
     "Reloading keybindings, extensions, skills, prompts, themes, and context files..." \
     "CALM_GEOMETRY_FINAL" \
     || fail "Pi Calm hidden-block geometry E2E did not complete the /reload viewport transition"
