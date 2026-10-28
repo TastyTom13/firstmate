@@ -91,7 +91,7 @@
 # backlog file), the titles are printed for the operator and nothing refuses.
 # --force skips this step with the other work checks.
 # Captain's words before cleanup: right after the follow-ups, a ship or scout
-# teardown appends every data/<task-id>/captain-notes-*.md to the project's
+# teardown appends every owner-words file in data/<task-id>/ to the project's
 # data/owner-notes/<project>.md through bin/fm-owner-notes.sh collect, which owns
 # the record, its idempotence, and the project naming. It runs under --force too
 # and refuses, changing nothing else, when collection fails. It then refreshes
