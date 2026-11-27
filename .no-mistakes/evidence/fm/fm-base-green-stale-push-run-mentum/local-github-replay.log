@@ -1,0 +1,68 @@
+Real bin/fm-base-green.sh + real gh 2.98.0-2, against a throwaway local GitHub API (unix socket). NEEDS_GH_AUTH is expected: the login is fake.
+== A reported Mentum shape: old red push, green nightly on head
+   want green -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 0): green dev https://github.com/o/r/actions/runs/30000000001
+== B 120 newer runs of another workflow on head
+   want green -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 0): green dev https://github.com/o/r/actions/runs/30000000001
+== C manual (workflow_dispatch) green run on head
+   want red -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+== D nightly skipped a job that failed before
+   want red -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+== E nightly lacks a job that failed before (renamed)
+   want red -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+== F nightly job list cannot be read
+   want red -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+== G green nightly is on an older commit, not head
+   want red -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+== H branch head cannot be read
+   want red -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+== I nightly on head failed after an earlier green one
+   want red -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+== J green nightly belongs to another workflow
+   want red -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+== K nightly on head was cancelled
+   want red -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+== L red push run is on the head itself
+   want red -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+   after  fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+== M old green push, red nightly on head
+   want green -> PASS
+   before fix (exit 0): green dev https://github.com/o/r/actions/runs/26328008555
+   after  fix (exit 0): green dev https://github.com/o/r/actions/runs/26328008555
+== N only nightly runs exist, no push or PR run
+   want unknown -> PASS
+   before fix (exit 2): unknown dev no completed CI runs
+   after  fix (exit 2): unknown dev no completed CI runs
+== O second workflow has an old red with no nightly
+   want red -> PASS
+   before fix (exit 1): red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1)); https://github.com/o/r/actions/runs/50000000001 (ship)
+   after  fix (exit 1): red dev https://github.com/o/r/actions/runs/50000000001 (ship)
+== session-start digest, Mentum shape (after fix)
+   NEEDS_GH_AUTH
+BOOTSTRAP_INFO: base branches: mentum green dev https://github.com/o/r/actions/runs/30000000001
+== session-start digest, nightly lacks a failed job
+   NEEDS_GH_AUTH
+BASE_BRANCHES: red base branch blocks CI-dependent ships until fixed: mentum red dev https://github.com/o/r/actions/runs/26328008555 (unit, e2e (chrome, 1))
+failures: 0

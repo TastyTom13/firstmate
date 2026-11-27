@@ -1,0 +1,15 @@
+clone has origin=o/r (set as gh default) and upstream=up/r
+result: (0, 'green dev https://github.com/o/r/actions/runs/30000000001')
+/repos/o/r/actions/runs?branch=dev&event=push&exclude_pull_requests=true&per_page=50&status=completed
+/repos/o/r/actions/workflows?page=1&per_page=100
+/repos/o/r/actions/runs?branch=dev&event=pull_request&exclude_pull_requests=true&per_page=50&status=completed
+/repos/o/r/actions/runs/26328008555?exclude_pull_requests=true
+/repos/o/r/actions/workflows/11
+/repos/o/r/actions/runs/26328008555/jobs?per_page=100
+/repos/o/r/branches/dev
+/repos/o/r/actions/workflows/11
+/repos/o/r/actions/workflows/11/runs?branch=dev&event=schedule&exclude_pull_requests=true&head_sha=2d54f643&per_page=50&status=completed
+/repos/o/r/actions/runs/30000000001?exclude_pull_requests=true
+/repos/o/r/actions/workflows/11
+/repos/o/r/actions/runs/30000000001/jobs?per_page=100
+

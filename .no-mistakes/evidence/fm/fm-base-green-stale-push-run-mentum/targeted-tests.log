@@ -1,0 +1,15 @@
+ok - latest completed run per workflow green reads green; an older red and a workflow_run helper are ignored
+ok - a failed latest run reads red with its run URL and failing job names; a skipped run is ignored
+ok - failed schedule and workflow_dispatch runs are ignored; push and pull_request runs decide
+ok - 60 newer non-gating runs do not hide a failing push run from the verdict
+ok - a project with no completed CI runs reads unknown
+ok - a missing gh reads unknown, never green
+ok - a failing gh call reads unknown with its reason
+ok - an unknown project reads unknown and names the missing clone
+ok - a stale red push run yields to a newer green scheduled run on the branch head, however many other workflows ran there
+ok - a red scheduled run on the branch head never turns a green push verdict red
+ok - a green workflow_dispatch run on the branch head does not replace a stale red
+ok - a stale red stands unless every job that failed in it succeeded in the head scheduled run
+ok - with no run on the branch head, the newest gating run keeps the verdict; a green run on another commit cannot override it
+ok - an unreadable branch head leaves a red gating run standing, never green
+ok - the session-start network stage lists each registered project's base-branch verdict, actionable only when red

@@ -1,0 +1,13 @@
+== cli/cli (trunk) exit 0: green trunk https://github.com/cli/cli/actions/runs/45885155241
+== python/cpython (main) exit 0: green main https://github.com/python/cpython/actions/runs/45909876045
+== nodejs/node (main) exit 0: green main https://github.com/nodejs/node/actions/runs/45925079043
+== vercel/next.js (canary) exit 1: red canary https://github.com/vercel/next.js/actions/runs/45910020782 (test rspack production (2/7, 18.3.1) / build, test rspack production (3/7, 18.3.1) / build, test rspack production (1/7, 18.3.1) / build, test rspack production (5/7, 18.3.1) / build, test rspack production (6/7, 18.3.1) / build, test rspack production (4/7, 18.3.1) / build, test rspack dev (5/5, 18.3.1) / build, test rspack dev (3/5, 18.3.1) / build, test rspack dev (4/5, 18.3.1) / build, test rspack dev (1/5, 18.3.1) / build, test rspack dev (2/5, 18.3.1) / build); https://github.com/vercel/next.js/actions/runs/3725476184
+   exit 0: gh api repos/{owner}/{repo}/branches/canary --jq .commit.sha
+== microsoft/vscode (main) exit 1: red main https://github.com/microsoft/vscode/actions/runs/43613762372 (jobs unread); https://github.com/microsoft/vscode/actions/runs/40353825275 (jobs unread); https://github.com/microsoft/vscode/actions/runs/40353825270 (jobs unread); https://github.com/microsoft/vscode/actions/runs/40353825148 (jobs unread); https://github.com/microsoft/vscode/actions/runs/40353825257 (jobs unread); https://github.com/microsoft/vscode/actions/runs/40270467942 (jobs unread); https://github.com/microsoft/vscode/actions/runs/40270467804 (jobs unread)
+== withastro/astro (main) exit 0: green main https://github.com/withastro/astro/actions/runs/45831752873
+== pandas-dev/pandas (main) exit 0: green main https://github.com/pandas-dev/pandas/actions/runs/45898334359
+== denoland/deno (main) exit 1: red main https://github.com/denoland/deno/actions/runs/40315173284 (test node_compat (1/3) release macos-x86_64, test node_compat (1/3) release macos-aarch64, ci status); https://github.com/denoland/deno/actions/runs/35924747601 (jobs unread)
+   exit 0: gh api repos/{owner}/{repo}/branches/main --jq .commit.sha
+   exit 0: gh run list --branch main --workflow 254549617 --event schedule --commit d8c551b5a5b46d8ec3892a91d0364cfcbca2c681 --status completed --limit 50 --json databaseId,conclusion,url,workflowName,workflowDatabaseId,createdAt,headSha
+== home-assistant/core (dev) exit 0: green dev https://github.com/home-assistant/core/actions/runs/45919274355
+== astral-sh/uv (main) exit 0: green main https://github.com/astral-sh/uv/actions/runs/45789992375
