@@ -292,9 +292,10 @@ bootstrap_parallel_finish() {
 # it is a BOOTSTRAP_INFO fact. Read-only, so it runs in detect-only mode too.
 # local-only projects run no forge CI and are skipped; no checked project
 # prints nothing. Checks run concurrently, each under its own bound.
-# Each verdict comes from fm-base-green.sh, which counts only push and
-# pull_request runs (what a PR rebased on the base inherits), so a red here is a
-# failure every PR inherits, never a scheduled or manual workflow.
+# Each verdict comes from fm-base-green.sh, where only push and pull_request
+# runs (what a PR rebased on the base inherits) can turn a base red, never a
+# scheduled or manual workflow. A successful scheduled run on the branch head can
+# clear a stale red; that script's header owns the conditions.
 base_branches_report() {
   local reg="$DATA/projects.md" dir name i=0 n red=() rest=() line
   [ -f "$reg" ] || return 0
