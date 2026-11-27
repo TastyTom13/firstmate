@@ -19,22 +19,25 @@
 # exactly what a PR rebased on the branch inherits, so the run limit applies to
 # gating runs only. Runs from schedule, workflow_dispatch, release, deploy,
 # workflow_run (such as an automatic retry helper) and every other event never
-# gate a PR, so they never decide the verdict. Merge the two lists newest first,
-# drop runs whose conclusion says nothing about the code (skipped, cancelled,
-# neutral, stale), then take the newest remaining run of each workflow.
+# gate a PR, so none of them can turn the verdict red. Merge the two lists newest
+# first, drop runs whose conclusion says nothing about the code (skipped,
+# cancelled, neutral, stale), then take the newest remaining run of each
+# workflow.
 #
-# Staleness: read the branch head commit from the forge (`gh api .../branches`).
-# A workflow's newest gating run whose head commit is not the branch head is
-# stale when the same workflow has a newer meaningful completed run on the head
-# commit, from any event (`gh run list --commit`, such as a nightly schedule on
-# a branch that no longer runs CI on push). That newer head run then decides the
-# workflow in its place. With no such run, the gating run keeps deciding.
+# Staleness: one case lets a schedule run count. A workflow's failed gating run
+# is replaced by a successful run only when all of these hold: its head commit is
+# not the branch head (`gh api .../branches`); the same workflow's newest
+# meaningful completed schedule run on the branch head is newer and succeeded;
+# and every job that failed in the gating run succeeded in that schedule run.
+# Otherwise, including when any of this cannot be read, the failed gating run
+# stands. A successful gating run is never replaced.
 #
-# Red when any deciding run concluded failure, timed_out, startup_failure, or
-# action_required; green when every one succeeded; unknown when no gating run
-# remains (the project has no push or pull_request CI on that branch), gh is
-# missing, or a gh call fails, including the branch head read. Unknown is never
-# reported as green, and green always comes from a run that succeeded.
+# Red when any workflow's failed run (failure, timed_out, startup_failure, or
+# action_required) was not replaced; green when every workflow's run succeeded or
+# was replaced; unknown when no gating run remains (the project has no push or
+# pull_request CI on that branch), gh is missing, or listing the gating runs
+# fails. Unknown is never reported as green, and green always comes from a run
+# that succeeded.
 #
 # Consumers: firstmate at ship intake (AGENTS.md section 7: a red base is a
 # blocker fixed first), and bin/fm-bootstrap.sh's network phase, which lists
@@ -79,7 +82,7 @@ gh_in_clone() {
 err=$(mktemp "${TMPDIR:-/tmp}/fm-base-green.XXXXXX") || unknown "$BRANCH" "mktemp failed"
 trap 'rm -f "$err"' EXIT
 
-FIELDS=databaseId,conclusion,url,workflowName,createdAt,headSha
+FIELDS=databaseId,conclusion,url,workflowName,workflowDatabaseId,createdAt,headSha
 runs=
 for event in push pull_request; do
   part=$(gh_in_clone run list --branch "$BRANCH" --event "$event" --status completed --limit "$RUN_LIMIT" \
@@ -99,40 +102,48 @@ gating=$(printf '%s' "$runs" | jq -cs "$NEWEST" 2>"$err") \
   || unknown "$BRANCH" "unreadable gh run list output: $(head -n 1 "$err")"
 [ "$gating" != "{}" ] || unknown "$BRANCH" "no completed CI runs"
 
-head=$(gh_in_clone api "repos/{owner}/{repo}/branches/$BRANCH" --jq .commit.sha 2>"$err") && [ -n "$head" ] \
-  || unknown "$BRANCH" "branch head unreadable: $(head -n 1 "$err")"
+# shellcheck disable=SC2016 # $c is a jq variable, not a shell one.
+FAILED_JOBS='[ .jobs[] | select(.conclusion as $c
+  | ["failure","timed_out","startup_failure","action_required"] | index($c)) | .name ]'
 
-# Only when some workflow's gating run is off the head, list the head's runs.
-head_runs='[]'
-if printf '%s' "$gating" | jq -e --arg head "$head" 'any(.[]; .headSha != $head)' >/dev/null; then
-  head_runs=$(gh_in_clone run list --branch "$BRANCH" --commit "$head" --status completed --limit "$RUN_LIMIT" \
-    --json "$FIELDS" 2>"$err") \
-    || unknown "$BRANCH" "gh run list failed: $(head -n 1 "$err")"
-fi
-
-# One "<conclusion>\t<id>\t<url>" row per gating workflow: its deciding run.
-latest=$(printf '%s' "$head_runs" | jq -rs --argjson gating "$gating" --arg head "$head" "($NEWEST)"' as $on_head
-  | $gating | to_entries[] | .value
-  | if .headSha != $head and ($on_head[.workflowName].createdAt // "") > .createdAt
-    then $on_head[.workflowName] else . end
-  | [.conclusion, (.databaseId | tostring), .url] | @tsv
-' 2>"$err") || unknown "$BRANCH" "unreadable gh run list output: $(head -n 1 "$err")"
+# Prints the URL of the head schedule run that replaces a failed gating run.
+head_pass_url() {  # <gating run JSON> <its failed job names JSON>
+  local head stale list run jobs
+  [ "$2" != '[]' ] || return 1
+  head=$(gh_in_clone api "repos/{owner}/{repo}/branches/$BRANCH" --jq .commit.sha 2>"$err") && [ -n "$head" ] || return 1
+  stale=$(printf '%s' "$1" | jq -r --arg head "$head" \
+    'select(.headSha != $head) | "\(.workflowDatabaseId) \(.createdAt)"') && [ -n "$stale" ] || return 1
+  list=$(gh_in_clone run list --branch "$BRANCH" --workflow "${stale%% *}" --event schedule --commit "$head" \
+    --status completed --limit "$RUN_LIMIT" --json "$FIELDS" 2>"$err") || return 1
+  run=$(printf '%s' "$list" | jq -rs --arg since "${stale#* }" "($NEWEST)"' | .[]
+    | select(.conclusion == "success" and .createdAt > $since) | "\(.databaseId) \(.url)"') && [ -n "$run" ] || return 1
+  jobs=$(gh_in_clone run view "${run%% *}" --json jobs 2>"$err") || return 1
+  printf '%s' "$jobs" | jq -es --argjson failed "$2" '.[0].jobs as $jobs
+    | all($failed[]; . as $name | [ $jobs[] | select(.name == $name) | .conclusion ]
+        | length > 0 and all(. == "success"))' >/dev/null 2>&1 || return 1
+  printf '%s\n' "${run#* }"
+}
 
 green_url=
 red=
-while IFS=$'\t' read -r conclusion id url; do
+while IFS= read -r run; do
+  IFS=$'\t' read -r conclusion id url <<< "$(printf '%s' "$run" | jq -r '[.conclusion, .databaseId, .url] | @tsv')"
   case "$conclusion" in
-    success) [ -n "$green_url" ] || green_url=$url ;;
+    success) ;;
     *)
-      jobs=$(gh_in_clone run view "$id" --json jobs 2>"$err" | jq -r '
-        [ .jobs[] | select(.conclusion as $c
-            | ["failure","timed_out","startup_failure","action_required"] | index($c)) | .name ]
-        | join(", ")' 2>/dev/null) || jobs=
-      [ -n "$jobs" ] || jobs="jobs unread"
-      red="${red:+$red; }$url ($jobs)"
+      failed=$(gh_in_clone run view "$id" --json jobs 2>"$err" | jq -c "$FAILED_JOBS" 2>/dev/null) && [ -n "$failed" ] \
+        || failed='[]'
+      if pass_url=$(head_pass_url "$run" "$failed"); then
+        url=$pass_url
+      else
+        names=$(printf '%s' "$failed" | jq -r 'join(", ")')
+        red="${red:+$red; }$url (${names:-jobs unread})"
+        continue
+      fi
       ;;
   esac
-done <<< "$latest"
+  [ -n "$green_url" ] || green_url=$url
+done <<< "$(printf '%s' "$gating" | jq -c '.[]')"
 
 if [ -n "$red" ]; then
   printf 'red %s %s\n' "$BRANCH" "$red"
