@@ -16,8 +16,8 @@
 #
 # The verdict: list the branch's completed runs (`gh run list --status
 # completed`) once for event push and once for event pull_request, which is
-# exactly what a PR rebased on the branch inherits, so the run limit applies to
-# gating runs only. Runs from schedule, workflow_dispatch, release, deploy,
+# exactly what a PR rebased on the branch inherits, so other events never use up
+# those two lists' run limit. Runs from schedule, workflow_dispatch, release, deploy,
 # workflow_run (such as an automatic retry helper) and every other event never
 # gate a PR, so none of them can turn the verdict red. Merge the two lists newest
 # first, drop runs whose conclusion says nothing about the code (skipped,
