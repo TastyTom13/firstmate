@@ -33,26 +33,31 @@ write_run_list() {
 file=$1
 shift
 event=
+commit=
 limit=30
 while [ $# -gt 0 ]; do
   case "$1" in
     --event) event=$2; shift ;;
+    --commit) commit=$2; shift ;;
     --limit) limit=$2; shift ;;
   esac
   shift
 done
-jq -c --arg event "$event" --argjson limit "$limit" \
-  '[.[] | select($event == "" or .event == $event)] | sort_by(.createdAt) | reverse | .[:$limit]' "$file"
+jq -c --arg event "$event" --arg commit "$commit" --argjson limit "$limit" \
+  '[.[] | select($event == "" or .event == $event) | select($commit == "" or .headSha == $commit)]
+   | sort_by(.createdAt) | reverse | .[:$limit]' "$file"
 EOF
 }
 
 # write_gh <case_dir> installs a fake gh that answers `run list` from
-# runs.json and `run view <id>` from jobs-<id>.json, and records its argv.
+# runs.json, `run view <id>` from jobs-<id>.json, and the branch-head `api`
+# read from the head file (default h0), and records its argv.
 write_gh() {
   write_run_list "$1"
   cat > "$1/fakebin/gh" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$1/gh.argv"
+if [ "\$1" = api ]; then cat "$1/head" 2>/dev/null || echo h0; exit 0; fi
 case "\$1 \$2" in
   'run list') shift 2; bash "$1/run-list.sh" "$1/runs.json" "\$@" ;;
   'run view') cat "$1/jobs-\$3.json" ;;
@@ -222,6 +227,7 @@ test_session_start_lists_base_branches() {
 #!/usr/bin/env bash
 case "\$1 \$2" in
   'auth status') exit 0 ;;
+  api\ *) echo h0 ;;
   'run list') shift 2; bash "$c/run-list.sh" "$c/runs-\$(basename "\$PWD").json" "\$@" ;;
   'run view') printf '%s\n' '{"jobs":[{"name":"e2e","conclusion":"failure"}]}' ;;
   *) exit 1 ;;
@@ -244,6 +250,75 @@ EOF
   pass "the session-start network stage lists each registered project's base-branch verdict, actionable only when red"
 }
 
+# A gating run on an older commit says nothing about the branch head when the
+# same workflow has a newer completed run on the head commit, from any event.
+test_stale_red_push_run_green_head_run() {
+  local c out rc
+  c=$(make_case stale-red)
+  write_gh "$c"
+  echo h2 > "$c/head"
+  cat > "$c/runs.json" <<'EOF'
+[{"databaseId":2,"createdAt":"2026-11-26T00:00:00Z","conclusion":"success","url":"https://github.com/o/r/actions/runs/2","workflowName":"CI","event":"schedule","headSha":"h2"},
+ {"databaseId":1,"createdAt":"2026-05-23T00:00:00Z","conclusion":"failure","url":"https://github.com/o/r/actions/runs/1","workflowName":"CI","event":"push","headSha":"h1"}]
+EOF
+  printf '%s\n' '{"jobs":[{"name":"unit","conclusion":"failure"}]}' > "$c/jobs-1.json"
+  out=$(run_check "$c" demo); rc=$?
+  [ "$rc" -eq 0 ] || fail "stale red: exit $rc, want 0 ($out)"
+  [ "$out" = "green dev https://github.com/o/r/actions/runs/2" ] || fail "stale red: got '$out'"
+  grep -q -- '--commit h2' "$c/gh.argv" || fail "stale red: head runs were not requested by commit"
+  pass "a stale red push run yields to a newer green scheduled run on the branch head"
+}
+
+test_stale_green_push_run_red_head_run() {
+  local c out rc
+  c=$(make_case stale-green)
+  write_gh "$c"
+  echo h2 > "$c/head"
+  cat > "$c/runs.json" <<'EOF'
+[{"databaseId":4,"createdAt":"2026-11-26T00:00:00Z","conclusion":"failure","url":"https://github.com/o/r/actions/runs/4","workflowName":"CI","event":"schedule","headSha":"h2"},
+ {"databaseId":3,"createdAt":"2026-05-23T00:00:00Z","conclusion":"success","url":"https://github.com/o/r/actions/runs/3","workflowName":"CI","event":"push","headSha":"h1"}]
+EOF
+  printf '%s\n' '{"jobs":[{"name":"e2e","conclusion":"failure"}]}' > "$c/jobs-4.json"
+  out=$(run_check "$c" demo); rc=$?
+  [ "$rc" -eq 1 ] || fail "stale green: exit $rc, want 1 ($out)"
+  [ "$out" = "red dev https://github.com/o/r/actions/runs/4 (e2e)" ] || fail "stale green: got '$out'"
+  pass "a stale green push run yields to a newer red scheduled run on the branch head"
+}
+
+test_no_head_run_keeps_gating_verdict() {
+  local c out rc
+  c=$(make_case no-head-run)
+  write_gh "$c"
+  echo h3 > "$c/head"
+  cat > "$c/runs.json" <<'EOF'
+[{"databaseId":6,"createdAt":"2026-11-26T00:00:00Z","conclusion":"success","url":"https://github.com/o/r/actions/runs/6","workflowName":"CI","event":"schedule","headSha":"h2"},
+ {"databaseId":5,"createdAt":"2026-05-23T00:00:00Z","conclusion":"failure","url":"https://github.com/o/r/actions/runs/5","workflowName":"CI","event":"push","headSha":"h1"}]
+EOF
+  printf '%s\n' '{"jobs":[{"name":"unit","conclusion":"failure"}]}' > "$c/jobs-5.json"
+  out=$(run_check "$c" demo); rc=$?
+  [ "$rc" -eq 1 ] || fail "no head run: exit $rc, want 1 ($out)"
+  [ "$out" = "red dev https://github.com/o/r/actions/runs/5 (unit)" ] || fail "no head run: got '$out'"
+  pass "with no run on the branch head, the newest gating run keeps the verdict; a green run on another commit cannot override it"
+}
+
+test_head_unreadable() {
+  local c out rc
+  c=$(make_case head-err)
+  write_gh "$c"
+  mv "$c/fakebin/gh" "$c/gh-ok"
+  cat > "$c/fakebin/gh" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = api ]; then echo "HTTP 404: Branch not found" >&2; exit 1; fi
+exec "$c/gh-ok" "\$@"
+EOF
+  chmod +x "$c/fakebin/gh"
+  printf '%s\n' '[{"databaseId":7,"createdAt":"2026-10-07T00:00:00Z","conclusion":"success","url":"https://github.com/o/r/actions/runs/7","workflowName":"CI","event":"push","headSha":"h1"}]' > "$c/runs.json"
+  out=$(run_check "$c" demo); rc=$?
+  [ "$rc" -eq 2 ] || fail "head unreadable: exit $rc, want 2 ($out)"
+  [ "$out" = "unknown dev branch head unreadable: HTTP 404: Branch not found" ] || fail "head unreadable: got '$out'"
+  pass "an unreadable branch head reads unknown, never green"
+}
+
 test_green
 test_red
 test_only_gating_events_decide
@@ -252,4 +327,8 @@ test_no_workflow
 test_gh_unavailable
 test_gh_error
 test_missing_clone
+test_stale_red_push_run_green_head_run
+test_stale_green_push_run_red_head_run
+test_no_head_run_keeps_gating_verdict
+test_head_unreadable
 test_session_start_lists_base_branches

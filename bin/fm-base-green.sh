@@ -21,11 +21,20 @@
 # workflow_run (such as an automatic retry helper) and every other event never
 # gate a PR, so they never decide the verdict. Merge the two lists newest first,
 # drop runs whose conclusion says nothing about the code (skipped, cancelled,
-# neutral, stale), then take the newest remaining run of each workflow. Red when
-# any of those concluded failure, timed_out, startup_failure, or
-# action_required; green when every one succeeded; unknown when none remains
-# (the project has no push or pull_request CI on that branch), gh is missing, or
-# a gh call fails. Unknown is never reported as green.
+# neutral, stale), then take the newest remaining run of each workflow.
+#
+# Staleness: read the branch head commit from the forge (`gh api .../branches`).
+# A workflow's newest gating run whose head commit is not the branch head is
+# stale when the same workflow has a newer meaningful completed run on the head
+# commit, from any event (`gh run list --commit`, such as a nightly schedule on
+# a branch that no longer runs CI on push). That newer head run then decides the
+# workflow in its place. With no such run, the gating run keeps deciding.
+#
+# Red when any deciding run concluded failure, timed_out, startup_failure, or
+# action_required; green when every one succeeded; unknown when no gating run
+# remains (the project has no push or pull_request CI on that branch), gh is
+# missing, or a gh call fails, including the branch head read. Unknown is never
+# reported as green, and green always comes from a run that succeeded.
 #
 # Consumers: firstmate at ship intake (AGENTS.md section 7: a red base is a
 # blocker fixed first), and bin/fm-bootstrap.sh's network phase, which lists
@@ -70,23 +79,44 @@ gh_in_clone() {
 err=$(mktemp "${TMPDIR:-/tmp}/fm-base-green.XXXXXX") || unknown "$BRANCH" "mktemp failed"
 trap 'rm -f "$err"' EXIT
 
+FIELDS=databaseId,conclusion,url,workflowName,createdAt,headSha
 runs=
 for event in push pull_request; do
   part=$(gh_in_clone run list --branch "$BRANCH" --event "$event" --status completed --limit "$RUN_LIMIT" \
-    --json databaseId,conclusion,url,workflowName,createdAt 2>"$err") \
+    --json "$FIELDS" 2>"$err") \
     || unknown "$BRANCH" "gh run list failed: $(head -n 1 "$err")"
   runs="$runs$part"
 done
 
-# One "<conclusion>\t<id>\t<url>" row per workflow: its newest meaningful run.
-latest=$(printf '%s' "$runs" | jq -rs '
+# The newest meaningful run of each workflow, as a JSON object keyed by name.
+# shellcheck disable=SC2016 # $c and $r are jq variables, not shell ones.
+NEWEST='
   [ (add // [])
     | sort_by(.createdAt) | reverse | .[]
     | select(.conclusion as $c | ["skipped","cancelled","neutral","stale",""] | index($c) | not) ]
-  | reduce .[] as $r ({}; if has($r.workflowName) then . else .[$r.workflowName] = $r end)
-  | to_entries[] | .value | [.conclusion, (.databaseId | tostring), .url] | @tsv
+  | reduce .[] as $r ({}; if has($r.workflowName) then . else .[$r.workflowName] = $r end)'
+gating=$(printf '%s' "$runs" | jq -cs "$NEWEST" 2>"$err") \
+  || unknown "$BRANCH" "unreadable gh run list output: $(head -n 1 "$err")"
+[ "$gating" != "{}" ] || unknown "$BRANCH" "no completed CI runs"
+
+head=$(gh_in_clone api "repos/{owner}/{repo}/branches/$BRANCH" --jq .commit.sha 2>"$err") && [ -n "$head" ] \
+  || unknown "$BRANCH" "branch head unreadable: $(head -n 1 "$err")"
+
+# Only when some workflow's gating run is off the head, list the head's runs.
+head_runs='[]'
+if printf '%s' "$gating" | jq -e --arg head "$head" 'any(.[]; .headSha != $head)' >/dev/null; then
+  head_runs=$(gh_in_clone run list --branch "$BRANCH" --commit "$head" --status completed --limit "$RUN_LIMIT" \
+    --json "$FIELDS" 2>"$err") \
+    || unknown "$BRANCH" "gh run list failed: $(head -n 1 "$err")"
+fi
+
+# One "<conclusion>\t<id>\t<url>" row per gating workflow: its deciding run.
+latest=$(printf '%s' "$head_runs" | jq -rs --argjson gating "$gating" --arg head "$head" "($NEWEST)"' as $on_head
+  | $gating | to_entries[] | .value
+  | if .headSha != $head and ($on_head[.workflowName].createdAt // "") > .createdAt
+    then $on_head[.workflowName] else . end
+  | [.conclusion, (.databaseId | tostring), .url] | @tsv
 ' 2>"$err") || unknown "$BRANCH" "unreadable gh run list output: $(head -n 1 "$err")"
-[ -n "$latest" ] || unknown "$BRANCH" "no completed CI runs"
 
 green_url=
 red=
